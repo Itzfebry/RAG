@@ -1,4 +1,5 @@
 import os
+import sys
 import requests
 import json
 import re
@@ -9,6 +10,13 @@ import psutil
 import win32com.client
 from dotenv import load_dotenv
 
+# Pastikan output console mendukung UTF-8 (emoji dari respons LLM)
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 # Load environment variables
 load_dotenv()
 
@@ -17,12 +25,12 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 
 # Persistent memory file path
-MEMORY_FILE = os.path.join(os.path.dirname(__file__), "..", "data", "conversation_memory.json")
+MEMORY_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "data", "conversation_memory.json")
 
 # 1. Load knowledge base pribadi dari file-file di data/personal
 def load_personal_knowledge():
     documents = []
-    personal_dir = os.path.join(os.path.dirname(__file__), "..", "data", "personal")
+    personal_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data", "personal")
     
     if not os.path.exists(personal_dir):
         return None
@@ -56,7 +64,7 @@ def load_personal_knowledge():
     
     # Ekstrak content dan metadatas
     texts = [t["content"] for t in all_texts]
-    metadatas = [t["source"] for t in all_texts]
+    metadatas = [{"source": t["source"]} for t in all_texts]
     
     # Buat vector store FAISS - coba load yang sudah ada dulu
     vectorstore = load_existing_faiss(texts, embeddings, metadatas)
@@ -71,18 +79,27 @@ def load_personal_knowledge():
 # Fungsi baru: Load FAISS index yang sudah ada dari disk
 def load_existing_faiss(texts, embeddings, metadatas):
     """Coba load FAISS index yang sudah ada, jika tidak ada kembalikan None."""
-    faiss_path = os.path.join(os.path.dirname(__file__), "..", "data", "knowledge-base", "faiss_index")
+    faiss_path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "knowledge-base", "faiss_index")
     
     if os.path.exists(faiss_path):
         try:
-            # Load yang sudah ada
-            vectorstore = FAISS.load_local(faiss_path, embeddings)
-            # Tambahkan texts baru jika ada
+            # Load yang sudah ada (file index dibuat sendiri, aman untuk di-load)
+            vectorstore = FAISS.load_local(faiss_path, embeddings, allow_dangerous_deserialization=True)
+            # Tambahkan texts baru hanya jika belum ada di index
             if texts:
-                existing_texts = [doc.page_content for doc in vectorstore.docstore._dict.values()]
-                combined_texts = existing_texts + texts
-                vectorstore = FAISS.from_texts(combined_texts, embeddings, metadatas=metadatas)
-                save_faiss_index(vectorstore)
+                existing_docs = list(vectorstore.docstore._dict.values())
+                existing_texts = [doc.page_content for doc in existing_docs]
+                new_texts = []
+                new_metadatas = []
+                for text, meta in zip(texts, metadatas):
+                    if text not in existing_texts:
+                        new_texts.append(text)
+                        new_metadatas.append(meta)
+                if new_texts:
+                    combined_texts = existing_texts + new_texts
+                    combined_metadatas = [doc.metadata for doc in existing_docs] + new_metadatas
+                    vectorstore = FAISS.from_texts(combined_texts, embeddings, metadatas=combined_metadatas)
+                    save_faiss_index(vectorstore)
             return vectorstore
         except Exception as e:
             print(f"Gagal load FAISS lama: {e}")
@@ -93,7 +110,7 @@ def load_existing_faiss(texts, embeddings, metadatas):
 # Fungsi baru: Save FAISS index ke disk
 def save_faiss_index(vectorstore):
     """Simpan FAISS index ke disk untuk persistence."""
-    faiss_path = os.path.join(os.path.dirname(__file__), "..", "data", "knowledge-base", "faiss_index")
+    faiss_path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "knowledge-base", "faiss_index")
     try:
         vectorstore.save_local(faiss_path)
     except Exception as e:
@@ -101,19 +118,27 @@ def save_faiss_index(vectorstore):
 
 
 # 2. Fungsi mendapatkan response dari Ollama
-def get_ollama_response(prompt):
+def get_ollama_response(prompt, timeout=120):
     """Get response from Ollama model directly via HTTP."""
     try:
         response = requests.post(
             f"{OLLAMA_BASE_URL}/api/generate",
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-            timeout=30
+            json={
+                "model": OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "think": False,  # Nonaktifkan mode thinking agar respons lebih cepat
+                "options": {"num_predict": 512}
+            },
+            timeout=timeout
         )
         if response.status_code == 200:
             result = response.json()
             return result.get("response", "")
         else:
             return f"Error: Ollama returned status {response.status_code}"
+    except requests.exceptions.Timeout:
+        return "Error: Ollama timeout - model terlalu lama merespon. Coba lagi atau tunggu sebentar."
     except Exception as e:
         return f"Error connecting to Ollama: {str(e)}"
 
@@ -137,32 +162,43 @@ def detect_new_memory(user_input, existing_memories):
     """Deteksi dan ekstrak informasi penting baru dari input pengguna."""
     new_memories = []
     
+    # Pertanyaan bukan pernyataan - jangan simpan sebagai memori
+    if user_input.strip().endswith("?"):
+        return new_memories
+    
+    # Kata-kata yang bukan informasi valid
+    junk_words = {"apa", "siapa", "kapan", "dimana", "di mana", "mengapa", "kenapa",
+                  "bagaimana", "gimana", "berapa", "yang", "itu", "ini", "saja",
+                  "kah", "tidak", "bukan", "ya", "saya", "aku", "dia", "mereka"}
+    
     # Pattern-pattern yang mengindikasikan informasi penting
     patterns = [
-        r"(namaku| Nama saya| saya bernama)\s+(.+?)(?:\.|,|$)",
-        r"(saya suka| hobi saya| minat saya)\s+(.+?)(?:\.|,|$)",
-        r"(saya bekerja di|perusahaan saya| pekerjaan saya)\s+(.+?)(?:\.|,|$)",
-        r"(alamat saya| telepon saya| kontak)\s+(.+?)(?:\.|,|$)",
-        r"(target| tujuan| ingin)\s+(.+?)(?:\.|,|$)",
-        r"(cita-cita| impian| masa depan)\s+(.+?)(?:\.|,|$)",
-        r"(fobia| ketakutan| alergi)\s+(.+?)(?:\.|,|$)",
-        r"(nomor favorit| warna favorit| makan favorit)\s+(.+?)(?:\.|,|$)",
+        r"(namaku|nama saya|saya bernama)\s+(.+?)(?:\.|,|$)",
+        r"(saya suka|hobi saya|minat saya)\s+(.+?)(?:\.|,|$)",
+        r"(saya bekerja di|perusahaan saya|pekerjaan saya)\s+(.+?)(?:\.|,|$)",
+        r"(alamat saya|telepon saya|kontak)\s+(.+?)(?:\.|,|$)",
+        r"(target|tujuan|ingin)\s+(.+?)(?:\.|,|$)",
+        r"(cita-cita|impian|masa depan)\s+(.+?)(?:\.|,|$)",
+        r"(fobia|ketakutan|alergi)\s+(.+?)(?:\.|,|$)",
+        r"(nomor favorit|warna favorit|makan favorit)\s+(.+?)(?:\.|,|$)",
     ]
     
     for pattern in patterns:
         match = re.search(pattern, user_input, re.IGNORECASE)
         if match:
-            key_info = match.group(2).strip()
-            if key_info and len(key_info) > 2:
-                # Cek apakah sudah ada di memori yang ada
-                sudah_ada = False
-                for mem in existing_memories:
-                    if key_info.lower() in mem.lower() or mem.lower() in key_info.lower():
-                        sudah_ada = True
-                        break
-                
-                if not sudah_ada:
-                    new_memories.append(key_info)
+            key_info = match.group(2).strip().rstrip("?").strip()
+            # Tolak jika kosong, terlalu pendek, atau hanya kata tanya/junk
+            if not key_info or len(key_info) <= 2 or key_info.lower() in junk_words:
+                continue
+            # Cek apakah sudah ada di memori yang ada
+            sudah_ada = False
+            for mem in existing_memories:
+                if key_info.lower() in mem.lower() or mem.lower() in key_info.lower():
+                    sudah_ada = True
+                    break
+            
+            if not sudah_ada:
+                new_memories.append(key_info)
     
     return new_memories
 
@@ -172,7 +208,8 @@ def load_conversation_memories():
     """Memuat memori percakapan dari file JSON yang sudah disimpan."""
     if os.path.exists(MEMORY_FILE):
         try:
-            with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+            # utf-8-sig agar tahan terhadap file dengan BOM
+            with open(MEMORY_FILE, "r", encoding="utf-8-sig") as f:
                 return json.load(f)
         except Exception as e:
             print(f"Gagal load memory file: {e}")
@@ -183,6 +220,7 @@ def load_conversation_memories():
 def save_conversation_memories(memories):
     """Menyimpan memori percakapan ke file JSON untuk persistence."""
     try:
+        os.makedirs(os.path.dirname(MEMORY_FILE), exist_ok=True)
         with open(MEMORY_FILE, "w", encoding="utf-8") as f:
             json.dump(memories, f, ensure_ascii=False, indent=2)
     except Exception as e:
@@ -205,13 +243,25 @@ def merge_memories_with_knowledge(vectorstore, memories):
             memory_texts.append(memory)
             memory_metadatas.append({"source": f"memory_{i}", "type": "conversation_memory"})
         
-        # Tambahkan ke FAISS yang sudah ada
+        # Ambil dokumen yang sudah ada dari FAISS
         current_docs = vectorstore.similarity_search("", k=1000)
         existing_texts = [doc.page_content for doc in current_docs]
+        existing_metadatas = [doc.metadata for doc in current_docs]
+        
+        # Hanya tambahkan memori yang belum ada di index
+        new_texts = []
+        new_metadatas = []
+        for text, meta in zip(memory_texts, memory_metadatas):
+            if text not in existing_texts:
+                new_texts.append(text)
+                new_metadatas.append(meta)
+        
+        if not new_texts:
+            return vectorstore
         
         # Gabungkan dan update
-        all_texts = existing_texts + memory_texts
-        all_metadatas = current_docs.metadata if hasattr(current_docs, 'metadata') else memory_metadatas
+        all_texts = existing_texts + new_texts
+        all_metadatas = existing_metadatas + new_metadatas
         
         # Create new vectorstore with all texts
         vectorstore = FAISS.from_texts(all_texts, embeddings, metadatas=all_metadatas)
@@ -233,10 +283,11 @@ def generate_response(llm_type, context, query, vectorstore, memories):
         # Ambil konteks dari memori percakapan
         context_memory = ""
         if memories:
-            # Ambil memori yang relevan
-            memory_texts = [m for m in memories if any(word in query.lower() for word in m.lower().split())]
-            if memory_texts:
-                context_memory = "\n\nMemori percakapan sebelumnya:\n" + "\n".join(memory_texts[:3])
+            # Sertakan memori yang relevan, atau semua jika jumlah sedikit
+            query_words = set(query.lower().split())
+            relevant = [m for m in memories if query_words & set(m.lower().split())]
+            memory_texts = relevant if relevant else memories[:5]
+            context_memory = "\n\nMemori percakapan sebelumnya:\n" + "\n".join(memory_texts)
         
         # Gabungkan semua context
         full_context = context_kb + context_memory
@@ -320,7 +371,15 @@ def main():
     vectorstore = merge_memories_with_knowledge(vectorstore, memories)
     
     print("Memori percakapan lama dimuat: " + str(len(memories)) + " entri")
-    print("Ollama model '" + OLLAMA_MODEL + "' siap.\n")
+    print("Ollama model '" + OLLAMA_MODEL + "' siap.")
+    
+    # Warm-up: Muat model sekali agar respons pertama lebih cepat
+    print("Memuat model Ollama (tunggu sebentar)...")
+    warmup = get_ollama_response("Hi", timeout=60)
+    if "Error" not in warmup:
+        print("Model siap digunakan!\n")
+    else:
+        print("Warning: Model belum siap, respons mungkin lambat.\n")
     
     print("Perintah yang tersedia:")
     print("  - Tanya apapun (agent akan mencari di knowledge base pribadi)")
@@ -348,7 +407,9 @@ def main():
             handled = False
             for trigger in device_triggers:
                 if lower_input.startswith(trigger):
-                    response = interact_with_device(lower_input)
+                    # Strip prefix "device " jika ada
+                    device_cmd = lower_input[7:] if lower_input.startswith("device ") else lower_input
+                    response = interact_with_device(device_cmd)
                     print(f"Agent: {response}")
                     handled = True
                     break
@@ -386,11 +447,18 @@ def main():
                         vectorstore = merge_memories_with_knowledge(vectorstore, detected)
                     print(f"✓ Informasi baru tercatat: {', '.join(detected)}")
             else:
-                # Fallback: langsung kepada Ollama tanpa RAG
-                response = get_ollama_response(user_input)
+                # Fallback: Ollama dengan memori percakapan (knowledge base file kosong)
+                response = generate_response("ollama", "", user_input, None, memories)
                 print(f"\nAgent: {response}")
+                
+                # Deteksi informasi baru dari percakapan ini
+                detected = detect_new_memory(user_input, memories)
+                if detected:
+                    memories.extend(detected)
+                    save_conversation_memories(memories)
+                    print(f"✓ Informasi baru tercatat: {', '.join(detected)}")
         
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, EOFError):
             # Simpan memori sebelum keluar
             save_conversation_memories(memories)
             print("\n\nDiterima perintah keluar. Sampai jumpa! Memori disimpan.")

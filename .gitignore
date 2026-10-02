@@ -1,0 +1,8 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime-generated (dibuat oleh program, jangan di-commit)
+data/knowledge-base/faiss_index/
+data/conversation_memory.json
