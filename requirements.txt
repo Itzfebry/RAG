@@ -1,0 +1,7 @@
+ollama-python
+langchain
+langchain-community
+pywin32
+python-dotenv
+psutil
+pandas
