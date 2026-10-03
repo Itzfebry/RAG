@@ -1,8 +1,27 @@
+# Dependencies
+node_modules/
+.next/
+dist/
+build/
+
 # Python
 __pycache__/
 *.pyc
 *.pyo
+.venv/
+env/
+venv/
 
-# Runtime-generated (dibuat oleh program, jangan di-commit)
+# Environment variables & Secrets
+.env
+.env.local
+.env.*.local
+
+# Runtime generated data & Storage
 data/knowledge-base/faiss_index/
 data/conversation_memory.json
+data/storage/
+
+# OS files
+.DS_Store
+Thumbs.db
