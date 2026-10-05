@@ -1,8 +1,15 @@
-# ITZ AI — Personal AI Assistant & Agent
+# 🤖 ITZ AI — Personal AI Assistant & Agent
+
+Personal AI Assistant & Agent by [itzFebry]
 
 Personal AI Agent powered by LangChain, OpenAI, Supabase PostgreSQL with `pgvector`, Next.js 14+ UI, and secure Python backend API.
 
 ---
+##✨ Overview
+
+ITZ AI is more than a standard chatbot. It combines an AI model with a structured personal knowledge system, allowing the assistant to retrieve relevant information about its owner while maintaining configurable identity, personality, communication style, and system behavior.
+
+The system is designed with a modular architecture where the AI model, knowledge base, frontend, and backend can be managed independently.
 
 ## 🌟 Core Features
 
