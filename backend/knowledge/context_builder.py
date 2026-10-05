@@ -65,6 +65,16 @@ def build_system_prompt(query: str, session_history: List[Dict]) -> str:
     else:
         history_text = "(No prior conversation)"
 
+    # Get response length preference
+    response_length = comm.get('response_length', 'Concise and informative')
+    length_constraint = ""
+    if "concise" in response_length.lower():
+        length_constraint = "\n- Keep responses concise: maximum 2-3 paragraphs or 150 words."
+    elif "detailed" in response_length.lower() or "comprehensive" in response_length.lower():
+        length_constraint = "\n- Provide detailed, comprehensive answers with examples when relevant."
+    elif "balanced" in response_length.lower() or "moderate" in response_length.lower():
+        length_constraint = "\n- Balance conciseness with completeness: 3-5 paragraphs when needed."
+
     system_prompt = f"""
 You are {identity.get('name', 'ITZ AI')} — {identity.get('role', 'Personal AI Assistant')}.
 {identity.get('description', '')}
@@ -92,7 +102,7 @@ Prohibited: {personality.get('prohibited_behavior', '')}
 # Communication Style
 Language (Primary): {comm.get('primary_language', 'Bahasa Indonesia')}
 Tone: {comm.get('tone', '')}
-Length: {comm.get('response_length', '')}
+Response Format: {response_length}{length_constraint}
 Formatting: {comm.get('formatting_preference', '')}
 Technical Depth: {comm.get('technical_depth', '')}
 Style: {comm.get('explanation_style', '')}
@@ -118,6 +128,7 @@ Formatting Rules: {sys_instr.get('formatting_rules', '')}
 - Maximize user intent: give the most useful answer without losing the original user purpose.
 - Keep language consistent with communication settings unless user switches language.
 - If no owner-specific fact exists, make it clear that information is not in your owner context.
+- RESPONSE LENGTH RULE: Be consistent. If you started concisely, continue concisely. If detailed, stay detailed in follow-up messages.
 """.strip()
 
     return system_prompt

@@ -134,6 +134,7 @@ class AgentOrchestrator:
                     model=current_model,
                     messages=openai_messages,
                     temperature=temperature,
+                    max_tokens=800,  # Consistent response length constraint
                     stream=True,
                     extra_body=extra_body_params if extra_body_params else None
                 )
