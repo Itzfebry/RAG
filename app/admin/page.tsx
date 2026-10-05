@@ -670,8 +670,48 @@ export default function AdminPage() {
                 <h3 className="text-lg font-bold text-zinc-100">AI Models</h3>
                 <p className="text-xs text-zinc-500">
                   Current model in use is shown first. Pick from the live catalog or type any model ID — not locked to Gemini or OpenRouter.
+                  <br />
+                  <span className="text-blue-400">Tip: Use local Ollama for unlimited free usage.</span> Install: <a href="https://ollama.ai" target="_blank" rel="noopener" className="underline hover:text-zinc-300">ollama.ai</a>
                 </p>
               </div>
+
+              {/* Local Model Detection & Info */}
+              {modelConfig.api_base_url && (modelConfig.api_base_url.includes("localhost") || modelConfig.api_base_url.includes("127.0.0.1")) && (
+                <div className="rounded-2xl border border-blue-900/40 bg-blue-950/20 p-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-blue-400">
+                    <Sparkles className="h-4 w-4" />
+                    <span>Local Model Detected (Ollama)</span>
+                  </div>
+                  <p className="mt-2 text-xs text-zinc-300">
+                    Running on local machine. Benefits:
+                  </p>
+                  <ul className="mt-2 space-y-1 text-xs text-zinc-400">
+                    <li>✓ Unlimited requests (no rate limits)</li>
+                    <li>✓ No API costs</li>
+                    <li>✓ Privacy — data stays local</li>
+                    <li>✓ Works offline</li>
+                  </ul>
+                  <p className="mt-3 text-[11px] text-zinc-500">
+                    Make sure Ollama is running: <code className="bg-zinc-900 px-2 py-1 rounded">ollama serve</code>
+                  </p>
+                </div>
+              )}
+
+              {/* Cloud Model Info */}
+              {modelConfig.api_base_url && !modelConfig.api_base_url.includes("localhost") && !modelConfig.api_base_url.includes("127.0.0.1") && (
+                <div className="rounded-2xl border border-yellow-900/40 bg-yellow-950/20 p-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-yellow-400">
+                    <Sparkles className="h-4 w-4" />
+                    <span>Cloud API Model</span>
+                  </div>
+                  <p className="mt-2 text-xs text-zinc-300">
+                    Using remote API: <code className="bg-zinc-900 px-2 py-1 rounded text-[10px]">{modelConfig.api_base_url}</code>
+                  </p>
+                  <p className="mt-2 text-xs text-zinc-400">
+                    Subject to rate limits and API costs. For unlimited usage, consider using local Ollama.
+                  </p>
+                </div>
+              )}
 
               {/* Current in-use badge */}
               <div className="rounded-2xl border border-emerald-900/40 bg-emerald-950/20 p-4">
@@ -738,6 +778,13 @@ export default function AdminPage() {
                       placeholder="https://openrouter.ai/api/v1"
                       className="mt-1 w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-zinc-600 focus:outline-none"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setModelConfig({ ...modelConfig, api_base_url: "http://localhost:11434/v1", provider: "ollama" })}
+                      className="mt-1 text-[11px] text-blue-400 hover:text-blue-300"
+                    >
+                      Quick: Use local Ollama (http://localhost:11434/v1)
+                    </button>
                   </div>
                 </div>
 
