@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 from langchain_text_splitters import CharacterTextSplitter
 
 try:
@@ -18,21 +18,30 @@ def _get_embedding_model():
         try:
             from sentence_transformers import SentenceTransformer
             print("Loading SentenceTransformer model 'all-MiniLM-L6-v2'...")
-            _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            # Use device auto-detection (GPU if available)
+            _embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
             print("Embedding model loaded successfully")
         except Exception as e:
             print(f"Error loading embedding model: {e}")
             _embedding_model = None
     return _embedding_model
 
+# Cache untuk query embeddings (avoid re-encoding same query)
+_embedding_cache: Dict[str, List[float]] = {}
+
 class KnowledgeService:
     @staticmethod
     def get_embedding(text: str) -> List[float]:
-        """Generate embedding using Sentence-Transformers (semantic, not dummy).
+        """Generate embedding using Sentence-Transformers (cached).
         
         Returns vector of 384 dimensions representing semantic meaning of text.
         Uses all-MiniLM-L6-v2 model (~22MB, optimized for semantic search).
+        Caches results to avoid re-encoding same text.
         """
+        # Check cache first
+        if text in _embedding_cache:
+            return _embedding_cache[text]
+        
         model = _get_embedding_model()
         if model is None:
             # Fallback to dummy if model load fails
@@ -40,8 +49,10 @@ class KnowledgeService:
             return [0.0] * 384
         
         try:
-            embedding = model.encode(text, convert_to_tensor=False)
-            return embedding.tolist()
+            embedding = model.encode(text, convert_to_tensor=False, show_progress_bar=False)
+            result = embedding.tolist()
+            _embedding_cache[text] = result
+            return result
         except Exception as e:
             print(f"Error generating embedding: {e}")
             return [0.0] * 384
