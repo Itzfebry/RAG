@@ -8,14 +8,15 @@
 
 ## 2. Environment Variables
 In Vercel Project Settings > Environment Variables, add:
-- `OPENAI_API_KEY`: Your OpenAI API key
-- `OPENAI_MODEL`: `gpt-4o-mini`
-- `OPENAI_EMBEDDING_MODEL`: `text-embedding-3-small`
+- `OPENROUTER_API_KEY`: Your OpenRouter API key (any OpenAI-compatible provider key)
+- `ACTIVE_MODEL`: `qwen/qwen3.8-27b:free` (any model ID accepted — not locked to one provider)
+- `API_BASE_URL`: `https://openrouter.ai/api/v1`
+- `MODEL_PROVIDER`: `openrouter`
 - `SUPABASE_URL`: `https://your-project.supabase.co`
 - `SUPABASE_SERVICE_ROLE_KEY`: `your-service-role-key`
 - `SUPABASE_ANON_KEY`: `your-anon-key`
 - `ADMIN_USERNAME`: `admin`
-- `ADMIN_PASSWORD_HASH`: `$2b$12$...` (Generated via python `passlib.context.CryptContext`)
+- `ADMIN_PASSWORD_HASH`: `$2b$12$...` (Generated via `bcrypt.hashpw`)
 - `JWT_SECRET_KEY`: `your-unique-long-random-jwt-secret`
 
 ## 3. Vercel Deployment

@@ -2,7 +2,7 @@
 
 Personal AI Assistant & Agent by [itzFebry]
 
-Personal AI Agent powered by LangChain, OpenAI, Supabase PostgreSQL with `pgvector`, Next.js 14+ UI, and secure Python backend API.
+Personal AI Agent powered by OpenAI-compatible provider routing, Supabase PostgreSQL with `pgvector`, Next.js 14+ UI, and secure Python backend API.
 
 ---
 ##✨ Overview

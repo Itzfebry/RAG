@@ -6,12 +6,12 @@
 - No client-side only guards allowed — all checks are server-side auth.
 
 ## 2. Secret Management
-- `OPENAI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH` stored in `.env` server-side only.
+- `OPENROUTER_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `JWT_SECRET_KEY`, `ADMIN_PASSWORD_HASH` stored in `.env` server-side only.
 - Client bundle never exposes secrets — API keys injected only at Vercel env dashboard.
 - `.env.example` provided but no real secrets committed to git.
 
 ## 3. Password Hashing
-- Uses `passlib` + `bcrypt` with salted hashes.
+- Uses `bcrypt` with salted hashes.
 - Hash stored in `ADMIN_PASSWORD_HASH`; never stored in plaintext.
 
 ## 4. Database Security

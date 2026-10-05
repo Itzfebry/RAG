@@ -14,7 +14,6 @@ import {
   LogOut,
   Check,
   AlertCircle,
-  ChevronRight,
   Sparkles,
   ArrowLeft,
   Upload,
@@ -311,7 +310,6 @@ export default function AdminPage() {
       ai_personality: personalityData,
       communication_settings: commData,
       system_instructions: sysData,
-      ai_model_config: modelConfig,
       knowledge_entries: knowledgeEntries.map((e: any) => ({
         id: e.id,
         category_slug: (knowledgeCategories.find((c) => c.id === e.category_id)?.slug) || e.category_slug || undefined,
@@ -387,16 +385,7 @@ export default function AdminPage() {
     if (data.ai_personality) setPersonalityData((prev) => ({ ...prev, ...data.ai_personality }));
     if (data.communication_settings) setCommData((prev) => ({ ...prev, ...data.communication_settings }));
     if (data.system_instructions) setSysData((prev) => ({ ...prev, ...data.system_instructions }));
-    if (data.ai_model_config) {
-      setModelConfig((prev) => ({
-        active_model: data.ai_model_config.active_model ?? prev.active_model,
-        fallback_models: Array.isArray(data.ai_model_config.fallback_models) ? data.ai_model_config.fallback_models.map((s: any) => String(s)) : prev.fallback_models,
-        provider: data.ai_model_config.provider ?? prev.provider,
-        api_base_url: data.ai_model_config.api_base_url ?? prev.api_base_url,
-        temperature: Number(data.ai_model_config.temperature ?? prev.temperature),
-        reasoning_enabled: Boolean(data.ai_model_config.reasoning_enabled ?? prev.reasoning_enabled),
-      }));
-    }
+    // NOTE: ai_model_config is intentionally skipped here — Models tab is manual-only.
   };
 
   const handleJsonApplyFromText = async () => {
@@ -468,7 +457,6 @@ export default function AdminPage() {
       ai_personality: personalityData,
       communication_settings: commData,
       system_instructions: sysData,
-      ai_model_config: modelConfig,
       knowledge_entries: knowledgeEntries.slice(0, 50).map((e: any) => ({
         category_slug: (knowledgeCategories.find((c) => c.id === e.category_id)?.slug) || undefined,
         title: e.title,
@@ -618,7 +606,8 @@ export default function AdminPage() {
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto p-6 lg:p-10">
         <div className="mx-auto max-w-4xl space-y-6">
-          {/* Bulk JSON toolbar */}
+          {/* Bulk JSON toolbar — hidden on Models tab (manual-only) */}
+          {activeTab !== "models" && (
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-3">
             <span className="flex items-center gap-2 text-xs font-medium text-zinc-300">
               <FileJson className="h-4 w-4 text-emerald-400" />
@@ -648,6 +637,7 @@ export default function AdminPage() {
               Example format
             </button>
           </div>
+          )}
 
           {/* Mobile Header */}
           <div className="flex items-center justify-between border-b border-zinc-900 pb-4 md:hidden">
@@ -1325,7 +1315,7 @@ export default function AdminPage() {
               <div>
                 <h3 className="text-base font-bold text-zinc-100">Import JSON — populate admin fields</h3>
                 <p className="mt-1 text-xs text-zinc-500">
-                  Paste JSON, drag & drop a `.json` file, or pick one — fills AI Identity → System Instructions (+ models, knowledge). Any subset of keys accepted.
+                  Paste JSON, drag & drop a `.json` file, or pick one — fills AI Identity → System Instructions (+ knowledge). AI Models are managed manually on the Models tab and excluded from bulk import.
                 </p>
               </div>
               <button onClick={() => setShowJsonModal(false)} className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300" title="Close">
@@ -1419,14 +1409,6 @@ export default function AdminPage() {
     "safety_rules": "...", "knowledge_priority": "...",
     "reasoning_constraints": "...", "formatting_rules": "..."
   },
-  "ai_model_config": {
-    "active_model": "qwen/qwen3.8-27b:free",
-    "provider": "openrouter",
-    "api_base_url": "https://openrouter.ai/api/v1",
-    "temperature": 0.4,
-    "reasoning_enabled": false,
-    "fallback_models": ["cohere/north-mini-code:free"]
-  },
   "knowledge_entries": [
     {
       "category_slug": "technical_knowledge",
@@ -1439,7 +1421,7 @@ export default function AdminPage() {
 }`}</pre>
                 <p className="mt-2 leading-relaxed">
                   Required: <span className="font-mono">ai_identity.name</span>, <span className="font-mono">ai_identity.role</span>,{" "}
-                  <span className="font-mono">communication_settings.primary_language</span>, <span className="font-mono">ai_model_config.active_model</span> (only when that section is present). Categories for knowledge entries resolve by{" "}
+                  <span className="font-mono">communication_settings.primary_language</span> (only when that section is present). Models are excluded — use the Models tab. Categories for knowledge entries resolve by{" "}
                   <span className="font-mono">category_slug</span> (<span className="font-mono">technical_knowledge</span>, <span className="font-mono">projects</span>, <span className="font-mono">experience</span>,{" "}
                   <span className="font-mono">preferences</span>, <span className="font-mono">custom_topics</span>). Full working example:{" "}
                   <span className="font-mono">data/admin_bulk_example.json</span> — use the “Example” button above to download it.

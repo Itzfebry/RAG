@@ -7,8 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "test": "pytest tests/"
+    "lint": "next lint"
   },
   "repository": {
     "type": "git",
@@ -22,14 +21,13 @@
   },
   "homepage": "https://github.com/Itzfebry/RAG#readme",
   "dependencies": {
-    "autoprefixer": "^10.6.1",
-    "clsx": "^2.1.1",
     "lucide-react": "^1.51.0",
     "next": "^16.3.8",
     "postcss": "^8.5.28",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "tailwind-merge": "^3.7.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
@@ -37,10 +35,6 @@
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@types/react-syntax-highlighter": "^15.5.13",
-    "react-markdown": "^10.1.0",
-    "react-syntax-highlighter": "^16.1.1",
-    "remark-gfm": "^4.0.1",
     "typescript": "^7.0.2"
   }
 }

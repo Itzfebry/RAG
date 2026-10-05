@@ -17,8 +17,7 @@ venv/
 .env.local
 .env.*.local
 
-# Runtime generated data & Storage
-data/knowledge-base/faiss_index/
+# Runtime generated data & Storage (local fallback — gitignored, never commit)
 data/conversation_memory.json
 data/storage/
 

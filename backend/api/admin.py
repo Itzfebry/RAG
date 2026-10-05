@@ -210,7 +210,9 @@ def delete_knowledge_entry(entry_id: str, admin: str = Depends(get_current_admin
 
 
 # ─── Bulk export / import (JSON upload to populate AI identity → system_instructions) ───
-ADMIN_BULK_SECTIONS = ["ai_identity", "personal_information", "ai_personality", "communication_settings", "system_instructions", "ai_model_config"]
+# Note: ai_model_config is intentionally NOT part of bulk import/export.
+# Models are managed manually on the "AI Models" tab so bulk uploads can't overwrite them.
+ADMIN_BULK_SECTIONS = ["ai_identity", "personal_information", "ai_personality", "communication_settings", "system_instructions"]
 
 
 @router.get("/export")
@@ -240,7 +242,6 @@ class BulkImportRequest(BaseModel):
     ai_personality: Optional[Dict[str, Any]] = None
     communication_settings: Optional[Dict[str, Any]] = None
     system_instructions: Optional[Dict[str, Any]] = None
-    ai_model_config: Optional[Dict[str, Any]] = None
     knowledge_categories: Optional[List[Dict[str, Any]]] = None
     knowledge_entries: Optional[List[Dict[str, Any]]] = None
 
@@ -251,7 +252,6 @@ _BULK_REQUIRED_FIELDS: Dict[str, List[str]] = {
     "ai_personality": [],
     "communication_settings": ["primary_language"],
     "system_instructions": [],
-    "ai_model_config": ["active_model"],
 }
 
 
@@ -260,22 +260,19 @@ def _validate_bulk_section(section: str, data: Dict[str, Any]) -> Optional[str]:
     missing = [k for k in req if not str(data.get(k) or "").strip()]
     if missing:
         return f"Missing required field(s) for {section}: {', '.join(missing)}"
-    if section == "ai_model_config" and "api_base_url" in data and data["api_base_url"]:
-        if not str(data["api_base_url"]).strip().startswith("http"):
-            return "ai_model_config.api_base_url must be an http(s) URL"
     return None
 
 
 @router.post("/import")
 def admin_import_bulk(payload: BulkImportRequest, admin: str = Depends(get_current_admin)):
     """
-    Apply a JSON blob to populate ai_identity → system_instructions + models + knowledge.
+    Apply a JSON blob to populate ai_identity → system_instructions + knowledge.
+    ai_model_config is not bulk-importable — models are managed on the AI Models tab.
     Any subset of keys accepted. Unknown keys at top level are ignored.
-    Each section is validated lightly (required keys) then persisted via DatabaseService.
     """
     raw = payload.model_dump(exclude_none=True)
     if not raw:
-        raise HTTPException(status_code=400, detail="Empty import — no recognized keys found. Expected one of: ai_identity, personal_information, ai_personality, communication_settings, system_instructions, ai_model_config, knowledge_entries")
+        raise HTTPException(status_code=400, detail="Empty import — no recognized keys found. Expected one of: ai_identity, personal_information, ai_personality, communication_settings, system_instructions, knowledge_entries")
 
     applied: Dict[str, Any] = {}
     errors: Dict[str, str] = {}
@@ -291,14 +288,6 @@ def admin_import_bulk(payload: BulkImportRequest, admin: str = Depends(get_curre
         if err:
             errors[sec] = err
             continue
-        # Normalize ai_model_config strings like /config does
-        if sec == "ai_model_config":
-            if "active_model" in data and isinstance(data["active_model"], str):
-                data["active_model"] = data["active_model"].strip()
-            if "api_base_url" in data and isinstance(data["api_base_url"], str):
-                data["api_base_url"] = data["api_base_url"].strip().rstrip("/")
-            if "fallback_models" in data and isinstance(data["fallback_models"], list):
-                data["fallback_models"] = [str(m).strip() for m in data["fallback_models"] if str(m).strip()]
         try:
             applied[sec] = DatabaseService.update_config_table(sec, data)
         except Exception as e:

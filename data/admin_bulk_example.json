@@ -40,14 +40,6 @@
     "reasoning_constraints": "Differentiate owner-specific facts from general factual knowledge.",
     "formatting_rules": "Markdown enabled. Keep visual layout clean and legible."
   },
-  "ai_model_config": {
-    "active_model": "qwen/qwen3.8-27b:free",
-    "provider": "openrouter",
-    "api_base_url": "https://openrouter.ai/api/v1",
-    "temperature": 0.4,
-    "reasoning_enabled": false,
-    "fallback_models": ["cohere/north-mini-code:free", "google/gemma-4-31b-it:free"]
-  },
   "knowledge_entries": [
     {
       "category_slug": "technical_knowledge",
