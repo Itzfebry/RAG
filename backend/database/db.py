@@ -50,8 +50,9 @@ class DatabaseService:
                 res = supabase_client.table(table_name).select("*").limit(1).execute()
                 if res.data and len(res.data) > 0:
                     return res.data[0]
-            except Exception as e:
-                print(f"Error fetching {table_name} from Supabase: {e}")
+            except Exception:
+                # Silent fallback to local storage if table doesn't exist in Supabase
+                pass
 
         # Local fallback
         default_data = {
@@ -95,6 +96,14 @@ class DatabaseService:
                 "knowledge_priority": "Priority order: 1. Custom Knowledge, 2. Current Session Context, 3. System Instructions, 4. Explicit User Request, 5. General Knowledge",
                 "reasoning_constraints": "Differentiate owner-specific facts from general factual knowledge.",
                 "formatting_rules": "Markdown enabled. Keep visual layout clean and legible."
+            },
+            "ai_model_config": {
+                "active_model": (getattr(settings, "ACTIVE_MODEL", "") or getattr(settings, "GEMINI_MODEL", "") or "qwen/qwen3.8-27b:free").strip(),
+                "provider": (getattr(settings, "MODEL_PROVIDER", "") or "openrouter").strip(),
+                "temperature": 0.4,
+                "reasoning_enabled": False,
+                "fallback_models": [],
+                "api_base_url": (getattr(settings, "API_BASE_URL", "") or "https://openrouter.ai/api/v1").strip()
             }
         }.get(table_name, {})
         return _read_local_json(f"{table_name}.json", default_data)

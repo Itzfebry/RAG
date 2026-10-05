@@ -1,25 +1,23 @@
 import jwt
 from datetime import datetime, timedelta, timezone
-from passlib.context import CryptContext
+import bcrypt
 
 try:
     from backend.config.config import settings
 except ImportError:
     from config.config import settings  # fallback for direct imports
 
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 COOKIE_NAME = "itz_admin_token"
 JWT_EXPIRY_HOURS = 12
 
 def hash_password(password: str) -> str:
-    return _pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def verify_password(plain: str, hash_val: str) -> bool:
     try:
         if not hash_val:
             return False
-        return _pwd_context.verify(plain, hash_val)
+        return bcrypt.checkpw(plain.encode('utf-8'), hash_val.encode('utf-8'))
     except Exception:
         return False
 
