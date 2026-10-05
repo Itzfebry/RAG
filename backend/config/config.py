@@ -1,5 +1,11 @@
 import os
 from pydantic_settings import BaseSettings
+from pathlib import Path
+
+# Load .env file manually (ensure it's found regardless of working directory)
+from dotenv import load_dotenv
+env_path = Path(__file__).parent.parent.parent / ".env"
+load_dotenv(env_path)
 
 class Settings(BaseSettings):
     # Primary keys — generic, provider-agnostic. OPENROUTER_* is canonical.
