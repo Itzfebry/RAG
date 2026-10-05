@@ -83,7 +83,7 @@ class AgentOrchestrator:
             yield "data: [DONE]\n\n"
             return
 
-        # Fetch dynamic model configuration from database or fallback to settings
+        # Fetch dynamic model configuration from database (cached)
         model_config = {}
         try:
             model_config = DatabaseService.get_config_table("ai_model_config")

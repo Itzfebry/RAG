@@ -38,23 +38,54 @@ class KnowledgeService:
 
     @staticmethod
     def semantic_search(query: str, match_count: int = 4) -> List[str]:
+        # Skip embedding search if using dummy embeddings
+        if not supabase_client:
+            # Fallback to keyword search
+            entries = DatabaseService.get_knowledge_entries()
+            all_chunks = []
+            for entry in entries:
+                text = entry.get("content", "")
+                if query.lower() in text.lower() or any(w in text.lower() for w in query.lower().split()):
+                    all_chunks.append(text)
+            
+            if not all_chunks and entries:
+                all_chunks = [e.get("content", "") for e in entries[:match_count]]
+            
+            return all_chunks[:match_count]
+
+        # Try semantic search with Supabase RPC
         query_embedding = KnowledgeService.get_embedding(query)
+        
+        # Check if embeddings are real (not dummy zeros)
+        if all(x == 0.0 for x in query_embedding[:10]):
+            # Dummy embeddings detected, skip RPC and use keyword fallback
+            entries = DatabaseService.get_knowledge_entries()
+            all_chunks = []
+            for entry in entries:
+                text = entry.get("content", "")
+                if query.lower() in text.lower() or any(w in text.lower() for w in query.lower().split()):
+                    all_chunks.append(text)
+            
+            if not all_chunks and entries:
+                all_chunks = [e.get("content", "") for e in entries[:match_count]]
+            
+            return all_chunks[:match_count]
 
-        if supabase_client:
-            try:
-                res = supabase_client.rpc(
-                    "match_knowledge_entries",
-                    {
-                        "query_embedding": query_embedding,
-                        "match_threshold": 0.15,
-                        "match_count": match_count
-                    }
-                ).execute()
-                if res.data:
-                    return [row["content_chunk"] for row in res.data]
-            except Exception as e:
-                print(f"Supabase RPC search error: {e}")
+        try:
+            res = supabase_client.rpc(
+                "match_knowledge_entries",
+                {
+                    "query_embedding": query_embedding,
+                    "match_threshold": 0.15,
+                    "match_count": match_count
+                }
+            ).execute()
+            if res.data:
+                return [row["content_chunk"] for row in res.data]
+        except Exception as e:
+            print(f"Supabase RPC search error: {e}")
 
+        # Final fallback
         entries = DatabaseService.get_knowledge_entries()
         all_chunks = []
         for entry in entries:

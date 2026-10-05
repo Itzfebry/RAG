@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Request, Response
+from fastapi import APIRouter, HTTPException, Depends, Request, Response, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 
@@ -191,14 +191,11 @@ def get_knowledge_entries(category: Optional[str] = None, admin: str = Depends(g
     return DatabaseService.get_knowledge_entries(category)
 
 @router.post("/knowledge/entries")
-def save_knowledge_entry(payload: KnowledgeEntryRequest, admin: str = Depends(get_current_admin)):
-    data = payload.dict()
+def save_knowledge_entry(payload: KnowledgeEntryRequest, background_tasks: BackgroundTasks, admin: str = Depends(get_current_admin)):
+    data = payload.model_dump()
     saved = DatabaseService.create_or_update_knowledge_entry(data)
-    # Trigger vector indexing in background or synchronous
-    try:
-        KnowledgeService.index_entry(saved["id"], saved["content"])
-    except Exception as e:
-        print(f"Warning: Failed to index knowledge entry embeddings: {e}")
+    # Trigger vector indexing in background (non-blocking)
+    background_tasks.add_task(KnowledgeService.index_entry, saved["id"], saved["content"])
     return {"status": "success", "entry": saved}
 
 @router.delete("/knowledge/entries/{entry_id}")

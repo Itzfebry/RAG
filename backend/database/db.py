@@ -6,8 +6,10 @@ from datetime import datetime
 
 try:
     from backend.config.config import settings
+    from backend.database.cache import config_cache
 except ImportError:
     from config.config import settings
+    from database.cache import config_cache
 
 # Attempt to initialize Supabase client if configured
 supabase_client = None
@@ -44,14 +46,20 @@ def _write_local_json(file_name: str, data: Any):
 class DatabaseService:
     @staticmethod
     def get_config_table(table_name: str) -> Dict[str, Any]:
-        """Fetch single config row for identity, personal, personality, etc."""
+        """Fetch single config row for identity, personal, personality, etc. (with caching)."""
+        # Try cache first
+        cached = config_cache.get(table_name)
+        if cached is not None:
+            return cached
+        
         if supabase_client:
             try:
                 res = supabase_client.table(table_name).select("*").limit(1).execute()
                 if res.data and len(res.data) > 0:
-                    return res.data[0]
+                    data = res.data[0]
+                    config_cache.set(table_name, data)
+                    return data
             except Exception:
-                # Silent fallback to local storage if table doesn't exist in Supabase
                 pass
 
         # Local fallback
@@ -106,28 +114,26 @@ class DatabaseService:
                 "api_base_url": (getattr(settings, "API_BASE_URL", "") or "https://openrouter.ai/api/v1").strip()
             }
         }.get(table_name, {})
-        return _read_local_json(f"{table_name}.json", default_data)
+        result = _read_local_json(f"{table_name}.json", default_data)
+        config_cache.set(table_name, result)
+        return result
 
     @staticmethod
     def update_config_table(table_name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         payload["updated_at"] = datetime.now().isoformat()
         if supabase_client:
             try:
-                res = supabase_client.table(table_name).select("id").limit(1).execute()
-                if res.data and len(res.data) > 0:
-                    row_id = res.data[0]["id"]
-                    res2 = supabase_client.table(table_name).update(payload).eq("id", row_id).execute()
-                    if res2.data:
-                        return res2.data[0]
-                else:
-                    res2 = supabase_client.table(table_name).insert(payload).execute()
-                    if res2.data:
-                        return res2.data[0]
+                # Use upsert with unique constraint to avoid race conditions
+                res = supabase_client.table(table_name).upsert(payload, on_conflict="id").execute()
+                if res.data:
+                    config_cache.invalidate(table_name)
+                    return res.data[0]
             except Exception as e:
                 print(f"Error updating {table_name} in Supabase: {e}")
 
         # Local fallback
         _write_local_json(f"{table_name}.json", payload)
+        config_cache.invalidate(table_name)
         return payload
 
     @staticmethod
@@ -153,11 +159,12 @@ class DatabaseService:
     def get_knowledge_entries(category_slug: Optional[str] = None) -> List[Dict[str, Any]]:
         if supabase_client:
             try:
-                query = supabase_client.table("knowledge_entries").select("*, knowledge_categories(slug, name)")
                 if category_slug:
-                    cats = supabase_client.table("knowledge_categories").select("id").eq("slug", category_slug).execute()
-                    if cats.data:
-                        query = query.eq("category_id", cats.data[0]["id"])
+                    # Optimized: single query with join filter
+                    query = supabase_client.table("knowledge_entries").select("*, knowledge_categories!inner(slug, name)").eq("knowledge_categories.slug", category_slug)
+                else:
+                    query = supabase_client.table("knowledge_entries").select("*, knowledge_categories(slug, name)")
+                
                 res = query.execute()
                 if res.data is not None:
                     return res.data
