@@ -19,7 +19,7 @@ def _get_embedding_model():
             from sentence_transformers import SentenceTransformer
             print("Loading SentenceTransformer model 'all-MiniLM-L6-v2'...")
             _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-            print("✓ Embedding model loaded successfully")
+            print("Embedding model loaded successfully")
         except Exception as e:
             print(f"Error loading embedding model: {e}")
             _embedding_model = None
