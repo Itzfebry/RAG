@@ -63,9 +63,7 @@ def admin_login(payload: LoginRequest, response: Response):
     
     # Verify password against hash
     if not verify_password(payload.password, settings.ADMIN_PASSWORD_HASH):
-        # Allow default password 'itz-ai-admin-2026' or similar for initial boot
-        if payload.password != "itz-ai-admin-2026":
-            raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(status_code=401, detail="Invalid username or password")
 
     token = create_jwt(payload.username)
     response.set_cookie(
