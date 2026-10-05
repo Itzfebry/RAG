@@ -8,14 +8,43 @@ except ImportError:
     from config.config import settings
     from database.db import DatabaseService, supabase_client
 
+# Initialize Sentence-Transformers model globally (loaded once on import)
+_embedding_model = None
+
+def _get_embedding_model():
+    """Lazy load embedding model on first use."""
+    global _embedding_model
+    if _embedding_model is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+            print("Loading SentenceTransformer model 'all-MiniLM-L6-v2'...")
+            _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            print("✓ Embedding model loaded successfully")
+        except Exception as e:
+            print(f"Error loading embedding model: {e}")
+            _embedding_model = None
+    return _embedding_model
+
 class KnowledgeService:
     @staticmethod
     def get_embedding(text: str) -> List[float]:
-        """Embeddings for Gemini: local fallback if no embedding service configured.
-           With Supabase not set, retrieval uses keyword fallback. Dimension is synthetic 768.
+        """Generate embedding using Sentence-Transformers (semantic, not dummy).
+        
+        Returns vector of 384 dimensions representing semantic meaning of text.
+        Uses all-MiniLM-L6-v2 model (~22MB, optimized for semantic search).
         """
-        # No Gemini embedding in this local fallback - keyword search used when Supabase missing
-        return [0.0] * 768
+        model = _get_embedding_model()
+        if model is None:
+            # Fallback to dummy if model load fails
+            print("Warning: Using dummy embeddings (model not loaded)")
+            return [0.0] * 384
+        
+        try:
+            embedding = model.encode(text, convert_to_tensor=False)
+            return embedding.tolist()
+        except Exception as e:
+            print(f"Error generating embedding: {e}")
+            return [0.0] * 384
 
     @staticmethod
     def index_entry(entry_id: str, content: str):
@@ -38,27 +67,15 @@ class KnowledgeService:
 
     @staticmethod
     def semantic_search(query: str, match_count: int = 4) -> List[str]:
-        # Skip embedding search if using dummy embeddings
-        if not supabase_client:
-            # Fallback to keyword search
-            entries = DatabaseService.get_knowledge_entries()
-            all_chunks = []
-            for entry in entries:
-                text = entry.get("content", "")
-                if query.lower() in text.lower() or any(w in text.lower() for w in query.lower().split()):
-                    all_chunks.append(text)
-            
-            if not all_chunks and entries:
-                all_chunks = [e.get("content", "") for e in entries[:match_count]]
-            
-            return all_chunks[:match_count]
-
-        # Try semantic search with Supabase RPC
+        """Search knowledge entries by semantic similarity.
+        
+        Uses cosine similarity on embeddings to find relevant chunks.
+        Falls back to keyword search if embeddings unavailable.
+        """
         query_embedding = KnowledgeService.get_embedding(query)
         
-        # Check if embeddings are real (not dummy zeros)
-        if all(x == 0.0 for x in query_embedding[:10]):
-            # Dummy embeddings detected, skip RPC and use keyword fallback
+        if not supabase_client:
+            # No Supabase, use keyword fallback
             entries = DatabaseService.get_knowledge_entries()
             all_chunks = []
             for entry in entries:
@@ -71,6 +88,24 @@ class KnowledgeService:
             
             return all_chunks[:match_count]
 
+        # Check if embeddings are real (Sentence-Transformers outputs 384 dims, not dummy 768 zeros)
+        is_dummy = len(query_embedding) != 384 or all(x == 0.0 for x in query_embedding[:20])
+        
+        if is_dummy:
+            # Dummy embeddings, use keyword fallback only
+            entries = DatabaseService.get_knowledge_entries()
+            all_chunks = []
+            for entry in entries:
+                text = entry.get("content", "")
+                if query.lower() in text.lower() or any(w in text.lower() for w in query.lower().split()):
+                    all_chunks.append(text)
+            
+            if not all_chunks and entries:
+                all_chunks = [e.get("content", "") for e in entries[:match_count]]
+            
+            return all_chunks[:match_count]
+
+        # Real embeddings - use Supabase semantic search
         try:
             res = supabase_client.rpc(
                 "match_knowledge_entries",
@@ -85,7 +120,7 @@ class KnowledgeService:
         except Exception as e:
             print(f"Supabase RPC search error: {e}")
 
-        # Final fallback
+        # RPC failed, fallback to keyword search
         entries = DatabaseService.get_knowledge_entries()
         all_chunks = []
         for entry in entries:
