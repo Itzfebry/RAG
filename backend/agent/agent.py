@@ -5,6 +5,7 @@ Dynamic, provider-agnostic orchestrator.
 """
 import json
 import os
+import asyncio
 from typing import AsyncGenerator, List, Dict, Optional
 from openai import OpenAI
 
@@ -139,12 +140,25 @@ class AgentOrchestrator:
                     extra_body=extra_body_params if extra_body_params else None
                 )
 
+                # Buffer to reduce socket.send() exceptions
+                buffer = ""
+                buffer_size = 3  # Send every 3 tokens
+                
                 for chunk in response:
                     if chunk.choices and chunk.choices[0].delta:
                         delta = chunk.choices[0].delta
                         content = getattr(delta, "content", None)
                         if content:
-                            yield f"data: {json.dumps({'content': content})}\n\n"
+                            buffer += content
+                            # Flush buffer when threshold reached
+                            if len(buffer) >= buffer_size:
+                                yield f"data: {json.dumps({'content': buffer})}\n\n"
+                                buffer = ""
+                                await asyncio.sleep(0.001)  # Tiny delay to prevent flooding
+                
+                # Flush remaining buffer
+                if buffer:
+                    yield f"data: {json.dumps({'content': buffer})}\n\n"
 
                 yield "data: [DONE]\n\n"
                 success = True
