@@ -21,6 +21,42 @@ import {
   Copy,
   FileJson,
   X,
+  Activity,
+  TrendingUp,
+  Database,
+  Zap,
+  Clock,
+  BarChart3,
+  Brain,
+  Lightbulb,
+  Fingerprint,
+  Target,
+  ScrollText,
+  Layers,
+  History,
+  GraduationCap,
+  Briefcase,
+  Rocket,
+  Heart,
+  MapPin,
+  Settings2,
+  Palette,
+  Gauge,
+  Mic2,
+  Type,
+  PenTool,
+  Layers3,
+  Wrench,
+  Blocks,
+  ShieldCheck,
+  GitBranch,
+  KeyRound,
+  Cog,
+  FileCode,
+  Cpu,
+  Globe,
+  Hash,
+  Box,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -33,8 +69,36 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { motion } from "framer-motion";
 
-type TabType = "identity" | "personal" | "knowledge" | "personality" | "communication" | "instructions" | "models";
+type TabType = "dashboard" | "identity" | "personal" | "knowledge" | "personality" | "communication" | "instructions" | "models";
+
+// Mock real-time data generator with more professional metrics
+const generateMockStats = () => ({
+  totalRequests: Math.floor(Math.random() * 5000) + 15000,
+  activeUsers: Math.floor(Math.random() * 150) + 250,
+  avgResponseTime: (Math.random() * 0.8 + 0.2).toFixed(3),
+  knowledgeEntries: Math.floor(Math.random() * 50) + 420,
+  uptime: "99.97%",
+  errorRate: (Math.random() * 0.5).toFixed(2),
+  tokensProcessed: Math.floor(Math.random() * 1000000) + 5000000,
+  cacheHitRate: (Math.random() * 15 + 85).toFixed(1),
+});
+
+const generateTimeSeriesData = () => {
+  const now = Date.now();
+  return Array.from({ length: 24 }, (_, i) => ({
+    time: new Date(now - (23 - i) * 3600000).getHours().toString().padStart(2, '0') + ":00",
+    requests: Math.floor(Math.random() * 200) + 500,
+    errors: Math.floor(Math.random() * 15) + 2,
+    responseTime: (Math.random() * 0.5 + 0.3).toFixed(3),
+    cpu: Math.floor(Math.random() * 30) + 40,
+    memory: Math.floor(Math.random() * 20) + 60,
+  }));
+};
+
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -43,10 +107,20 @@ export default function AdminPage() {
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
 
-  const [activeTab, setActiveTab] = useState<TabType>("identity");
+  const [activeTab, setActiveTab] = useState<TabType>("dashboard");
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  // Real-time stats
+  const [stats, setStats] = useState(generateMockStats());
+  const [timeSeriesData, setTimeSeriesData] = useState(generateTimeSeriesData());
+  const [categoryData, setCategoryData] = useState([
+    { name: 'Technical', value: 45 },
+    { name: 'Projects', value: 25 },
+    { name: 'Personal', value: 20 },
+    { name: 'Other', value: 10 },
+  ]);
 
   // Config states
   const [identityData, setIdentityData] = useState({ name: "", role: "", description: "", identity: "", purpose: "" });
@@ -55,7 +129,7 @@ export default function AdminPage() {
   const [commData, setCommData] = useState({ primary_language: "", tone: "", response_length: "", formatting_preference: "", technical_depth: "", explanation_style: "" });
   const [sysData, setSysData] = useState({ behavioral_rules: "", response_rules: "", safety_rules: "", knowledge_priority: "", reasoning_constraints: "", formatting_rules: "" });
 
-  // Model config states (dynamic — any model ID accepted)
+  // Model config states
   const [modelConfig, setModelConfig] = useState({
     active_model: "",
     fallback_models: [] as string[],
@@ -84,7 +158,16 @@ export default function AdminPage() {
   const [jsonDrag, setJsonDrag] = useState(false);
   const jsonFileRef = React.useRef<HTMLInputElement>(null);
 
-  // Check auth on mount
+  // Real-time updates
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const interval = setInterval(() => {
+      setStats(generateMockStats());
+      setTimeSeriesData(generateTimeSeriesData());
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
   useEffect(() => {
     checkAuth();
   }, []);
@@ -147,8 +230,25 @@ export default function AdminPage() {
       if (persRes.ok) setPersonalityData(await persRes.json());
       if (commRes.ok) setCommData(await commRes.json());
       if (sysRes.ok) setSysData(await sysRes.json());
-      if (catRes.ok) setKnowledgeCategories(await catRes.json());
-      if (entRes.ok) setKnowledgeEntries(await entRes.json());
+      if (catRes.ok) {
+        const cats = await catRes.json();
+        setKnowledgeCategories(cats);
+        
+        if (entRes.ok) {
+          const entries = await entRes.json();
+          setKnowledgeEntries(entries);
+          
+          // Update category distribution
+          const catCounts: Record<string, number> = {};
+          entries.forEach((e: any) => {
+            const cat = cats.find((c: any) => c.id === e.category_id);
+            if (cat) {
+              catCounts[cat.name] = (catCounts[cat.name] || 0) + 1;
+            }
+          });
+          setCategoryData(Object.entries(catCounts).map(([name, value]) => ({ name, value })));
+        }
+      }
       if (modelRes.ok) {
         const m = await modelRes.json();
         const cur = m.current || m;
@@ -471,243 +571,625 @@ export default function AdminPage() {
 
   if (isLoadingAuth) {
     return (
-      <div className="flex h-full items-center justify-center bg-background text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 animate-spin text-primary" />
-          <span>Memeriksa otorisasi admin...</span>
-        </div>
+      <div className="flex h-screen items-center justify-center bg-[#05030a]">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex items-center gap-3"
+        >
+          <Sparkles className="h-6 w-6 animate-spin text-zinc-400" />
+          <span className="text-zinc-300">Memeriksa otorisasi admin...</span>
+        </motion.div>
       </div>
     );
   }
 
   if (!isAuthenticated) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border bg-muted">
-              <Shield className="h-6 w-6" />
-            </div>
-            <CardTitle className="mt-4 text-xl">Panel Admin ITZ AI</CardTitle>
-            <CardDescription>Pusat kendali untuk mengatur otak dan perilaku ITZ AI</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="admin-username">Nama Pengguna</Label>
-                <Input id="admin-username" value={username} onChange={(e) => setUsername(e.target.value)} required />
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-4 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <Card className="w-full max-w-md border-slate-800/50 bg-slate-900/80 backdrop-blur-xl shadow-2xl">
+            <CardHeader className="text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-lg border-2 border-white/10 bg-gradient-to-br from-zinc-800 to-zinc-900 shadow-lg shadow-white/5">
+                <Shield className="h-8 w-8 text-zinc-400" />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="admin-password">Kata Sandi</Label>
-                <Input id="admin-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••••••" />
-              </div>
-              {authError && (
-                <Alert variant="destructive">
-                  <AlertCircle />
-                  <AlertTitle>Gagal masuk</AlertTitle>
-                  <AlertDescription>{authError}</AlertDescription>
-                </Alert>
-              )}
-              <Button type="submit" className="w-full">
-                Masuk Panel Admin
+              <CardTitle className="mt-6 text-2xl text-slate-100 font-bold">Admin Control Panel</CardTitle>
+              <CardDescription className="text-slate-400">Secure access to system administration</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="admin-username" className="text-slate-300 text-sm font-medium">Username</Label>
+                  <Input 
+                    id="admin-username" 
+                    value={username} 
+                    onChange={(e) => setUsername(e.target.value)} 
+                    required 
+                    className="border-white/10 bg-zinc-800/50 text-white focus:border-white/20"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="admin-password" className="text-slate-300 text-sm font-medium">Password</Label>
+                  <Input 
+                    id="admin-password" 
+                    type="password" 
+                    value={password} 
+                    onChange={(e) => setPassword(e.target.value)} 
+                    required 
+                    placeholder="••••••••••••"
+                    className="border-white/10 bg-zinc-800/50 text-white focus:border-white/20"
+                  />
+                </div>
+                {authError && (
+                  <Alert variant="destructive" className="border-red-500/20 bg-red-500/10">
+                    <AlertCircle />
+                    <AlertTitle className="text-red-300">Authentication Failed</AlertTitle>
+                    <AlertDescription className="text-red-200/70">{authError}</AlertDescription>
+                  </Alert>
+                )}
+                <Button type="submit" className="w-full bg-white text-black hover:bg-zinc-200 text-white font-semibold">
+                  Sign In to Dashboard
+                </Button>
+              </form>
+            </CardContent>
+            <CardFooter className="justify-center">
+              <Button variant="link" size="sm" nativeButton={false} render={<Link href="/" />} className="text-slate-400 hover:text-slate-200">
+                ← Back to Chat
               </Button>
-            </form>
-          </CardContent>
-          <CardFooter className="justify-center">
-            <Button variant="link" size="sm" nativeButton={false} render={<Link href="/" />}>
-              ← Kembali ke Chat
-            </Button>
-          </CardFooter>
-        </Card>
+            </CardFooter>
+          </Card>
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full min-h-screen bg-background">
-      {/* Sidebar - shadcn */}
-      <aside className="hidden w-64 flex-col justify-between border-r bg-card p-6 md:flex">
+    <div className="flex h-screen bg-[#0a0a0a] text-white overflow-hidden relative">
+      {/* Subtle grid background */}
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px]"></div>
+      
+      {/* Sidebar */}
+      <aside className="hidden w-72 flex-col justify-between border-r border-white/[0.06] bg-black/60 backdrop-blur-xl p-6 md:flex relative z-10">
         <div>
-          <div className="mb-8 flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl border bg-muted">
-              <Shield className="h-4 w-4 text-primary" />
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="mb-8 flex items-center gap-3"
+          >
+            <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-white/[0.08] bg-zinc-900 shadow-lg">
+              <img src="/image/favicon.png" alt="ITZ" className="h-full w-full object-cover" />
             </div>
             <div>
-              <h1 className="text-sm font-semibold tracking-tight">Admin ITZ AI</h1>
-              <p className="text-[11px] text-muted-foreground">Pusat Kendali</p>
+              <h1 className="text-base font-bold tracking-tight text-white">ITZ AI CONTROL</h1>
+              <p className="text-[10px] text-zinc-500 uppercase ">ADMIN PANEL</p>
             </div>
-          </div>
+          </motion.div>
 
           <nav className="space-y-1">
             {[
-              { id: "models", label: "Model AI", icon: Sparkles },
-              { id: "identity", label: "Identitas AI", icon: Sparkles },
-              { id: "personal", label: "Info Personal", icon: User },
-              { id: "knowledge", label: "Basis Pengetahuan", icon: BookOpen },
-              { id: "personality", label: "Kepribadian", icon: Sliders },
-              { id: "communication", label: "Gaya Komunikasi", icon: MessageSquare },
-              { id: "instructions", label: "Instruksi Sistem", icon: FileText },
-            ].map((item) => {
+              { id: "dashboard", label: "Dashboard", icon: BarChart3 },
+              { id: "models", label: "AI Models", icon: Sparkles },
+              { id: "identity", label: "Identity", icon: Sparkles },
+              { id: "personal", label: "Personal Info", icon: User },
+              { id: "knowledge", label: "Knowledge Base", icon: BookOpen },
+              { id: "personality", label: "Personality", icon: Sliders },
+              { id: "communication", label: "Communication", icon: MessageSquare },
+              { id: "instructions", label: "Instructions", icon: FileText },
+            ].map((item, idx) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
               return (
-                <Button
+                <motion.div
                   key={item.id}
-                  variant={isActive ? "secondary" : "ghost"}
-                  onClick={() => setActiveTab(item.id as TabType)}
-                  className="w-full justify-start gap-3"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.03 }}
                 >
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                </Button>
+                  <Button
+                    variant={isActive ? "secondary" : "ghost"}
+                    onClick={() => setActiveTab(item.id as TabType)}
+                    className={`w-full justify-start gap-3 text-[13px] font-medium transition-all duration-200 ${
+                      isActive 
+                        ? `bg-white text-black shadow-lg border border-white/10` 
+                        : "text-zinc-500 hover:text-white hover:bg-white/[0.05] border border-transparent"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </Button>
+                </motion.div>
               );
             })}
           </nav>
         </div>
 
-        <div className="space-y-2 border-t pt-4">
-          <Button variant="ghost" nativeButton={false} render={<Link href="/" />} className="w-full justify-start gap-2">
+        <div className="space-y-2 border-t border-white/[0.06] pt-4">
+          <Button variant="ghost" nativeButton={false} render={<Link href="/" />} className="w-full justify-start gap-2 text-zinc-500 hover:text-white hover:bg-white/[0.05]">
             <ArrowLeft className="h-4 w-4" />
-            <span>Ke Chat Publik</span>
+            <span>Back to Chat</span>
           </Button>
-          <Button variant="ghost" onClick={handleLogout} className="w-full justify-start gap-2 text-destructive hover:text-destructive">
+          <Button variant="ghost" onClick={handleLogout} className="w-full justify-start gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10">
             <LogOut className="h-4 w-4" />
-            <span>Keluar</span>
+            <span>Logout</span>
           </Button>
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto p-6 lg:p-10">
-        <div className="mx-auto max-w-4xl space-y-6">
-          {/* Bulk JSON toolbar — hidden on Models tab */}
-          {activeTab !== "models" && (
-            <Card>
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto p-6 lg:p-10 relative z-10">
+        <div className="mx-auto max-w-7xl space-y-6">
+          
+          {/* Feedback banner */}
+          {saveSuccess && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <Alert className="border-white/[0.06] bg-zinc-800/60 backdrop-blur">
+                <Check className="text-zinc-300" />
+                <AlertTitle className="text-emerald-300">Tersimpan</AlertTitle>
+                <AlertDescription className="text-emerald-200/70">Perubahan berhasil disimpan dan langsung aktif di agent.</AlertDescription>
+              </Alert>
+            </motion.div>
+          )}
+
+          {errorMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <Alert variant="destructive" className="border-red-500/30 bg-red-500/10">
+                <AlertCircle className="text-red-400" />
+                <AlertTitle className="text-red-300">Gagal menyimpan</AlertTitle>
+                <AlertDescription className="text-red-200/70">{errorMessage}</AlertDescription>
+              </Alert>
+            </motion.div>
+          )}
+
+          {/* DASHBOARD TAB */}
+          {activeTab === "dashboard" && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-3xl font-bold text-slate-100 tracking-tight">System Dashboard</h2>
+                  <p className="text-sm text-slate-400 mt-1">Real-time infrastructure monitoring and analytics</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Badge className="bg-zinc-800 text-zinc-300 border-white/10 px-3 py-1.5">
+                    <Activity className="h-3 w-3 mr-1.5 animate-pulse" />
+                    Live Production
+                  </Badge>
+                  <Badge className="bg-slate-800 text-slate-300 border-white/10 px-3 py-1.5  text-xs">
+                    v2.1.0
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Stats Cards - matte colored icons */}
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                {[
+                  { label: "Total Requests", value: stats.totalRequests.toLocaleString(), icon: TrendingUp, iconBg: "bg-[#3f4a3c] border-[#4a5a45]", iconColor: "text-[#8fa88a]", change: "+18.2%", trend: "up" },
+                  { label: "Active Sessions", value: stats.activeUsers.toString(), icon: User, iconBg: "bg-[#3d4a5c] border-[#45566e]", iconColor: "text-[#8aa4c8]", change: "+12.5%", trend: "up" },
+                  { label: "Avg Latency", value: `${stats.avgResponseTime}s`, icon: Zap, iconBg: "bg-[#5c4a3a] border-[#6b5644]", iconColor: "text-[#c4a88a]", change: "-15.3%", trend: "down" },
+                  { label: "Knowledge Entries", value: stats.knowledgeEntries.toString(), icon: Database, iconBg: "bg-[#4a3f5c] border-[#564a6e]", iconColor: "text-[#a88ac8]", change: "+24", trend: "up" },
+                ].map((stat, idx) => {
+                  const Icon = stat.icon;
+                  return (
+                    <motion.div
+                      key={stat.label}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.08 }}
+                    >
+                      <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl hover:border-white/[0.1] hover:bg-zinc-900/80 transition-all duration-300 shadow-lg relative overflow-hidden group">
+                        <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <CardContent className="p-6 relative">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">{stat.label}</p>
+                              <p className="text-3xl font-bold text-white mb-3">{stat.value}</p>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs font-medium px-2.5 py-1 rounded-md border ${
+                                  stat.trend === 'up' 
+                                    ? 'bg-white/5 text-zinc-300 border-white/10' 
+                                    : 'bg-zinc-800 text-zinc-400 border-white/10'
+                                }`}>
+                                  {stat.change}
+                                </span>
+                                <span className="text-xs text-zinc-600">vs 24h</span>
+                              </div>
+                            </div>
+                            <div className={`flex h-14 w-14 items-center justify-center rounded-xl border ${stat.iconBg}`}>
+                              <Icon className={`h-7 w-7 ${stat.iconColor}`} />
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  );
+                })}
+              </div>
+
+              {/* Additional Metrics Row - matte variants */}
+              <div className="grid gap-4 md:grid-cols-4">
+                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">Uptime</p>
+                        <p className="text-xl font-bold text-white">{stats.uptime}</p>
+                      </div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#3f4a3c] border border-[#4a5a45]">
+                        <Clock className="h-5 w-5 text-[#8fa88a]" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">Error Rate</p>
+                        <p className="text-xl font-bold text-white">{stats.errorRate}%</p>
+                      </div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#5c3a3a] border border-[#6b4444]">
+                        <AlertCircle className="h-5 w-5 text-[#c48a8a]" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">Tokens/24h</p>
+                        <p className="text-xl font-bold text-white">{(stats.tokensProcessed / 1000000).toFixed(1)}M</p>
+                      </div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#3a4a5c] border border-[#44556e]">
+                        <Zap className="h-5 w-5 text-[#8aa4c8]" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">Cache Hit</p>
+                        <p className="text-xl font-bold text-white">{stats.cacheHitRate}%</p>
+                      </div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#4a3f5c] border border-[#564a6e]">
+                        <Database className="h-5 w-5 text-[#a88ac8]" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Charts */}
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
+                      <Activity className="h-5 w-5 text-zinc-300" />
+                      REQUEST VOLUME (24H)
+                    </CardTitle>
+                    <CardDescription className="text-zinc-500 text-xs text-zinc-500">Production Traffic Analysis</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={280}>
+                      <AreaChart data={timeSeriesData}>
+                        <defs>
+                          <linearGradient id="colorRequests" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#a1a1aa" stopOpacity={0.4}/>
+                            <stop offset="95%" stopColor="#a1a1aa" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.1} />
+                        <XAxis dataKey="time" stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <YAxis stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: '#000', 
+                            border: '1px solid #27272a',
+                            borderRadius: '8px',
+                            color: '#fff',
+                            fontFamily: 'monospace'
+                          }} 
+                        />
+                        <Area type="monotone" dataKey="requests" stroke="#a1a1aa" fillOpacity={1} fill="url(#colorRequests)" strokeWidth={2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
+                      <Zap className="h-5 w-5 text-zinc-300" />
+                      RESPONSE LATENCY
+                    </CardTitle>
+                    <CardDescription className="text-zinc-500 text-xs text-zinc-500">Average Response Time (Seconds)</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={280}>
+                      <LineChart data={timeSeriesData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.1} />
+                        <XAxis dataKey="time" stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <YAxis stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: '#000', 
+                            border: '1px solid #27272a',
+                            borderRadius: '8px',
+                            color: '#fff',
+                            fontFamily: 'monospace'
+                          }} 
+                        />
+                        <Line type="monotone" dataKey="responseTime" stroke="#10b981" strokeWidth={3} dot={{ fill: '#10b981', r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
+                      <Database className="h-5 w-5 text-zinc-400" />
+                      KNOWLEDGE DISTRIBUTION
+                    </CardTitle>
+                    <CardDescription className="text-zinc-500 text-xs text-zinc-500">Entries By Category</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={280}>
+                      <PieChart>
+                        <Pie
+                          data={categoryData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                          outerRadius={90}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {categoryData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: '#000', 
+                            border: '1px solid #27272a',
+                            borderRadius: '8px',
+                            color: '#fff',
+                            fontFamily: 'monospace'
+                          }} 
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
+                      <AlertCircle className="h-5 w-5 text-amber-400" />
+                      ERROR RATE (24H)
+                    </CardTitle>
+                    <CardDescription className="text-zinc-500 text-xs text-zinc-500">System Error Tracking</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={280}>
+                      <BarChart data={timeSeriesData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.1} />
+                        <XAxis dataKey="time" stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <YAxis stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: '#000', 
+                            border: '1px solid #27272a',
+                            borderRadius: '8px',
+                            color: '#fff',
+                            fontFamily: 'monospace'
+                          }} 
+                        />
+                        <Bar dataKey="errors" fill="#f59e0b" radius={[8, 8, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* System Resources */}
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
+                      <TrendingUp className="h-5 w-5 text-zinc-300" />
+                      CPU USAGE (24H)
+                    </CardTitle>
+                    <CardDescription className="text-zinc-500 text-xs text-zinc-500">Server CPU Utilization %</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <AreaChart data={timeSeriesData}>
+                        <defs>
+                          <linearGradient id="colorCPU" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#a1a1aa" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#a1a1aa" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.1} />
+                        <XAxis dataKey="time" stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <YAxis stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: '#000', 
+                            border: '1px solid #27272a',
+                            borderRadius: '8px',
+                            color: '#fff',
+                            fontFamily: 'monospace'
+                          }} 
+                        />
+                        <Area type="monotone" dataKey="cpu" stroke="#a1a1aa" fillOpacity={1} fill="url(#colorCPU)" strokeWidth={2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
+                      <Database className="h-5 w-5 text-zinc-300" />
+                      MEMORY USAGE (24H)
+                    </CardTitle>
+                    <CardDescription className="text-zinc-500 text-xs text-zinc-500">Server Memory Utilization %</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <AreaChart data={timeSeriesData}>
+                        <defs>
+                          <linearGradient id="colorMemory" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.1} />
+                        <XAxis dataKey="time" stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <YAxis stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: '#000', 
+                            border: '1px solid #27272a',
+                            borderRadius: '8px',
+                            color: '#fff',
+                            fontFamily: 'monospace'
+                          }} 
+                        />
+                        <Area type="monotone" dataKey="memory" stroke="#10b981" fillOpacity={1} fill="url(#colorMemory)" strokeWidth={2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* System Status */}
+              <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
+                    <Activity className="h-5 w-5 text-zinc-300" />
+                    SYSTEM HEALTH STATUS
+                  </CardTitle>
+                  <CardDescription className="text-zinc-500 text-xs text-zinc-500">Infrastructure Service Status</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="flex items-center justify-between rounded-lg border border-white/10 bg-zinc-800/50 p-4 backdrop-blur">
+                      <div>
+                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">System Uptime</p>
+                        <p className="text-lg font-bold text-zinc-300 ">{stats.uptime}</p>
+                      </div>
+                      <Badge className="bg-zinc-800 text-zinc-300 border-white/10 ">ONLINE</Badge>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border border-white/10 bg-zinc-800/50 p-4 backdrop-blur">
+                      <div>
+                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">API Status</p>
+                        <p className="text-lg font-bold text-zinc-300 ">READY</p>
+                      </div>
+                      <Badge className="bg-zinc-800 text-zinc-300 border-white/10 ">LIVE</Badge>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border border-white/10 bg-zinc-800/50 p-4 backdrop-blur">
+                      <div>
+                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">Active Model</p>
+                        <p className="text-xs  font-bold text-white truncate max-w-[180px]">{modelConfig.active_model.split('/')[1]?.slice(0, 20) || 'NOT_CONFIGURED'}</p>
+                      </div>
+                      <Sparkles className="h-8 w-8 text-zinc-400/30" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
+          {/* Bulk JSON toolbar */}
+          {activeTab !== "models" && activeTab !== "dashboard" && (
+            <Card className="border-white/[0.06] bg-zinc-900/60 backdrop-blur-xl shadow-lg">
               <CardContent className="flex flex-wrap items-center gap-2 py-3">
-                <span className="flex items-center gap-2 text-xs font-medium">
+                <span className="flex items-center gap-2 text-xs font-medium text-zinc-400">
                   <FileJson className="h-4 w-4" />
                   Bulk JSON
                 </span>
-                <Button variant="outline" size="sm" onClick={openJsonModalWithPrefill} title="Unggah / tempel JSON untuk mengisi identitas AI → instruksi sistem">
+                <Button variant="outline" size="sm" onClick={openJsonModalWithPrefill} className="border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300">
                   <Upload />
                   <span>Import JSON</span>
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleBulkExport} title="Unduh semua bagian sebagai satu file JSON">
+                <Button variant="outline" size="sm" onClick={handleBulkExport} className="border-white/10 bg-white/5 hover:bg-white/10 text-zinc-300">
                   <Download />
                   <span>Export JSON</span>
                 </Button>
-                <Button variant="ghost" size="sm" onClick={handleBulkDownloadExample} title="Unduh contoh format JSON">
+                <Button variant="ghost" size="sm" onClick={handleBulkDownloadExample} className="text-zinc-400 hover:text-zinc-200">
                   Contoh format
                 </Button>
               </CardContent>
             </Card>
           )}
 
-          {/* Mobile Header */}
-          <div className="flex items-center justify-between border-b pb-4 md:hidden">
-            <h2 className="text-base font-bold">Pusat Kendali Admin</h2>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/" />}>Obrolan</Button>
-              <Button variant="ghost" size="sm" onClick={handleLogout} className="text-destructive">Keluar</Button>
-            </div>
-          </div>
-
-          {/* Feedback banner - shadcn Alert with all subcomponents */}
-          {saveSuccess && (
-            <Alert>
-              <Check />
-              <AlertTitle>Tersimpan</AlertTitle>
-              <AlertDescription>Perubahan berhasil disimpan dan langsung aktif di agent.</AlertDescription>
-            </Alert>
-          )}
-
-          {errorMessage && (
-            <Alert variant="destructive">
-              <AlertCircle />
-              <AlertTitle>Gagal menyimpan</AlertTitle>
-              <AlertDescription>{errorMessage}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* TAB 0: AI MODELS */}
+          {/* TAB: AI MODELS */}
           {activeTab === "models" && (
-            <div className="space-y-6">
-              <div className="border-b pb-4">
-                <h3 className="text-lg font-bold">Model AI</h3>
-                <p className="text-xs text-muted-foreground">
-                  Model yang sedang dipakai ditampilkan pertama. Pilih dari katalog live atau ketik ID model apa pun — tidak terkunci ke Gemini atau OpenRouter.
-                  <br />
-                  <span className="text-primary">Tips: Gunakan Ollama lokal untuk pemakaian gratis tanpa batas.</span> Instal: <a href="https://ollama.ai" target="_blank" rel="noopener" className="underline hover:text-foreground">ollama.ai</a>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              <div className="border-b border-white/10 pb-4">
+                <h3 className="text-2xl font-bold">Model AI</h3>
+                <p className="text-sm text-zinc-400 mt-1">
+                  Model yang sedang dipakai ditampilkan pertama. Pilih dari katalog live atau ketik ID model apa pun.
                 </p>
               </div>
 
-              {modelConfig.api_base_url && (modelConfig.api_base_url.includes("localhost") || modelConfig.api_base_url.includes("127.0.0.1")) && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-xs">
-                      <Sparkles className="h-4 w-4" />
-                      Model Lokal Terdeteksi (Ollama)
-                    </CardTitle>
-                    <CardDescription>Berjalan di mesin lokal. Keuntungan:</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3 text-xs">
-                    <ul className="space-y-1 text-muted-foreground">
-                      <li>✓ Permintaan tanpa batas (tanpa rate limit)</li>
-                      <li>✓ Tanpa biaya API</li>
-                      <li>✓ Privasi — data tetap lokal</li>
-                      <li>✓ Bisa berjalan offline</li>
-                    </ul>
-                    <p className="text-[11px] text-muted-foreground">
-                      Pastikan Ollama berjalan: <code className="rounded bg-muted px-2 py-1">ollama serve</code>
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {modelConfig.api_base_url && !modelConfig.api_base_url.includes("localhost") && !modelConfig.api_base_url.includes("127.0.0.1") && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-xs">
-                      <Sparkles className="h-4 w-4" />
-                      Model API Cloud
-                    </CardTitle>
-                    <CardDescription>
-                      Menggunakan API jarak jauh: <code className="rounded bg-muted px-2 py-1 text-[10px]">{modelConfig.api_base_url}</code>
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xs text-muted-foreground">Terikat rate limit dan biaya API. Untuk pemakaian tanpa batas, pertimbangkan Ollama lokal.</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              <Card>
+              <Card className="border-white/[0.06] bg-zinc-900/60 backdrop-blur-xl shadow-lg">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-xs">
-                    <Sparkles className="h-4 w-4" />
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Sparkles className="h-5 w-5 text-zinc-400" />
                     Model yang sedang dipakai
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-1">
-                  <p className="break-all font-mono text-sm">{modelConfig.active_model || "— belum dimuat —"}</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    provider: <span className="text-foreground">{modelConfig.provider}</span> · base: <span className="break-all text-foreground">{modelConfig.api_base_url}</span>
+                <CardContent className="space-y-2">
+                  <p className="break-all  text-lg text-zinc-200">{modelConfig.active_model || "— belum dimuat —"}</p>
+                  <p className="text-sm text-zinc-400">
+                    provider: <span className="text-zinc-300">{modelConfig.provider}</span> · base: <span className="break-all text-zinc-300">{modelConfig.api_base_url}</span>
                   </p>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-sm text-zinc-400">
                     Fallback: {modelConfig.fallback_models.length ? modelConfig.fallback_models.join(", ") : "— tidak ada —"} · temp: {modelConfig.temperature} · reasoning: {modelConfig.reasoning_enabled ? "aktif" : "nonaktif"}
                   </p>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="border-white/[0.06] bg-zinc-900/60 backdrop-blur-xl shadow-lg">
                 <CardHeader>
                   <CardTitle>Konfigurasi Model</CardTitle>
-                  <CardDescription>Atur model aktif, provider, dan fallback chain</CardDescription>
+                  <CardDescription className="text-zinc-400">Atur model aktif, provider, dan fallback chain</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4">
-                  <div className="space-y-1.5">
-                    <Label>ID model aktif (string apa pun diterima)</Label>
-                    <Input list="admin-model-options" value={modelConfig.active_model} onChange={(e) => setModelConfig({ ...modelConfig, active_model: e.target.value })} placeholder="cth. qwen/qwen3.8-27b:free — atau ID model OpenAI-compatible apa pun" className="font-mono" />
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-[#8fa88a]"><Cpu className="h-3.5 w-3.5" />ID model aktif</Label>
+                    <Input 
+                      list="admin-model-options" 
+                      value={modelConfig.active_model} 
+                      onChange={(e) => setModelConfig({ ...modelConfig, active_model: e.target.value })} 
+                      placeholder="cth. qwen/qwen3.8-27b:free" 
+                      className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:border-[#8fa88a]/30"
+                    />
                     <datalist id="admin-model-options">
                       {availableModels
                         .filter((m) => {
@@ -720,88 +1202,84 @@ export default function AdminPage() {
                           <option key={m.id} value={m.id}>{m.name || m.id}</option>
                         ))}
                     </datalist>
-                    <p className="text-[11px] text-muted-foreground">Tips: mulai mengetik untuk memfilter. Atau pilih dari katalog di bawah.</p>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <Label>Provider</Label>
-                      <Input value={modelConfig.provider} onChange={(e) => setModelConfig({ ...modelConfig, provider: e.target.value })} placeholder="openrouter" />
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2 text-[#8aa4c8]"><Box className="h-3.5 w-3.5" />Provider</Label>
+                      <Input value={modelConfig.provider} onChange={(e) => setModelConfig({ ...modelConfig, provider: e.target.value })} placeholder="openrouter" className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:border-[#8aa4c8]/30 focus:bg-zinc-800" />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label>API base URL</Label>
-                      <Input value={modelConfig.api_base_url} onChange={(e) => setModelConfig({ ...modelConfig, api_base_url: e.target.value })} placeholder="https://openrouter.ai/api/v1" />
-                      <Button type="button" variant="link" size="sm" onClick={() => setModelConfig({ ...modelConfig, api_base_url: "http://localhost:11434/v1", provider: "ollama" })} className="h-auto p-0 text-xs">
-                        Cepat: Gunakan Ollama lokal (http://localhost:11434/v1)
-                      </Button>
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2 text-[#c4a88a]"><Globe className="h-3.5 w-3.5" />API base URL</Label>
+                      <Input value={modelConfig.api_base_url} onChange={(e) => setModelConfig({ ...modelConfig, api_base_url: e.target.value })} placeholder="https://openrouter.ai/api/v1" className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:border-[#c4a88a]/30 focus:bg-zinc-800" />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <Label>Temperature (0–2)</Label>
-                      <Input type="number" min={0} max={2} step={0.1} value={modelConfig.temperature} onChange={(e) => setModelConfig({ ...modelConfig, temperature: Number(e.target.value) || 0 })} />
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2 text-[#a88ac8]"><Gauge className="h-3.5 w-3.5" />Temperature (0–2)</Label>
+                      <Input type="number" min={0} max={2} step={0.1} value={modelConfig.temperature} onChange={(e) => setModelConfig({ ...modelConfig, temperature: Number(e.target.value) || 0 })} className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:border-[#a88ac8]/30 focus:bg-zinc-800" />
                     </div>
-                    <Label className="flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-xs font-normal">
+                    <Label className="flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-3 text-sm font-normal text-[#8ac4b8]">
                       <Checkbox checked={modelConfig.reasoning_enabled} onCheckedChange={(checked) => setModelConfig({ ...modelConfig, reasoning_enabled: Boolean(checked) })} />
-                      <span>Reasoning aktif (param <span className="font-mono">reasoning</span> provider)</span>
+                      <span className="flex items-center gap-2"><Brain className="h-3.5 w-3.5" />Reasoning aktif</span>
                     </Label>
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Model fallback (dicoba berurutan saat model utama gagal)</Label>
+                    <Label className="flex items-center gap-2 text-[#c48a8a]"><Layers className="h-3.5 w-3.5" />Model fallback</Label>
                     <div className="flex flex-wrap gap-2">
                       {modelConfig.fallback_models.map((mid) => (
-                        <Badge key={mid} variant="secondary" className="gap-2 py-1.5 font-mono text-xs">
+                        <Badge key={mid} variant="secondary" className="gap-2 py-1.5  text-xs bg-white/10 text-zinc-300">
                           {mid}
-                          <button type="button" onClick={() => setModelConfig({ ...modelConfig, fallback_models: modelConfig.fallback_models.filter((x) => x !== mid) })} className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-[11px] hover:bg-muted-foreground/20" title="Hapus fallback">✕</button>
+                          <button type="button" onClick={() => setModelConfig({ ...modelConfig, fallback_models: modelConfig.fallback_models.filter((x) => x !== mid) })} className="ml-1 rounded-full bg-red-500/20 text-red-300 px-1.5 py-0.5 text-[11px] hover:bg-red-600 hover:text-white border border-red-500/20" title="Hapus fallback">✕</button>
                         </Badge>
                       ))}
-                      {modelConfig.fallback_models.length === 0 && <span className="text-xs text-muted-foreground">Belum ada fallback — tambah di bawah.</span>}
+                      {modelConfig.fallback_models.length === 0 && <span className="text-sm text-zinc-500">Belum ada fallback</span>}
                     </div>
                     <div className="flex gap-2">
-                      <Input value={fallbackInput} onChange={(e) => setFallbackInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const v = fallbackInput.trim(); if (v && !modelConfig.fallback_models.includes(v)) setModelConfig({ ...modelConfig, fallback_models: [...modelConfig.fallback_models, v] }); setFallbackInput(""); }}} placeholder="Ketik ID model lalu Enter — cth. cohere/north-mini-code:free" className="flex-1 font-mono" />
-                      <Button type="button" onClick={() => { const v = fallbackInput.trim(); if (v && !modelConfig.fallback_models.includes(v)) setModelConfig({ ...modelConfig, fallback_models: [...modelConfig.fallback_models, v] }); setFallbackInput(""); }}>
+                      <Input value={fallbackInput} onChange={(e) => setFallbackInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const v = fallbackInput.trim(); if (v && !modelConfig.fallback_models.includes(v)) setModelConfig({ ...modelConfig, fallback_models: [...modelConfig.fallback_models, v] }); setFallbackInput(""); }}} placeholder="Ketik ID model lalu Enter" className="flex-1 border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500" />
+                      <Button type="button" onClick={() => { const v = fallbackInput.trim(); if (v && !modelConfig.fallback_models.includes(v)) setModelConfig({ ...modelConfig, fallback_models: [...modelConfig.fallback_models, v] }); setFallbackInput(""); }} className="bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10">
                         <Plus /> Tambah
                       </Button>
                     </div>
                   </div>
                 </CardContent>
                 <CardFooter className="justify-end">
-                  <Button onClick={handleSaveModelConfig} disabled={saving || !modelConfig.active_model.trim()}>
+                  <Button onClick={handleSaveModelConfig} disabled={saving || !modelConfig.active_model.trim()} className="bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/20 shadow-lg shadow-emerald-600/20">
                     <Save />
                     <span>{saving ? "Menyimpan..." : "Simpan Konfigurasi Model"}</span>
                   </Button>
                 </CardFooter>
               </Card>
 
-              <Card>
+              <Card className="border-white/[0.06] bg-zinc-900/60 backdrop-blur-xl shadow-lg">
                 <CardHeader>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <CardTitle>Katalog model live</CardTitle>
-                      <CardDescription>Sumber: katalog <span className="font-mono">/models</span> provider — bukan hardcoded.</CardDescription>
+                      <CardDescription className="text-zinc-400">Sumber: katalog provider</CardDescription>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Label className="flex cursor-pointer items-center gap-2 text-xs font-normal">
+                      <Label className="flex cursor-pointer items-center gap-2 text-xs font-normal text-zinc-300">
                         <Checkbox checked={freeOnly} onCheckedChange={(checked) => { setFreeOnly(Boolean(checked)); refreshAvailableModels({ freeOnly: Boolean(checked) }); }} />
                         Hanya gratis
                       </Label>
-                      <Button variant="outline" size="sm" onClick={() => refreshAvailableModels()} disabled={modelsLoading}>
+                      <Button variant="outline" size="sm" onClick={() => refreshAvailableModels()} disabled={modelsLoading} className="border-white/10 bg-white/5 text-zinc-300">
                         {modelsLoading ? "Memuat..." : "Muat ulang"}
                       </Button>
-                      <Input value={modelSearch} onChange={(e) => setModelSearch(e.target.value)} placeholder="Cari model..." className="h-8 w-40" />
+                      <Input value={modelSearch} onChange={(e) => setModelSearch(e.target.value)} placeholder="Cari model..." className="h-8 w-40 border-white/10 bg-white/5 text-white" />
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <div className="max-h-[28rem] overflow-y-auto rounded-b-xl border-t">
+                  <div className="max-h-[28rem] overflow-y-auto rounded-b-xl border-t border-white/10">
                     {availableModels.length === 0 ? (
-                      <div className="p-6 text-center text-xs text-muted-foreground">
-                        {modelsLoading ? "Memuat katalog..." : "Tidak ada model. Cek API key / base URL atau tekan Muat ulang."}
+                      <div className="p-6 text-center text-sm text-zinc-500">
+                        {modelsLoading ? "Memuat katalog..." : "Tidak ada model. Cek API key atau tekan Muat ulang."}
                       </div>
                     ) : (
-                      <ul className="divide-y">
+                      <ul className="divide-y divide-white/5">
                         {availableModels
                           .filter((m) => {
                             if (!modelSearch) return true;
@@ -812,19 +1290,19 @@ export default function AdminPage() {
                           .map((m) => {
                             const isActive = m.id === modelConfig.active_model;
                             return (
-                              <li key={m.id} className={`flex items-start justify-between gap-3 px-4 py-3 text-xs ${isActive ? "bg-muted/50" : "hover:bg-muted/30"}`}>
+                              <li key={m.id} className={`flex items-start justify-between gap-3 px-4 py-3 text-xs ${isActive ? "bg-white/5" : "hover:bg-white/5"}`}>
                                 <div className="min-w-0 flex-1">
-                                  <div className="flex flex-wrap items-center gap-2 break-all font-mono text-[11px]">
+                                  <div className="flex flex-wrap items-center gap-2 break-all  text-[11px] text-zinc-300">
                                     <span>{m.id}</span>
-                                    {isActive && <Badge>AKTIF</Badge>}
-                                    {m.pricing && (m.pricing.prompt === "0" || String(m.pricing.prompt) === "0.0000000") && <Badge variant="outline">GRATIS</Badge>}
+                                    {isActive && <Badge className="bg-zinc-800 text-zinc-200">AKTIF</Badge>}
+                                    {m.pricing && (m.pricing.prompt === "0" || String(m.pricing.prompt) === "0.0000000") && <Badge variant="outline" className="border-white/10 text-zinc-300">GRATIS</Badge>}
                                   </div>
-                                  <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">{m.name || m.description || ""}</div>
-                                  {m.context_length ? <div className="text-[11px] text-muted-foreground">context: {Number(m.context_length).toLocaleString("id-ID")}</div> : null}
+                                  <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-zinc-500">{m.name || m.description || ""}</div>
+                                  {m.context_length ? <div className="text-[11px] text-zinc-500">context: {Number(m.context_length).toLocaleString("id-ID")}</div> : null}
                                 </div>
                                 <div className="flex shrink-0 flex-col gap-1">
-                                  <Button variant={isActive ? "secondary" : "default"} size="sm" onClick={() => setModelConfig({ ...modelConfig, active_model: m.id })}>{isActive ? "Aktif" : "Pakai"}</Button>
-                                  <Button variant="outline" size="sm" onClick={() => { if (!modelConfig.fallback_models.includes(m.id)) setModelConfig({ ...modelConfig, fallback_models: [...modelConfig.fallback_models, m.id] }); }} disabled={modelConfig.fallback_models.includes(m.id) || isActive}>+ Fallback</Button>
+                                  <Button variant={isActive ? "secondary" : "default"} size="sm" onClick={() => setModelConfig({ ...modelConfig, active_model: m.id })} className={isActive ? "bg-zinc-800 text-zinc-200" : "bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10 hover:bg-emerald-500 text-white border border-emerald-500/20 shadow-lg shadow-emerald-600/20"}>{isActive ? "Aktif" : "Pakai"}</Button>
+                                  <Button variant="outline" size="sm" onClick={() => { if (!modelConfig.fallback_models.includes(m.id)) setModelConfig({ ...modelConfig, fallback_models: [...modelConfig.fallback_models, m.id] }); }} disabled={modelConfig.fallback_models.includes(m.id) || isActive} className="border-white/10 bg-white/5 text-zinc-300">+ Fallback</Button>
                                 </div>
                               </li>
                             );
@@ -834,90 +1312,96 @@ export default function AdminPage() {
                   </div>
                 </CardContent>
               </Card>
-            </div>
+            </motion.div>
           )}
 
-          {/* TAB 1: AI IDENTITY */}
+          {/* TAB: AI IDENTITY */}
           {activeTab === "identity" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Identitas AI</CardTitle>
-                <CardDescription>Menentukan identitas dasar, nama, peran, dan tujuan ITZ AI.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-4">
-                <div className="space-y-1.5">
-                  <Label>Nama AI</Label>
-                  <Input value={identityData.name} onChange={(e) => setIdentityData({ ...identityData, name: e.target.value })} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Peran</Label>
-                  <Input value={identityData.role} onChange={(e) => setIdentityData({ ...identityData, role: e.target.value })} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Deskripsi</Label>
-                  <Textarea rows={2} value={identityData.description} onChange={(e) => setIdentityData({ ...identityData, description: e.target.value })} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Pernyataan Identitas</Label>
-                  <Textarea rows={3} value={identityData.identity} onChange={(e) => setIdentityData({ ...identityData, identity: e.target.value })} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Tujuan</Label>
-                  <Textarea rows={3} value={identityData.purpose} onChange={(e) => setIdentityData({ ...identityData, purpose: e.target.value })} />
-                </div>
-              </CardContent>
-              <CardFooter className="justify-end">
-                <Button onClick={() => handleSaveConfig("identity")} disabled={saving}>
-                  <Save />
-                  <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
-                </Button>
-              </CardFooter>
-            </Card>
-          )}
-
-          {/* TAB 2: PERSONAL INFORMATION */}
-          {activeTab === "personal" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Informasi Personal</CardTitle>
-                <CardDescription>Informasi mengenai owner yang dipakai sebagai konteks AI.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-4">
-                {[
-                  { key: "profile", label: "Profil" },
-                  { key: "background", label: "Latar Belakang" },
-                  { key: "interests", label: "Minat" },
-                  { key: "experience", label: "Pengalaman" },
-                  { key: "projects", label: "Proyek" },
-                  { key: "preferences", label: "Preferensi" },
-                  { key: "relevant_context", label: "Konteks Relevan" },
-                ].map((item) => (
-                  <div key={item.key} className="space-y-1.5">
-                    <Label>{item.label}</Label>
-                    <Textarea rows={2} value={(personalData as any)[item.key] || ""} onChange={(e) => setPersonalData({ ...personalData, [item.key]: e.target.value })} />
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              <Card className="border-white/[0.06] bg-zinc-900/60 backdrop-blur-xl shadow-lg">
+                <CardHeader>
+                  <CardTitle>Identitas AI</CardTitle>
+                  <CardDescription className="text-zinc-400">Menentukan identitas dasar, nama, peran, dan tujuan ITZ AI.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-[#8fa88a]"><Fingerprint className="h-3.5 w-3.5" />Nama AI</Label>
+                    <Input value={identityData.name} onChange={(e) => setIdentityData({ ...identityData, name: e.target.value })} className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:border-[#8fa88a]/30 focus:bg-zinc-800" />
                   </div>
-                ))}
-              </CardContent>
-              <CardFooter className="justify-end">
-                <Button onClick={() => handleSaveConfig("personal")} disabled={saving}>
-                  <Save />
-                  <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
-                </Button>
-              </CardFooter>
-            </Card>
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-[#8aa4c8]"><Briefcase className="h-3.5 w-3.5" />Peran</Label>
+                    <Input value={identityData.role} onChange={(e) => setIdentityData({ ...identityData, role: e.target.value })} className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:border-[#8aa4c8]/30 focus:bg-zinc-800" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-[#c4a88a]"><ScrollText className="h-3.5 w-3.5" />Deskripsi</Label>
+                    <Textarea rows={2} value={identityData.description} onChange={(e) => setIdentityData({ ...identityData, description: e.target.value })} className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:border-[#c4a88a]/30 focus:bg-zinc-800" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-[#a88ac8]"><Brain className="h-3.5 w-3.5" />Pernyataan Identitas</Label>
+                    <Textarea rows={3} value={identityData.identity} onChange={(e) => setIdentityData({ ...identityData, identity: e.target.value })} className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:border-[#a88ac8]/30 focus:bg-zinc-800" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-[#c48a8a]"><Target className="h-3.5 w-3.5" />Tujuan</Label>
+                    <Textarea rows={3} value={identityData.purpose} onChange={(e) => setIdentityData({ ...identityData, purpose: e.target.value })} className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:border-[#c48a8a]/30 focus:bg-zinc-800" />
+                  </div>
+                </CardContent>
+                <CardFooter className="justify-end">
+                  <Button onClick={() => handleSaveConfig("identity")} disabled={saving} className="bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/20 shadow-lg shadow-emerald-600/20">
+                    <Save />
+                    <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
+                  </Button>
+                </CardFooter>
+              </Card>
+            </motion.div>
           )}
 
-          {/* TAB 3: KNOWLEDGE BASE */}
+          {/* TAB: PERSONAL INFORMATION */}
+          {activeTab === "personal" && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              <Card className="border-white/[0.06] bg-zinc-900/60 backdrop-blur-xl shadow-lg">
+                <CardHeader>
+                  <CardTitle>Informasi Personal</CardTitle>
+                  <CardDescription className="text-zinc-400">Informasi mengenai owner yang dipakai sebagai konteks AI.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  {[
+                    { key: "profile", label: "Profil", color: "#8fa88a", Icon: User },
+                    { key: "background", label: "Latar Belakang", color: "#8aa4c8", Icon: History },
+                    { key: "interests", label: "Minat", color: "#c4a88a", Icon: Heart },
+                    { key: "experience", label: "Pengalaman", color: "#a88ac8", Icon: Briefcase },
+                    { key: "projects", label: "Proyek", color: "#c48a8a", Icon: Rocket },
+                    { key: "preferences", label: "Preferensi", color: "#8ac4b8", Icon: Settings2 },
+                    { key: "relevant_context", label: "Konteks Relevan", color: "#a8a88a", Icon: MapPin },
+                  ].map((item) => {
+                    const Ico = item.Icon;
+                    return (
+                    <div key={item.key} className="space-y-2">
+                      <Label className="flex items-center gap-2" style={{ color: item.color }}><Ico className="h-3.5 w-3.5" />{item.label}</Label>
+                      <Textarea rows={2} value={(personalData as any)[item.key] || ""} onChange={(e) => setPersonalData({ ...personalData, [item.key]: e.target.value })} className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:bg-zinc-800" style={{ borderColor: "" } as any} onFocus={(e) => e.currentTarget.style.borderColor = item.color + "40"} onBlur={(e) => e.currentTarget.style.borderColor = ""} />
+                    </div>
+                  );})}
+                </CardContent>
+                <CardFooter className="justify-end">
+                  <Button onClick={() => handleSaveConfig("personal")} disabled={saving} className="bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/20 shadow-lg shadow-emerald-600/20">
+                    <Save />
+                    <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
+                  </Button>
+                </CardFooter>
+              </Card>
+            </motion.div>
+          )}
+
+          {/* TAB: KNOWLEDGE BASE */}
           {activeTab === "knowledge" && (
-            <div className="space-y-6">
-              <Card>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              <Card className="border-white/[0.06] bg-zinc-900/60 backdrop-blur-xl shadow-lg">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div>
                       <CardTitle>Basis Pengetahuan</CardTitle>
-                      <CardDescription>Pengetahuan owner terstruktur dan persisten dengan pencarian embedding semantik.</CardDescription>
+                      <CardDescription className="text-zinc-400">Pengetahuan owner terstruktur dan persisten dengan pencarian embedding semantik.</CardDescription>
                     </div>
-                    <Button onClick={() => { setEntryForm({ id: "", title: "", content: "", category_id: "" }); setNewEntryModal(true); }}>
+                    <Button onClick={() => { setEntryForm({ id: "", title: "", content: "", category_id: "" }); setNewEntryModal(true); }} className="bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10">
                       <Plus />
                       <span>Tambah Knowledge</span>
                     </Button>
@@ -926,7 +1410,7 @@ export default function AdminPage() {
                 <CardContent className="space-y-4">
                   <div className="flex flex-wrap gap-2">
                     {knowledgeCategories.map((cat) => (
-                      <Button key={cat.id} variant={selectedCategorySlug === cat.slug ? "default" : "outline"} size="sm" onClick={() => setSelectedCategorySlug(cat.slug)}>
+                      <Button key={cat.id} variant={selectedCategorySlug === cat.slug ? "default" : "outline"} size="sm" onClick={() => setSelectedCategorySlug(cat.slug)} className={selectedCategorySlug === cat.slug ? "bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10" : "border-white/10 bg-white/5 text-zinc-300"}>
                         {cat.name}
                       </Button>
                     ))}
@@ -938,13 +1422,13 @@ export default function AdminPage() {
                         return !selectedCategorySlug || (cat && cat.slug === selectedCategorySlug);
                       })
                       .map((entry) => (
-                        <Card key={entry.id}>
+                        <Card key={entry.id} className="border-white/[0.06] bg-zinc-800/60 backdrop-blur">
                           <CardContent className="flex items-start justify-between p-4">
                             <div className="space-y-1">
-                              <h4 className="text-sm font-semibold">{entry.title}</h4>
-                              <p className="line-clamp-2 text-xs text-muted-foreground">{entry.content}</p>
+                              <h4 className="text-sm font-semibold text-zinc-200">{entry.title}</h4>
+                              <p className="line-clamp-2 text-xs text-zinc-400">{entry.content}</p>
                             </div>
-                            <Button variant="ghost" size="icon-sm" onClick={() => handleDeleteKnowledgeEntry(entry.id)} className="shrink-0 text-muted-foreground hover:text-destructive" title="Hapus entri">
+                            <Button variant="ghost" size="icon-sm" onClick={() => handleDeleteKnowledgeEntry(entry.id)} className="shrink-0 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-600 hover:text-white hover:border-red-600" title="Hapus entri">
                               <Trash2 />
                             </Button>
                           </CardContent>
@@ -954,8 +1438,8 @@ export default function AdminPage() {
                       const cat = knowledgeCategories.find((c) => c.id === e.category_id);
                       return !selectedCategorySlug || (cat && cat.slug === selectedCategorySlug);
                     }).length === 0 && (
-                      <Card className="border-dashed">
-                        <CardContent className="p-8 text-center text-xs text-muted-foreground">
+                      <Card className="border-dashed border-white/10 bg-zinc-900/40">
+                        <CardContent className="p-8 text-center text-sm text-zinc-500">
                           Belum ada knowledge pada kategori ini. Klik &quot;Tambah Knowledge&quot; untuk membuat entri baru.
                         </CardContent>
                       </Card>
@@ -963,163 +1447,176 @@ export default function AdminPage() {
                   </div>
                 </CardContent>
               </Card>
-            </div>
+            </motion.div>
           )}
 
-          {/* TAB 4: PERSONALITY */}
+          {/* TAB: PERSONALITY */}
           {activeTab === "personality" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Kepribadian</CardTitle>
-                <CardDescription>Menentukan karakter, nada, sikap, dan batasan perilaku AI.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-4">
-                {[
-                  { key: "personality", label: "Kepribadian" },
-                  { key: "tone", label: "Nada" },
-                  { key: "attitude", label: "Sikap" },
-                  { key: "reasoning_style", label: "Gaya Penalaran" },
-                  { key: "criticism_style", label: "Gaya Kritik" },
-                  { key: "response_behavior", label: "Perilaku Respons" },
-                  { key: "prohibited_behavior", label: "Perilaku Terlarang" },
-                ].map((item) => (
-                  <div key={item.key} className="space-y-1.5">
-                    <Label>{item.label}</Label>
-                    <Textarea rows={2} value={(personalityData as any)[item.key] || ""} onChange={(e) => setPersonalityData({ ...personalityData, [item.key]: e.target.value })} />
-                  </div>
-                ))}
-              </CardContent>
-              <CardFooter className="justify-end">
-                <Button onClick={() => handleSaveConfig("personality")} disabled={saving}>
-                  <Save />
-                  <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
-                </Button>
-              </CardFooter>
-            </Card>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              <Card className="border-white/[0.06] bg-zinc-900/60 backdrop-blur-xl shadow-lg">
+                <CardHeader>
+                  <CardTitle>Kepribadian</CardTitle>
+                  <CardDescription className="text-zinc-400">Menentukan karakter, nada, sikap, dan batasan perilaku AI.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  {[
+                    { key: "personality", label: "Kepribadian", color: "#8fa88a", Icon: Brain },
+                    { key: "tone", label: "Nada", color: "#8aa4c8", Icon: Mic2 },
+                    { key: "attitude", label: "Sikap", color: "#c4a88a", Icon: Heart },
+                    { key: "reasoning_style", label: "Gaya Penalaran", color: "#a88ac8", Icon: Lightbulb },
+                    { key: "criticism_style", label: "Gaya Kritik", color: "#c48a8a", Icon: MessageSquare },
+                    { key: "response_behavior", label: "Perilaku Respons", color: "#8ac4b8", Icon: Zap },
+                    { key: "prohibited_behavior", label: "Perilaku Terlarang", color: "#c48a5c", Icon: ShieldCheck },
+                  ].map((item) => {
+                    const Ico = item.Icon;
+                    return (
+                    <div key={item.key} className="space-y-2">
+                      <Label className="flex items-center gap-2" style={{ color: item.color }}><Ico className="h-3.5 w-3.5" />{item.label}</Label>
+                      <Textarea rows={2} value={(personalityData as any)[item.key] || ""} onChange={(e) => setPersonalityData({ ...personalityData, [item.key]: e.target.value })} className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:bg-zinc-800" onFocus={(e) => e.currentTarget.style.borderColor = item.color + "40"} onBlur={(e) => e.currentTarget.style.borderColor = ""} />
+                    </div>
+                  );})}
+                </CardContent>
+                <CardFooter className="justify-end">
+                  <Button onClick={() => handleSaveConfig("personality")} disabled={saving} className="bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/20 shadow-lg shadow-emerald-600/20">
+                    <Save />
+                    <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
+                  </Button>
+                </CardFooter>
+              </Card>
+            </motion.div>
           )}
 
-          {/* TAB 5: COMMUNICATION STYLE */}
+          {/* TAB: COMMUNICATION STYLE */}
           {activeTab === "communication" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Gaya Komunikasi</CardTitle>
-                <CardDescription>Pengaturan bahasa, panjang respons, format, dan kedalaman teknis.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-4">
-                {[
-                  { key: "primary_language", label: "Bahasa Utama" },
-                  { key: "tone", label: "Nada" },
-                  { key: "response_length", label: "Panjang Respons" },
-                  { key: "formatting_preference", label: "Preferensi Format" },
-                  { key: "technical_depth", label: "Kedalaman Teknis" },
-                  { key: "explanation_style", label: "Gaya Penjelasan" },
-                ].map((item) => (
-                  <div key={item.key} className="space-y-1.5">
-                    <Label>{item.label}</Label>
-                    <Input value={(commData as any)[item.key] || ""} onChange={(e) => setCommData({ ...commData, [item.key]: e.target.value })} />
-                  </div>
-                ))}
-              </CardContent>
-              <CardFooter className="justify-end">
-                <Button onClick={() => handleSaveConfig("communication")} disabled={saving}>
-                  <Save />
-                  <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
-                </Button>
-              </CardFooter>
-            </Card>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              <Card className="border-white/[0.06] bg-zinc-900/60 backdrop-blur-xl shadow-lg">
+                <CardHeader>
+                  <CardTitle>Gaya Komunikasi</CardTitle>
+                  <CardDescription className="text-zinc-400">Pengaturan bahasa, panjang respons, format, dan kedalaman teknis.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  {[
+                    { key: "primary_language", label: "Bahasa Utama", color: "#8fa88a", Icon: Globe },
+                    { key: "tone", label: "Nada", color: "#8aa4c8", Icon: Mic2 },
+                    { key: "response_length", label: "Panjang Respons", color: "#c4a88a", Icon: Type },
+                    { key: "formatting_preference", label: "Preferensi Format", color: "#a88ac8", Icon: Palette },
+                    { key: "technical_depth", label: "Kedalaman Teknis", color: "#8ac4b8", Icon: Gauge },
+                    { key: "explanation_style", label: "Gaya Penjelasan", color: "#a8a88a", Icon: PenTool },
+                  ].map((item) => {
+                    const Ico = item.Icon;
+                    return (
+                    <div key={item.key} className="space-y-2">
+                      <Label className="flex items-center gap-2" style={{ color: item.color }}><Ico className="h-3.5 w-3.5" />{item.label}</Label>
+                      <Input value={(commData as any)[item.key] || ""} onChange={(e) => setCommData({ ...commData, [item.key]: e.target.value })} className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:bg-zinc-800" onFocus={(e) => e.currentTarget.style.borderColor = item.color + "40"} onBlur={(e) => e.currentTarget.style.borderColor = ""} />
+                    </div>
+                  );})}
+                </CardContent>
+                <CardFooter className="justify-end">
+                  <Button onClick={() => handleSaveConfig("communication")} disabled={saving} className="bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/20 shadow-lg shadow-emerald-600/20">
+                    <Save />
+                    <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
+                  </Button>
+                </CardFooter>
+              </Card>
+            </motion.div>
           )}
 
-          {/* TAB 6: SYSTEM INSTRUCTIONS */}
+          {/* TAB: SYSTEM INSTRUCTIONS */}
           {activeTab === "instructions" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Instruksi Sistem</CardTitle>
-                <CardDescription>Layer dengan prioritas tertinggi untuk behavioral rules, safety rules, dan knowledge priority.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-4">
-                {[
-                  { key: "behavioral_rules", label: "Behavioral Rules" },
-                  { key: "response_rules", label: "Response Rules" },
-                  { key: "safety_rules", label: "Safety Rules" },
-                  { key: "knowledge_priority", label: "Knowledge Priority" },
-                  { key: "reasoning_constraints", label: "Reasoning Constraints" },
-                  { key: "formatting_rules", label: "Formatting Rules" },
-                ].map((item) => (
-                  <div key={item.key} className="space-y-1.5">
-                    <Label>{item.label}</Label>
-                    <Textarea rows={2} value={(sysData as any)[item.key] || ""} onChange={(e) => setSysData({ ...sysData, [item.key]: e.target.value })} />
-                  </div>
-                ))}
-              </CardContent>
-              <CardFooter className="justify-end">
-                <Button onClick={() => handleSaveConfig("instructions")} disabled={saving}>
-                  <Save />
-                  <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
-                </Button>
-              </CardFooter>
-            </Card>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+              <Card className="border-white/[0.06] bg-zinc-900/60 backdrop-blur-xl shadow-lg">
+                <CardHeader>
+                  <CardTitle>Instruksi Sistem</CardTitle>
+                  <CardDescription className="text-zinc-400">Layer dengan prioritas tertinggi untuk behavioral rules, safety rules, dan knowledge priority.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  {[
+                    { key: "behavioral_rules", label: "Behavioral Rules", color: "#8fa88a", Icon: Cog },
+                    { key: "response_rules", label: "Response Rules", color: "#8aa4c8", Icon: ScrollText },
+                    { key: "safety_rules", label: "Safety Rules", color: "#c48a8a", Icon: ShieldCheck },
+                    { key: "knowledge_priority", label: "Knowledge Priority", color: "#c4a88a", Icon: Layers3 },
+                    { key: "reasoning_constraints", label: "Reasoning Constraints", color: "#a88ac8", Icon: GitBranch },
+                    { key: "formatting_rules", label: "Formatting Rules", color: "#8ac4b8", Icon: FileCode },
+                  ].map((item) => {
+                    const Ico = item.Icon;
+                    return (
+                    <div key={item.key} className="space-y-2">
+                      <Label className="flex items-center gap-2" style={{ color: item.color }}><Ico className="h-3.5 w-3.5" />{item.label}</Label>
+                      <Textarea rows={2} value={(sysData as any)[item.key] || ""} onChange={(e) => setSysData({ ...sysData, [item.key]: e.target.value })} className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:bg-zinc-800" onFocus={(e) => e.currentTarget.style.borderColor = item.color + "40"} onBlur={(e) => e.currentTarget.style.borderColor = ""} />
+                    </div>
+                  );})}
+                </CardContent>
+                <CardFooter className="justify-end">
+                  <Button onClick={() => handleSaveConfig("instructions")} disabled={saving} className="bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/20 shadow-lg shadow-emerald-600/20">
+                    <Save />
+                    <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
+                  </Button>
+                </CardFooter>
+              </Card>
+            </motion.div>
           )}
+
         </div>
       </main>
 
-      {/* New Knowledge Entry Modal - shadcn Dialog with all subcomponents */}
+      {/* New Knowledge Entry Modal */}
       <Dialog open={newEntryModal} onOpenChange={setNewEntryModal}>
-        <DialogContent>
+        <DialogContent className="border-white/10 bg-[#0e0a1a] text-white">
           <DialogHeader>
             <DialogTitle>Tambah Knowledge Baru</DialogTitle>
-            <DialogDescription>Buat entri pengetahuan baru yang akan di-embedding dan dipakai sebagai konteks AI.</DialogDescription>
+            <DialogDescription className="text-zinc-400">Buat entri pengetahuan baru yang akan di-embedding dan dipakai sebagai konteks AI.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSaveKnowledgeEntry} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Judul / Topik</Label>
-              <Input value={entryForm.title} onChange={(e) => setEntryForm({ ...entryForm, title: e.target.value })} required placeholder="Misal: Arsitektur Backend ITZ AI" />
+            <div className="space-y-2">
+              <Label className="text-zinc-300">Judul / Topik</Label>
+              <Input value={entryForm.title} onChange={(e) => setEntryForm({ ...entryForm, title: e.target.value })} required placeholder="Misal: Arsitektur Backend ITZ AI" className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:border-white/20 focus:bg-zinc-800" />
             </div>
-            <div className="space-y-1.5">
-              <Label>Kategori</Label>
+            <div className="space-y-2">
+              <Label className="text-zinc-300">Kategori</Label>
               <Select value={selectedCategorySlug} onValueChange={(v) => setSelectedCategorySlug(v ?? selectedCategorySlug)}>
-                <SelectTrigger>
+                <SelectTrigger className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:border-white/20 focus:bg-zinc-800">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="border-white/10 bg-[#0e0a1a] text-white">
                   {knowledgeCategories.map((c) => (
                     <SelectItem key={c.id} value={c.slug}>{c.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label>Konten Pengetahuan</Label>
-              <Textarea rows={5} value={entryForm.content} onChange={(e) => setEntryForm({ ...entryForm, content: e.target.value })} required placeholder="Tuliskan pengetahuan detail yang akan diserap oleh AI..." />
+            <div className="space-y-2">
+              <Label className="text-zinc-300">Konten Pengetahuan</Label>
+              <Textarea rows={5} value={entryForm.content} onChange={(e) => setEntryForm({ ...entryForm, content: e.target.value })} required placeholder="Tuliskan pengetahuan detail yang akan diserap oleh AI..." className="border-white/10 bg-zinc-800/80 text-white placeholder:text-zinc-500 focus:border-white/20 focus:bg-zinc-800" />
             </div>
           </form>
           <DialogFooter>
-            <Button variant="outline" type="button" onClick={() => setNewEntryModal(false)}>Batal</Button>
-            <Button onClick={(e: any) => handleSaveKnowledgeEntry(e)}>Simpan &amp; Generate Embedding</Button>
+            <Button variant="outline" type="button" onClick={() => setNewEntryModal(false)} className="border-white/10 bg-white/5 text-zinc-300">Batal</Button>
+            <Button onClick={(e: any) => handleSaveKnowledgeEntry(e)} className="bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10">Simpan &amp; Generate Embedding</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Bulk JSON Import/Export Modal - shadcn Dialog */}
+      {/* Bulk JSON Import/Export Modal */}
       <Dialog open={showJsonModal} onOpenChange={setShowJsonModal}>
-        <DialogContent className="flex max-h-[92vh] max-w-3xl flex-col p-0">
-          <DialogHeader className="border-b p-6 pb-4">
-            <DialogTitle>Import JSON — isi field admin</DialogTitle>
-            <DialogDescription>Tempel JSON, drag &amp; drop file <span className="font-mono">.json</span>, atau pilih file — mengisi Identitas AI → Instruksi Sistem (+ knowledge). Model AI dikelola manual di tab Model.</DialogDescription>
+        <DialogContent className="flex max-h-[92vh] max-w-3xl flex-col p-0 border-white/10 bg-[#0e0a1a] text-white">
+          <DialogHeader className="border-b border-white/10 p-6 pb-4">
+            <DialogTitle>Import JSON</DialogTitle>
+            <DialogDescription className="text-zinc-400">Tempel JSON atau upload file untuk mengisi konfigurasi admin.</DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-3 border-b p-6 pt-0 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
+          <div className="grid gap-3 border-b border-white/10 p-6 pt-0 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
             <div
               onDragOver={(e) => { e.preventDefault(); setJsonDrag(true); }}
               onDragLeave={() => setJsonDrag(false)}
               onDrop={(e) => { e.preventDefault(); setJsonDrag(false); const f = e.dataTransfer.files?.[0]; if (f) void handleJsonFile(f); }}
-              className={`flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs ${jsonDrag ? "border-primary bg-muted text-foreground" : "border-input bg-muted/30 text-muted-foreground"}`}
+              className={`flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs ${jsonDrag ? "border-violet-500 bg-white/5 text-white" : "border-white/10 bg-white/5 text-zinc-400"}`}
             >
               <Upload className="h-4 w-4 shrink-0" />
-              <span>{jsonDrag ? "Lepaskan file JSON..." : "Drag & drop .json di sini atau"}</span>
-              <Button variant="link" size="sm" type="button" onClick={() => jsonFileRef.current?.click()} className="h-auto p-0 text-xs underline">pilih file</Button>
+              <span>{jsonDrag ? "Lepaskan file..." : "Drag & drop .json atau"}</span>
+              <Button variant="link" size="sm" type="button" onClick={() => jsonFileRef.current?.click()} className="h-auto p-0 text-xs underline text-zinc-400">pilih file</Button>
               <Input ref={jsonFileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleJsonFile(f); e.target.value = ""; }} />
             </div>
-            <Button variant="outline" size="sm" onClick={handleBulkDownloadExample} title="Example JSON shape">
+            <Button variant="outline" size="sm" onClick={handleBulkDownloadExample} className="border-white/10 bg-white/5 text-zinc-300">
               <FileJson /> Example
             </Button>
             <Button
@@ -1134,77 +1631,30 @@ export default function AdminPage() {
                 a.click();
                 URL.revokeObjectURL(url);
               }}
-              title="Download editor contents"
+              className="border-white/10 bg-white/5 text-zinc-300"
             >
               <Download /> .json
             </Button>
-            <Button variant="outline" size="sm" onClick={async () => { try { await navigator.clipboard.writeText(jsonText || ""); } catch {} }} title="Copy JSON">
+            <Button variant="outline" size="sm" onClick={async () => { try { await navigator.clipboard.writeText(jsonText || ""); } catch {} }} className="border-white/10 bg-white/5 text-zinc-300">
               <Copy /> Copy
             </Button>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-6">
             {jsonError && (
-              <Alert variant="destructive" className="mb-3">
-                <AlertCircle />
-                <AlertTitle>JSON error</AlertTitle>
-                <AlertDescription className="whitespace-pre-wrap">{jsonError}</AlertDescription>
+              <Alert variant="destructive" className="mb-3 border-red-500/30 bg-red-500/10">
+                <AlertCircle className="text-red-400" />
+                <AlertTitle className="text-red-300">JSON error</AlertTitle>
+                <AlertDescription className="whitespace-pre-wrap text-red-200/70">{jsonError}</AlertDescription>
               </Alert>
             )}
-            <Textarea value={jsonText} onChange={(e) => setJsonText(e.target.value)} rows={18} spellCheck={false} placeholder='{"ai_identity": {...}, "personal_information": {...}, ...}' className="font-mono text-xs leading-relaxed" />
-            <details className="mt-3 rounded-lg border p-3 text-xs text-muted-foreground">
-              <summary className="cursor-pointer font-medium text-foreground">Format JSON yang diharapkan (klik untuk buka)</summary>
-              <pre className="mt-2 overflow-x-auto whitespace-pre rounded-lg bg-muted p-3 font-mono text-[11px] leading-relaxed">{`{
-  "ai_identity": {
-    "name": "ITZ AI",
-    "role": "Personal AI Assistant",
-    "description": "...",
-    "identity": "...",
-    "purpose": "..."
-  },
-  "personal_information": {
-    "profile": "...", "background": "...",
-    "interests": "...", "experience": "...",
-    "projects": "...", "preferences": "...",
-    "relevant_context": "..."
-  },
-  "ai_personality": {
-    "personality": "...", "tone": "...",
-    "attitude": "...", "reasoning_style": "...",
-    "criticism_style": "...", "response_behavior": "...",
-    "prohibited_behavior": "..."
-  },
-  "communication_settings": {
-    "primary_language": "Bahasa Indonesia",
-    "tone": "...", "response_length": "...",
-    "formatting_preference": "...",
-    "technical_depth": "...", "explanation_style": "..."
-  },
-  "system_instructions": {
-    "behavioral_rules": "...", "response_rules": "...",
-    "safety_rules": "...", "knowledge_priority": "...",
-    "reasoning_constraints": "...", "formatting_rules": "..."
-  },
-  "knowledge_entries": [
-    {
-      "category_slug": "technical_knowledge",
-      "title": "Backend stack",
-      "content": "...",
-      "tags": ["stack"],
-      "is_active": true
-    }
-  ]
-}`}</pre>
-              <p className="mt-2 leading-relaxed">
-                Required: <span className="font-mono">ai_identity.name</span>, <span className="font-mono">ai_identity.role</span>, <span className="font-mono">communication_settings.primary_language</span> (only when that section is present). Categories for knowledge entries resolve by <span className="font-mono">category_slug</span> (<span className="font-mono">technical_knowledge</span>, <span className="font-mono">projects</span>, <span className="font-mono">experience</span>, <span className="font-mono">preferences</span>, <span className="font-mono">custom_topics</span>). Full working example: <span className="font-mono">data/admin_bulk_example.json</span>.
-              </p>
-            </details>
+            <Textarea value={jsonText} onChange={(e) => setJsonText(e.target.value)} rows={18} spellCheck={false} placeholder='{"ai_identity": {...}, ...}' className=" text-xs leading-relaxed border-white/10 bg-white/5 text-white" />
           </div>
 
-          <DialogFooter className="border-t p-6">
-            <Button variant="outline" onClick={() => setShowJsonModal(false)}>Batal</Button>
-            <Button variant="outline" onClick={() => { try { applyImportedDataToState(JSON.parse(jsonText)); setSaveSuccess(true); setTimeout(() => setSaveSuccess(false), 2000); } catch (e: any) { setJsonError(`Invalid JSON: ${e.message}`); } }} title="Isi form saja — simpan per-tab setelahnya">Isi form saja</Button>
-            <Button onClick={handleJsonApplyFromText} disabled={saving || !jsonText.trim()} title="Validasi + simpan semua bagian + knowledge entries ke backend">{saving ? "Mengimpor..." : "Validasi & Import"}</Button>
+          <DialogFooter className="border-t border-white/10 p-6">
+            <Button variant="outline" onClick={() => setShowJsonModal(false)} className="border-white/10 bg-white/5 text-zinc-300">Batal</Button>
+            <Button variant="outline" onClick={() => { try { applyImportedDataToState(JSON.parse(jsonText)); setSaveSuccess(true); setTimeout(() => setSaveSuccess(false), 2000); } catch (e: any) { setJsonError(`Invalid JSON: ${e.message}`); } }} className="border-white/10 bg-white/5 text-zinc-300">Isi form saja</Button>
+            <Button onClick={handleJsonApplyFromText} disabled={saving || !jsonText.trim()} className="bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-500/20 shadow-lg shadow-emerald-600/20">{saving ? "Mengimpor..." : "Validasi & Import"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
