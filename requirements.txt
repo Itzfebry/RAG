@@ -10,3 +10,4 @@ python-multipart>=0.0.9
 openai>=1.0.0
 sentence-transformers>=2.2.0
 python-dotenv>=1.0.0
+langchain_nvidia_ai_endpoints>=0.0.6

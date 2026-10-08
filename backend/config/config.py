@@ -13,11 +13,15 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "") or os.getenv("ACTIVE_MODEL", "")
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
+    NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "")
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "") or "llama-3.1-8b-instant"
 
     # Generic active model + base URL. Any OpenAI-compatible provider works.
-    ACTIVE_MODEL: str = os.getenv("ACTIVE_MODEL", "") or os.getenv("GEMINI_MODEL", "") or "qwen/qwen3.8-27b:free"
-    API_BASE_URL: str = os.getenv("API_BASE_URL", "") or os.getenv("OPENROUTER_BASE_URL", "") or "https://openrouter.ai/api/v1"
-    MODEL_PROVIDER: str = os.getenv("MODEL_PROVIDER", "openrouter")
+    ACTIVE_MODEL: str = os.getenv("ACTIVE_MODEL", "") or os.getenv("GROQ_MODEL", "") or os.getenv("GEMINI_MODEL", "") or "llama-3.1-8b-instant"
+    API_BASE_URL: str = os.getenv("API_BASE_URL", "") or os.getenv("OPENROUTER_BASE_URL", "") or "https://api.groq.com/openai/v1"
+    MODEL_PROVIDER: str = os.getenv("MODEL_PROVIDER", "groq")
+    NVIDIA_MODEL: str = os.getenv("NVIDIA_MODEL", "") or "poolside/laguna-xs-2.1"
     
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")

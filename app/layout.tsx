@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
 import "./globals.css";
+import { cn } from "@/lib/utils";
 
 const montserrat = Montserrat({
   subsets: ["latin"],
@@ -9,8 +10,9 @@ const montserrat = Montserrat({
 });
 
 export const metadata: Metadata = {
-  title: "ITZ AI — Personal AI Assistant",
+  title: { default: "ITZ AI - Chat", template: "ITZ AI - %s" },
   description: "Personal AI Agent customized with owner knowledge, personality, and context.",
+  icons: { icon: "/image/favicon.png", shortcut: "/image/favicon.png", apple: "/image/favicon.png" },
 };
 
 export default function RootLayout({
@@ -19,8 +21,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="id" className={`${montserrat.variable} h-full`}>
-      <body className="font-sans bg-zinc-950 text-zinc-100 antialiased h-full selection:bg-zinc-800 selection:text-zinc-100">
+    <html lang="id" className={cn("h-full dark", montserrat.variable)}>
+      <body className="font-sans bg-background text-foreground antialiased h-full">
         {children}
       </body>
     </html>
