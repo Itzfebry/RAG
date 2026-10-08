@@ -57,8 +57,14 @@ import {
   Globe,
   Hash,
   Box,
+  Eye,
+  EyeOff,
+  Loader2,
+  Lock,
+  ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -70,9 +76,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
-type TabType = "dashboard" | "identity" | "personal" | "knowledge" | "personality" | "communication" | "instructions" | "models";
+type TabType = "dashboard" | "users" | "identity" | "personal" | "knowledge" | "personality" | "communication" | "instructions" | "models";
 
 // Mock real-time data generator with more professional metrics
 const generateMockStats = () => ({
@@ -100,17 +106,28 @@ const generateTimeSeriesData = () => {
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
+type ToastKind = "success" | "error" | "info";
+type Toast = { id: string; kind: ToastKind; title: string; desc?: string };
+
 export default function AdminPage() {
+  const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("");
-  const [authError, setAuthError] = useState("");
-
   const [activeTab, setActiveTab] = useState<TabType>("dashboard");
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  // Toast stack — dark gahar, aria-live
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const pushToast = React.useCallback((kind: ToastKind, title: string, desc?: string) => {
+    const id = Math.random().toString(36).slice(2, 9);
+    setToasts((prev) => [...prev, { id, kind, title, desc }]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 3800);
+  }, []);
+  const dismissToast = React.useCallback((id: string) => setToasts((prev) => prev.filter((t) => t.id !== id)), []);
 
   // Real-time stats
   const [stats, setStats] = useState(generateMockStats());
@@ -151,6 +168,13 @@ export default function AdminPage() {
   const [newEntryModal, setNewEntryModal] = useState(false);
   const [entryForm, setEntryForm] = useState({ id: "", title: "", content: "", category_id: "" });
 
+  // Users + app settings (admin kelola user & expiry token)
+  const [users, setUsers] = useState<any[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [appSettings, setAppSettings] = useState<{ user_token_expiry_hours: number; trial_prompts: number }>({ user_token_expiry_hours: 24, trial_prompts: 3 });
+  const [userModalOpen, setUserModalOpen] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [userForm, setUserForm] = useState({ username: "", password: "", display_name: "", max_prompts: 50, is_active: true });
   // Bulk JSON import/export
   const [showJsonModal, setShowJsonModal] = useState(false);
   const [jsonText, setJsonText] = useState("");
@@ -178,38 +202,61 @@ export default function AdminPage() {
       if (res.ok) {
         setIsAuthenticated(true);
         loadAllData();
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoadingAuth(false);
-    }
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError("");
-    try {
-      const res = await fetch("/api/python/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      if (res.ok) {
-        setIsAuthenticated(true);
-        loadAllData();
+        loadUsersAndSettings();
       } else {
-        const data = await res.json();
-        setAuthError(data.detail || "Login gagal");
+        router.replace("/admin/login");
       }
-    } catch (err) {
-      setAuthError("Gagal terhubung ke server auth");
-    }
+    } catch {}
+    setIsLoadingAuth(false);
   };
 
   const handleLogout = async () => {
-    await fetch("/api/python/admin/logout", { method: "POST" });
-    setIsAuthenticated(false);
+    try { await fetch("/api/python/admin/logout", { method: "POST" }); } catch {}
+    router.replace("/admin/login");
+  };
+
+  const loadUsersAndSettings = async () => {
+    setUsersLoading(true);
+    try {
+      const [uRes, sRes] = await Promise.all([fetch("/api/python/admin/users"), fetch("/api/python/admin/settings")]);
+      if (uRes.ok) setUsers(await uRes.json());
+      if (sRes.ok) { const j = await sRes.json(); const s = j.settings || j; setAppSettings({ user_token_expiry_hours: Number(s.user_token_expiry_hours ?? 24), trial_prompts: Number(s.trial_prompts ?? 3) }); }
+    } catch {}
+    setUsersLoading(false);
+  };
+
+  const handleCreateOrUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const isEdit = Boolean(editingUserId);
+    const url = isEdit ? `/api/python/admin/users/${editingUserId}` : "/api/python/admin/users";
+    const method = isEdit ? "PUT" : "POST";
+    const body: any = isEdit
+      ? { display_name: userForm.display_name || null, max_prompts: Number(userForm.max_prompts), is_active: userForm.is_active, ...(userForm.password ? { password: userForm.password } : {}) }
+      : { username: userForm.username.trim().toLowerCase(), password: userForm.password, display_name: userForm.display_name || null, max_prompts: Number(userForm.max_prompts), is_active: userForm.is_active };
+    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) { const j = await res.json().catch(() => ({})); pushToast("error", "Gagal simpan user", (j.detail || JSON.stringify(j)).slice(0, 140)); return; }
+    pushToast("success", isEdit ? "User diperbarui" : "User dibuat");
+    setUserModalOpen(false); setEditingUserId(null); setUserForm({ username: "", password: "", display_name: "", max_prompts: 50, is_active: true });
+    loadUsersAndSettings();
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    if (!confirm("Hapus user ini?")) return;
+    const res = await fetch(`/api/python/admin/users/${id}`, { method: "DELETE" });
+    if (!res.ok) { pushToast("error", "Gagal hapus user"); return; }
+    pushToast("success", "User dihapus"); loadUsersAndSettings();
+  };
+
+  const handleResetUsage = async (id: string) => {
+    const res = await fetch(`/api/python/admin/users/${id}/reset-usage`, { method: "POST" });
+    if (!res.ok) { pushToast("error", "Gagal reset"); return; }
+    pushToast("success", "Usage direset"); loadUsersAndSettings();
+  };
+
+  const handleSaveSettings = async () => {
+    const res = await fetch("/api/python/admin/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_token_expiry_hours: Number(appSettings.user_token_expiry_hours), trial_prompts: Number(appSettings.trial_prompts) }) });
+    if (!res.ok) { const j = await res.json().catch(() => ({})); const msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail || j); pushToast("error", "Gagal simpan", msg.slice(0, 120)); return; }
+    const j = await res.json(); const s = j.settings || j; setAppSettings({ user_token_expiry_hours: Number(s.user_token_expiry_hours ?? 24), trial_prompts: Number(s.trial_prompts ?? 3) }); pushToast("success", "Pengaturan disimpan");
   };
 
   const loadAllData = async () => {
@@ -317,12 +364,17 @@ export default function AdminPage() {
         setModelConfig((prev) => ({ ...prev, ...cur }));
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
+        pushToast("success", "Model diperbarui", (cur.active_model || modelConfig.active_model || "").slice(0, 80));
       } else {
         const d = await res.json().catch(() => ({}));
-        setErrorMessage((d as any).detail || "Gagal menyimpan model config");
+        const msg = (d as any).detail || "Gagal menyimpan model config";
+        setErrorMessage(typeof msg === "string" ? msg : JSON.stringify(msg));
+        pushToast("error", "Gagal simpan model", typeof msg === "string" ? msg.slice(0, 120) : "Periksa input.");
       }
     } catch (err: any) {
-      setErrorMessage(err.message || "Error saving model config");
+      const msg = err.message || "Error saving model config";
+      setErrorMessage(msg);
+      pushToast("error", "Gagal simpan model", msg.slice(0, 120));
     } finally {
       setSaving(false);
     }
@@ -347,6 +399,13 @@ export default function AdminPage() {
       communication: "communication_settings",
       instructions: "system_instructions"
     };
+    const labelMap: Record<string, string> = {
+      identity: "Identitas",
+      personal: "Info Personal",
+      personality: "Kepribadian",
+      communication: "Komunikasi",
+      instructions: "Instruksi",
+    };
 
     try {
       const res = await fetch("/api/python/admin/config", {
@@ -358,12 +417,18 @@ export default function AdminPage() {
       if (res.ok) {
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
+        pushToast("success", "Tersimpan", `${labelMap[section] ?? section} diperbarui.`);
       } else {
-        const d = await res.json();
-        setErrorMessage(d.detail || "Gagal menyimpan konfigurasi");
+        const d = await res.json().catch(() => ({}));
+        const msg = (d as any).detail || "Gagal menyimpan konfigurasi";
+        const str = typeof msg === "string" ? msg : JSON.stringify(msg);
+        setErrorMessage(str);
+        pushToast("error", "Gagal simpan", str.slice(0, 120));
       }
     } catch (err: any) {
-      setErrorMessage(err.message || "Error saving configuration");
+      const msg = err.message || "Error saving configuration";
+      setErrorMessage(msg);
+      pushToast("error", "Gagal simpan", msg.slice(0, 120));
     } finally {
       setSaving(false);
     }
@@ -391,19 +456,30 @@ export default function AdminPage() {
         setNewEntryModal(false);
         setEntryForm({ id: "", title: "", content: "", category_id: "" });
         loadAllData();
+        pushToast("success", "Knowledge ditambah", entryForm.title.slice(0, 60));
+      } else {
+        const d = await res.json().catch(() => ({}));
+        const msg = (d as any).detail || "Gagal simpan knowledge";
+        pushToast("error", "Gagal simpan", typeof msg === "string" ? msg.slice(0, 120) : "Cek input.");
       }
-    } catch (err) {
-      console.error("Error saving knowledge entry:", err);
+    } catch (err: any) {
+      pushToast("error", "Gagal simpan", err.message?.slice(0, 120) || "Error");
     }
   };
 
   const handleDeleteKnowledgeEntry = async (id: string) => {
     if (!confirm("Hapus entri knowledge ini?")) return;
     try {
-      await fetch(`/api/python/admin/knowledge/entries/${id}`, { method: "DELETE" });
-      loadAllData();
-    } catch (err) {
-      console.error("Error deleting entry:", err);
+      const res = await fetch(`/api/python/admin/knowledge/entries/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        loadAllData();
+        pushToast("success", "Terhapus", "Entri knowledge dihapus.");
+      } else {
+        const d = await res.json().catch(() => ({}));
+        pushToast("error", "Gagal hapus", (d as any).detail?.slice?.(0, 120) || "Coba lagi.");
+      }
+    } catch (err: any) {
+      pushToast("error", "Gagal hapus", err.message?.slice(0, 120) || "Error");
     }
   };
 
@@ -497,7 +573,9 @@ export default function AdminPage() {
     try {
       data = JSON.parse(jsonText);
     } catch (e: any) {
-      setJsonError(`Invalid JSON: ${e.message || String(e)}`);
+      const msg = `Invalid JSON: ${e.message || String(e)}`;
+      setJsonError(msg);
+      pushToast("error", "JSON tidak valid", msg.slice(0, 120));
       return;
     }
     applyImportedDataToState(data);
@@ -511,18 +589,28 @@ export default function AdminPage() {
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         const msg = (j as any).detail || (j as any).message || JSON.stringify(j);
-        setJsonError(typeof msg === "string" ? msg : JSON.stringify(msg, null, 2));
+        const str = typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
+        setJsonError(str);
         setSaveSuccess(false);
+        pushToast("error", "Import gagal", str.slice(0, 120));
       } else {
         const j = await res.json().catch(() => ({}));
-        if ((j as any).errors) setJsonError(`Partial import — some sections failed:\n${JSON.stringify((j as any).errors, null, 2)}`);
+        if ((j as any).errors) {
+          const errStr = JSON.stringify((j as any).errors, null, 2);
+          setJsonError(`Partial import — some sections failed:\n${errStr}`);
+          pushToast("info", "Import sebagian", "Beberapa section gagal — cek detail.");
+        } else {
+          pushToast("success", "Import berhasil", `${((j as any).applied_sections || []).length} section + ${(j as any).knowledge_entries_applied || 0} knowledge diterapkan.`);
+        }
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
         await loadAllData();
         setTimeout(() => setShowJsonModal(false), 700);
       }
     } catch (e: any) {
-      setJsonError(e.message || String(e));
+      const msg = e.message || String(e);
+      setJsonError(msg);
+      pushToast("error", "Import gagal", msg.slice(0, 120));
     } finally {
       setSaving(false);
     }
@@ -569,16 +657,51 @@ export default function AdminPage() {
     setShowJsonModal(true);
   };
 
+  // Toast overlay component reused in every state
+  const ToastStack = (
+    <div aria-live="polite" aria-atomic={false} className="pointer-events-none fixed right-3 top-3 z-[100] flex w-[92vw] max-w-[380px] flex-col gap-2 sm:right-4 sm:top-4">
+      <AnimatePresence initial={false}>
+        {toasts.map((t) => {
+          const isSuccess = t.kind === "success";
+          const isError = t.kind === "error";
+          return (
+            <motion.div
+              key={t.id}
+              initial={{ opacity: 0, x: 16, scale: 0.98 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 16, scale: 0.98 }}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              className={`pointer-events-auto flex gap-3 rounded-xl border px-3.5 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.7)] backdrop-blur-xl ${isSuccess ? "border-emerald-500/20 bg-[#07140e]/95" : isError ? "border-red-500/20 bg-[#1a0a0a]/95" : "border-white/[0.08] bg-zinc-900/95"}`}
+            >
+              <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${isSuccess ? "border-emerald-500/20 bg-emerald-500/15 text-emerald-400" : isError ? "border-red-500/20 bg-red-500/15 text-red-400" : "border-white/10 bg-white/[0.06] text-zinc-300"}`} aria-hidden>
+                {isSuccess ? <Check className="h-3.5 w-3.5" /> : isError ? <AlertCircle className="h-3.5 w-3.5" /> : <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className={`text-[13px] font-medium leading-none ${isSuccess ? "text-emerald-200" : isError ? "text-red-200" : "text-zinc-100"}`}>{t.title}</p>
+                {t.desc && <p className={`mt-1.5 text-[12px] leading-[1.5] break-words ${isSuccess ? "text-emerald-200/60" : isError ? "text-red-200/60" : "text-zinc-400"}`}>{t.desc}</p>}
+              </div>
+              <button type="button" onClick={() => dismissToast(t.id)} aria-label="Tutup notifikasi" className="pointer-events-auto -mr-1 -mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300 cursor-pointer"><X className="h-3.5 w-3.5" /></button>
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
+    </div>
+  );
+
   if (isLoadingAuth) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#05030a]">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="flex items-center gap-3"
-        >
-          <Sparkles className="h-6 w-6 animate-spin text-zinc-400" />
-          <span className="text-zinc-300">Memeriksa otorisasi admin...</span>
+      <div className="flex min-h-dvh items-center justify-center bg-black relative overflow-hidden">
+        {ToastStack}
+        <div aria-hidden className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:28px_28px]" />
+        <div aria-hidden className="absolute inset-0 bg-[radial-gradient(ellipse_800px_400px_at_50%_-10%,rgba(255,255,255,0.05),transparent_60%)]" />
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative flex flex-col items-center gap-4">
+          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-zinc-900">
+            <img src="/image/favicon.png" alt="" width={44} height={44} className="h-full w-full object-cover opacity-90" />
+          </div>
+          <div className="flex items-center gap-2 text-[13px] tracking-wide text-zinc-500">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            <span>Memeriksa sesi…</span>
+          </div>
         </motion.div>
       </div>
     );
@@ -586,92 +709,43 @@ export default function AdminPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 px-4 py-12">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <Card className="w-full max-w-md border-slate-800/50 bg-slate-900/80 backdrop-blur-xl shadow-2xl">
-            <CardHeader className="text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-lg border-2 border-white/10 bg-gradient-to-br from-zinc-800 to-zinc-900 shadow-lg shadow-white/5">
-                <Shield className="h-8 w-8 text-zinc-400" />
-              </div>
-              <CardTitle className="mt-6 text-2xl text-slate-100 font-bold">Admin Control Panel</CardTitle>
-              <CardDescription className="text-slate-400">Secure access to system administration</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="admin-username" className="text-slate-300 text-sm font-medium">Username</Label>
-                  <Input 
-                    id="admin-username" 
-                    value={username} 
-                    onChange={(e) => setUsername(e.target.value)} 
-                    required 
-                    className="border-white/10 bg-zinc-800/50 text-white focus:border-white/20"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="admin-password" className="text-slate-300 text-sm font-medium">Password</Label>
-                  <Input 
-                    id="admin-password" 
-                    type="password" 
-                    value={password} 
-                    onChange={(e) => setPassword(e.target.value)} 
-                    required 
-                    placeholder="••••••••••••"
-                    className="border-white/10 bg-zinc-800/50 text-white focus:border-white/20"
-                  />
-                </div>
-                {authError && (
-                  <Alert variant="destructive" className="border-red-500/20 bg-red-500/10">
-                    <AlertCircle />
-                    <AlertTitle className="text-red-300">Authentication Failed</AlertTitle>
-                    <AlertDescription className="text-red-200/70">{authError}</AlertDescription>
-                  </Alert>
-                )}
-                <Button type="submit" className="w-full bg-white text-black hover:bg-zinc-200 text-white font-semibold">
-                  Sign In to Dashboard
-                </Button>
-              </form>
-            </CardContent>
-            <CardFooter className="justify-center">
-              <Button variant="link" size="sm" nativeButton={false} render={<Link href="/" />} className="text-slate-400 hover:text-slate-200">
-                ← Back to Chat
-              </Button>
-            </CardFooter>
-          </Card>
-        </motion.div>
+      <div className="flex min-h-dvh items-center justify-center bg-black">
+        {ToastStack}
+        <div className="flex items-center gap-2 text-sm text-zinc-500">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          Mengalihkan ke login…
+        </div>
       </div>
     );
   }
 
+
+
   return (
-    <div className="flex h-screen bg-[#0a0a0a] text-white overflow-hidden relative">
-      {/* Subtle grid background */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px]"></div>
+    <div className="flex h-screen bg-black text-white overflow-hidden relative selection:bg-white selection:text-black">
+      {ToastStack}
       
-      {/* Sidebar */}
-      <aside className="hidden w-72 flex-col justify-between border-r border-white/[0.06] bg-black/60 backdrop-blur-xl p-6 md:flex relative z-10">
+      {/* Sidebar — solid black, hairline only */}
+      <aside className="hidden w-[272px] flex-col justify-between border-r border-white/[0.07] bg-[#050507] p-5 md:flex relative z-10">
         <div>
           <motion.div 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             className="mb-8 flex items-center gap-3"
           >
-            <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-white/[0.08] bg-zinc-900 shadow-lg">
-              <img src="/image/favicon.png" alt="ITZ" className="h-full w-full object-cover" />
+            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-black">
+              <img src="/image/favicon.png" alt="ITZ" width={40} height={40} className="h-full w-full object-cover" />
             </div>
-            <div>
-              <h1 className="text-base font-bold tracking-tight text-white">ITZ AI CONTROL</h1>
-              <p className="text-[10px] text-zinc-500 uppercase ">ADMIN PANEL</p>
+            <div className="min-w-0">
+              <h1 className="text-[13px] font-semibold tracking-[0.08em] text-white">ITZ AI</h1>
+              <p className="text-[10px] font-medium tracking-[0.16em] text-zinc-500">CONSOLE</p>
             </div>
           </motion.div>
 
           <nav className="space-y-1">
             {[
               { id: "dashboard", label: "Dashboard", icon: BarChart3 },
+              { id: "users", label: "Users", icon: User },
               { id: "models", label: "AI Models", icon: Sparkles },
               { id: "identity", label: "Identity", icon: Sparkles },
               { id: "personal", label: "Personal Info", icon: User },
@@ -692,13 +766,13 @@ export default function AdminPage() {
                   <Button
                     variant={isActive ? "secondary" : "ghost"}
                     onClick={() => setActiveTab(item.id as TabType)}
-                    className={`w-full justify-start gap-3 text-[13px] font-medium transition-all duration-200 ${
+                    className={`w-full justify-start gap-2.5 text-[13px] font-medium transition-colors cursor-pointer ${
                       isActive 
-                        ? `bg-white text-black shadow-lg border border-white/10` 
-                        : "text-zinc-500 hover:text-white hover:bg-white/[0.05] border border-transparent"
+                        ? `bg-white text-black shadow-sm border border-white` 
+                        : "text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] border border-transparent"
                     }`}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-[15px] w-[15px] shrink-0" />
                     <span>{item.label}</span>
                   </Button>
                 </motion.div>
@@ -708,47 +782,21 @@ export default function AdminPage() {
         </div>
 
         <div className="space-y-2 border-t border-white/[0.06] pt-4">
-          <Button variant="ghost" nativeButton={false} render={<Link href="/" />} className="w-full justify-start gap-2 text-zinc-500 hover:text-white hover:bg-white/[0.05]">
-            <ArrowLeft className="h-4 w-4" />
+          <Button variant="ghost" nativeButton={false} render={<Link href="/" />} className="w-full justify-start gap-2 text-[13px] text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] cursor-pointer">
+            <ArrowLeft className="h-4 w-4 shrink-0" />
             <span>Back to Chat</span>
           </Button>
-          <Button variant="ghost" onClick={handleLogout} className="w-full justify-start gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10">
-            <LogOut className="h-4 w-4" />
+          <Button variant="ghost" onClick={handleLogout} className="w-full justify-start gap-2 text-[13px] text-zinc-500 hover:text-red-300 hover:bg-red-500/10 cursor-pointer">
+            <LogOut className="h-4 w-4 shrink-0" />
             <span>Logout</span>
           </Button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-6 lg:p-10 relative z-10">
-        <div className="mx-auto max-w-7xl space-y-6">
-          
-          {/* Feedback banner */}
-          {saveSuccess && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <Alert className="border-white/[0.06] bg-zinc-800/60 backdrop-blur">
-                <Check className="text-zinc-300" />
-                <AlertTitle className="text-emerald-300">Tersimpan</AlertTitle>
-                <AlertDescription className="text-emerald-200/70">Perubahan berhasil disimpan dan langsung aktif di agent.</AlertDescription>
-              </Alert>
-            </motion.div>
-          )}
-
-          {errorMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <Alert variant="destructive" className="border-red-500/30 bg-red-500/10">
-                <AlertCircle className="text-red-400" />
-                <AlertTitle className="text-red-300">Gagal menyimpan</AlertTitle>
-                <AlertDescription className="text-red-200/70">{errorMessage}</AlertDescription>
-              </Alert>
-            </motion.div>
-          )}
+      {/* Main Content — darker, less text */}
+      <main className="flex-1 overflow-y-auto p-5 sm:p-6 lg:p-8 relative z-10">
+        <div className="mx-auto max-w-6xl space-y-5">
+          {/* Reserved for page header per-tab — banners removed, toast handles feedback */}
 
           {/* DASHBOARD TAB */}
           {activeTab === "dashboard" && (
@@ -757,60 +805,36 @@ export default function AdminPage() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-6"
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-3xl font-bold text-slate-100 tracking-tight">System Dashboard</h2>
-                  <p className="text-sm text-slate-400 mt-1">Real-time infrastructure monitoring and analytics</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Badge className="bg-zinc-800 text-zinc-300 border-white/10 px-3 py-1.5">
-                    <Activity className="h-3 w-3 mr-1.5 animate-pulse" />
-                    Live Production
-                  </Badge>
-                  <Badge className="bg-slate-800 text-slate-300 border-white/10 px-3 py-1.5  text-xs">
-                    v2.1.0
-                  </Badge>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-white leading-none">Dashboard</h2>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium tracking-wide text-emerald-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
+                    LIVE
+                  </span>
+                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium tracking-wide text-zinc-400">v2.1</span>
                 </div>
               </div>
 
-              {/* Stats Cards - matte colored icons */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
                 {[
-                  { label: "Total Requests", value: stats.totalRequests.toLocaleString(), icon: TrendingUp, iconBg: "bg-[#3f4a3c] border-[#4a5a45]", iconColor: "text-[#8fa88a]", change: "+18.2%", trend: "up" },
-                  { label: "Active Sessions", value: stats.activeUsers.toString(), icon: User, iconBg: "bg-[#3d4a5c] border-[#45566e]", iconColor: "text-[#8aa4c8]", change: "+12.5%", trend: "up" },
-                  { label: "Avg Latency", value: `${stats.avgResponseTime}s`, icon: Zap, iconBg: "bg-[#5c4a3a] border-[#6b5644]", iconColor: "text-[#c4a88a]", change: "-15.3%", trend: "down" },
-                  { label: "Knowledge Entries", value: stats.knowledgeEntries.toString(), icon: Database, iconBg: "bg-[#4a3f5c] border-[#564a6e]", iconColor: "text-[#a88ac8]", change: "+24", trend: "up" },
+                  { label: "Requests", value: stats.totalRequests.toLocaleString(), icon: TrendingUp, iconBg: "bg-emerald-500/10 border-emerald-500/15", iconColor: "text-emerald-400", labelColor: "text-emerald-300/70" },
+                  { label: "Sessions", value: stats.activeUsers.toString(), icon: User, iconBg: "bg-sky-500/10 border-sky-500/15", iconColor: "text-sky-400", labelColor: "text-sky-300/70" },
+                  { label: "Latency", value: `${stats.avgResponseTime}s`, icon: Zap, iconBg: "bg-amber-500/10 border-amber-500/15", iconColor: "text-amber-400", labelColor: "text-amber-300/70" },
+                  { label: "Knowledge", value: stats.knowledgeEntries.toString(), icon: Database, iconBg: "bg-violet-500/10 border-violet-500/15", iconColor: "text-violet-400", labelColor: "text-violet-300/70" },
                 ].map((stat, idx) => {
                   const Icon = stat.icon;
                   return (
-                    <motion.div
-                      key={stat.label}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.08 }}
-                    >
-                      <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl hover:border-white/[0.1] hover:bg-zinc-900/80 transition-all duration-300 shadow-lg relative overflow-hidden group">
-                        <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                        <CardContent className="p-6 relative">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">{stat.label}</p>
-                              <p className="text-3xl font-bold text-white mb-3">{stat.value}</p>
-                              <div className="flex items-center gap-2">
-                                <span className={`text-xs font-medium px-2.5 py-1 rounded-md border ${
-                                  stat.trend === 'up' 
-                                    ? 'bg-white/5 text-zinc-300 border-white/10' 
-                                    : 'bg-zinc-800 text-zinc-400 border-white/10'
-                                }`}>
-                                  {stat.change}
-                                </span>
-                                <span className="text-xs text-zinc-600">vs 24h</span>
-                              </div>
-                            </div>
-                            <div className={`flex h-14 w-14 items-center justify-center rounded-xl border ${stat.iconBg}`}>
-                              <Icon className={`h-7 w-7 ${stat.iconColor}`} />
-                            </div>
+                    <motion.div key={stat.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }}>
+                      <Card className="border-white/[0.06] bg-zinc-900/40">
+                        <CardContent className="flex items-center justify-between gap-3 p-4">
+                          <div className="min-w-0">
+                            <p className={`text-[11px] font-medium tracking-[0.08em] ${stat.labelColor}`}>{stat.label}</p>
+                            <p className="mt-1 text-[20px] font-semibold tracking-tight text-white leading-none truncate tabular-nums">{stat.value}</p>
                           </div>
+                          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${stat.iconBg}`} aria-hidden>
+                            <Icon className={`h-4 w-4 ${stat.iconColor}`} />
+                          </span>
                         </CardContent>
                       </Card>
                     </motion.div>
@@ -818,84 +842,42 @@ export default function AdminPage() {
                 })}
               </div>
 
-              {/* Additional Metrics Row - matte variants */}
-              <div className="grid gap-4 md:grid-cols-4">
-                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">Uptime</p>
-                        <p className="text-xl font-bold text-white">{stats.uptime}</p>
-                      </div>
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#3f4a3c] border border-[#4a5a45]">
-                        <Clock className="h-5 w-5 text-[#8fa88a]" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">Error Rate</p>
-                        <p className="text-xl font-bold text-white">{stats.errorRate}%</p>
-                      </div>
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#5c3a3a] border border-[#6b4444]">
-                        <AlertCircle className="h-5 w-5 text-[#c48a8a]" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">Tokens/24h</p>
-                        <p className="text-xl font-bold text-white">{(stats.tokensProcessed / 1000000).toFixed(1)}M</p>
-                      </div>
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#3a4a5c] border border-[#44556e]">
-                        <Zap className="h-5 w-5 text-[#8aa4c8]" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">Cache Hit</p>
-                        <p className="text-xl font-bold text-white">{stats.cacheHitRate}%</p>
-                      </div>
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#4a3f5c] border border-[#564a6e]">
-                        <Database className="h-5 w-5 text-[#a88ac8]" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+              <div className="grid gap-3 md:grid-cols-4">
+                {[
+                  { k: "Uptime", v: stats.uptime, labelColor: "text-emerald-300/60", valueColor: "text-emerald-200" },
+                  { k: "Error", v: `${stats.errorRate}%`, labelColor: "text-red-300/60", valueColor: "text-red-200" },
+                  { k: "Tokens", v: `${(stats.tokensProcessed / 1000000).toFixed(1)}M`, labelColor: "text-sky-300/60", valueColor: "text-sky-200" },
+                  { k: "Cache", v: `${stats.cacheHitRate}%`, labelColor: "text-violet-300/60", valueColor: "text-violet-200" },
+                ].map((m) => (
+                  <Card key={m.k} className="border-white/[0.06] bg-zinc-900/30">
+                    <CardContent className="flex items-baseline justify-between gap-2 px-4 py-3">
+                      <span className={`text-[11px] font-medium tracking-[0.08em] ${m.labelColor}`}>{m.k}</span>
+                      <span className={`text-[13px] font-semibold tabular-nums ${m.valueColor}`}>{m.v}</span>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
 
-              {/* Charts */}
-              <div className="grid gap-6 lg:grid-cols-2">
-                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
-                      <Activity className="h-5 w-5 text-zinc-300" />
-                      REQUEST VOLUME (24H)
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card className="border-white/[0.06] bg-zinc-900/30">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-sky-300/70">
+                      <Activity className="h-3.5 w-3.5 text-sky-400" />
+                      REQUEST VOLUME
                     </CardTitle>
-                    <CardDescription className="text-zinc-500 text-xs text-zinc-500">Production Traffic Analysis</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={280}>
                       <AreaChart data={timeSeriesData}>
                         <defs>
                           <linearGradient id="colorRequests" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#a1a1aa" stopOpacity={0.4}/>
-                            <stop offset="95%" stopColor="#a1a1aa" stopOpacity={0}/>
+                            <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.25}/>
+                            <stop offset="95%" stopColor="#38bdf8" stopOpacity={0}/>
                           </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.1} />
-                        <XAxis dataKey="time" stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
-                        <YAxis stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.08} />
+                        <XAxis dataKey="time" stroke="#71717a" fontSize={10} fontFamily="monospace" />
+                        <YAxis stroke="#71717a" fontSize={10} fontFamily="monospace" />
                         <Tooltip 
                           contentStyle={{ 
                             backgroundColor: '#000', 
@@ -905,26 +887,25 @@ export default function AdminPage() {
                             fontFamily: 'monospace'
                           }} 
                         />
-                        <Area type="monotone" dataKey="requests" stroke="#a1a1aa" fillOpacity={1} fill="url(#colorRequests)" strokeWidth={2} />
+                        <Area type="monotone" dataKey="requests" stroke="#38bdf8" fillOpacity={1} fill="url(#colorRequests)" strokeWidth={2} />
                       </AreaChart>
                     </ResponsiveContainer>
                   </CardContent>
                 </Card>
 
-                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
-                      <Zap className="h-5 w-5 text-zinc-300" />
-                      RESPONSE LATENCY
+                <Card className="border-white/[0.06] bg-zinc-900/30">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-amber-300/70">
+                      <Zap className="h-3.5 w-3.5 text-amber-400" />
+                      LATENCY
                     </CardTitle>
-                    <CardDescription className="text-zinc-500 text-xs text-zinc-500">Average Response Time (Seconds)</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={280}>
                       <LineChart data={timeSeriesData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.1} />
-                        <XAxis dataKey="time" stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
-                        <YAxis stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.08} />
+                        <XAxis dataKey="time" stroke="#71717a" fontSize={10} fontFamily="monospace" />
+                        <YAxis stroke="#71717a" fontSize={10} fontFamily="monospace" />
                         <Tooltip 
                           contentStyle={{ 
                             backgroundColor: '#000', 
@@ -934,19 +915,18 @@ export default function AdminPage() {
                             fontFamily: 'monospace'
                           }} 
                         />
-                        <Line type="monotone" dataKey="responseTime" stroke="#10b981" strokeWidth={3} dot={{ fill: '#10b981', r: 4 }} />
+                        <Line type="monotone" dataKey="responseTime" stroke="#f59e0b" strokeWidth={2.5} dot={{ fill: '#f59e0b', r: 3, strokeWidth: 0 }} />
                       </LineChart>
                     </ResponsiveContainer>
                   </CardContent>
                 </Card>
 
-                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
-                      <Database className="h-5 w-5 text-zinc-400" />
-                      KNOWLEDGE DISTRIBUTION
+                <Card className="border-white/[0.06] bg-zinc-900/30">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-violet-300/70">
+                      <Database className="h-3.5 w-3.5 text-violet-400" />
+                      KNOWLEDGE
                     </CardTitle>
-                    <CardDescription className="text-zinc-500 text-xs text-zinc-500">Entries By Category</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={280}>
@@ -979,20 +959,19 @@ export default function AdminPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
-                      <AlertCircle className="h-5 w-5 text-amber-400" />
-                      ERROR RATE (24H)
+                <Card className="border-white/[0.06] bg-zinc-900/30">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-red-300/70">
+                      <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+                      ERRORS
                     </CardTitle>
-                    <CardDescription className="text-zinc-500 text-xs text-zinc-500">System Error Tracking</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={280}>
                       <BarChart data={timeSeriesData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.1} />
-                        <XAxis dataKey="time" stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
-                        <YAxis stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.08} />
+                        <XAxis dataKey="time" stroke="#71717a" fontSize={10} fontFamily="monospace" />
+                        <YAxis stroke="#71717a" fontSize={10} fontFamily="monospace" />
                         <Tooltip 
                           contentStyle={{ 
                             backgroundColor: '#000', 
@@ -1002,35 +981,33 @@ export default function AdminPage() {
                             fontFamily: 'monospace'
                           }} 
                         />
-                        <Bar dataKey="errors" fill="#f59e0b" radius={[8, 8, 0, 0]} />
+                        <Bar dataKey="errors" fill="#ef4444" radius={[8, 8, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </CardContent>
                 </Card>
               </div>
 
-              {/* System Resources */}
-              <div className="grid gap-6 lg:grid-cols-2">
-                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
-                      <TrendingUp className="h-5 w-5 text-zinc-300" />
-                      CPU USAGE (24H)
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card className="border-white/[0.06] bg-zinc-900/30">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-emerald-300/70">
+                      <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+                      CPU
                     </CardTitle>
-                    <CardDescription className="text-zinc-500 text-xs text-zinc-500">Server CPU Utilization %</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={250}>
                       <AreaChart data={timeSeriesData}>
                         <defs>
                           <linearGradient id="colorCPU" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#a1a1aa" stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor="#a1a1aa" stopOpacity={0}/>
+                            <stop offset="5%" stopColor="#34d399" stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor="#34d399" stopOpacity={0}/>
                           </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.1} />
-                        <XAxis dataKey="time" stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
-                        <YAxis stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.08} />
+                        <XAxis dataKey="time" stroke="#71717a" fontSize={10} fontFamily="monospace" />
+                        <YAxis stroke="#71717a" fontSize={10} fontFamily="monospace" />
                         <Tooltip 
                           contentStyle={{ 
                             backgroundColor: '#000', 
@@ -1040,19 +1017,18 @@ export default function AdminPage() {
                             fontFamily: 'monospace'
                           }} 
                         />
-                        <Area type="monotone" dataKey="cpu" stroke="#a1a1aa" fillOpacity={1} fill="url(#colorCPU)" strokeWidth={2} />
+                        <Area type="monotone" dataKey="cpu" stroke="#34d399" fillOpacity={1} fill="url(#colorCPU)" strokeWidth={2} />
                       </AreaChart>
                     </ResponsiveContainer>
                   </CardContent>
                 </Card>
 
-                <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
-                      <Database className="h-5 w-5 text-zinc-300" />
-                      MEMORY USAGE (24H)
+                <Card className="border-white/[0.06] bg-zinc-900/30">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-violet-300/70">
+                      <Database className="h-3.5 w-3.5 text-violet-400" />
+                      MEMORY
                     </CardTitle>
-                    <CardDescription className="text-zinc-500 text-xs text-zinc-500">Server Memory Utilization %</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={250}>
@@ -1082,37 +1058,26 @@ export default function AdminPage() {
                 </Card>
               </div>
 
-              {/* System Status */}
-              <Card className="border-white/[0.06] bg-zinc-900/50 backdrop-blur-xl shadow-xl ">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base text-white font-bold">
-                    <Activity className="h-5 w-5 text-zinc-300" />
-                    SYSTEM HEALTH STATUS
+              <Card className="border-white/[0.06] bg-zinc-900/30">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-emerald-300/70">
+                    <Activity className="h-3.5 w-3.5 text-emerald-400" />
+                    SYSTEM
                   </CardTitle>
-                  <CardDescription className="text-zinc-500 text-xs text-zinc-500">Infrastructure Service Status</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="flex items-center justify-between rounded-lg border border-white/10 bg-zinc-800/50 p-4 backdrop-blur">
-                      <div>
-                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">System Uptime</p>
-                        <p className="text-lg font-bold text-zinc-300 ">{stats.uptime}</p>
-                      </div>
-                      <Badge className="bg-zinc-800 text-zinc-300 border-white/10 ">ONLINE</Badge>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="flex items-center justify-between rounded-lg border border-emerald-500/10 bg-emerald-500/[0.04] px-3 py-2.5">
+                      <span className="text-[11px] font-medium tracking-[0.06em] text-emerald-300/60">UPTIME</span>
+                      <span className="text-[11px] font-medium tracking-wide text-emerald-200 tabular-nums">{stats.uptime} · ONLINE</span>
                     </div>
-                    <div className="flex items-center justify-between rounded-lg border border-white/10 bg-zinc-800/50 p-4 backdrop-blur">
-                      <div>
-                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">API Status</p>
-                        <p className="text-lg font-bold text-zinc-300 ">READY</p>
-                      </div>
-                      <Badge className="bg-zinc-800 text-zinc-300 border-white/10 ">LIVE</Badge>
+                    <div className="flex items-center justify-between rounded-lg border border-sky-500/10 bg-sky-500/[0.04] px-3 py-2.5">
+                      <span className="text-[11px] font-medium tracking-[0.06em] text-sky-300/60">API</span>
+                      <span className="text-[11px] font-medium tracking-wide text-sky-200">READY · LIVE</span>
                     </div>
-                    <div className="flex items-center justify-between rounded-lg border border-white/10 bg-zinc-800/50 p-4 backdrop-blur">
-                      <div>
-                        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-medium">Active Model</p>
-                        <p className="text-xs  font-bold text-white truncate max-w-[180px]">{modelConfig.active_model.split('/')[1]?.slice(0, 20) || 'NOT_CONFIGURED'}</p>
-                      </div>
-                      <Sparkles className="h-8 w-8 text-zinc-400/30" />
+                    <div className="flex items-center justify-between gap-2 rounded-lg border border-violet-500/10 bg-violet-500/[0.04] px-3 py-2.5">
+                      <span className="text-[11px] font-medium tracking-[0.06em] text-violet-300/60">MODEL</span>
+                      <span className="text-[11px] font-medium text-violet-200 truncate max-w-[160px] tabular-nums">{modelConfig.active_model.split('/')[1]?.slice(0, 22) || '—'}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -1120,8 +1085,83 @@ export default function AdminPage() {
             </motion.div>
           )}
 
+          {/* TAB: USERS + SETTINGS */}
+          {activeTab === "users" && (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[16px] font-semibold tracking-tight text-white">Users</h3>
+                <Button onClick={() => { setEditingUserId(null); setUserForm({ username: "", password: "", display_name: "", max_prompts: 50, is_active: true }); setUserModalOpen(true); }} className="h-9 bg-white text-black hover:bg-zinc-100 gap-1.5"><Plus className="h-4 w-4" /> Tambah User</Button>
+              </div>
+
+              <Card className="border-white/[0.06] bg-zinc-900/40">
+                <CardHeader className="pb-3"><CardTitle className="text-[12px] tracking-[0.08em] text-zinc-400">Pengaturan</CardTitle></CardHeader>
+                <CardContent className="flex flex-wrap items-end gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] tracking-[0.06em] text-zinc-400">EXPIRY TOKEN USER (jam)</Label>
+                    <Input type="number" min={1} max={720} value={appSettings.user_token_expiry_hours} onChange={(e) => setAppSettings((p) => ({ ...p, user_token_expiry_hours: Number(e.target.value) }))} className="h-9 w-28 border-white/10 bg-zinc-900 text-white" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] tracking-[0.06em] text-zinc-400">TRIAL PROMPTS (0=matikan trial)</Label>
+                    <Input type="number" min={0} max={100} value={appSettings.trial_prompts} onChange={(e) => setAppSettings((p) => ({ ...p, trial_prompts: Number(e.target.value) }))} className="h-9 w-28 border-white/10 bg-zinc-900 text-white" />
+                  </div>
+                  <Button onClick={handleSaveSettings} className="h-9 bg-white text-black hover:bg-zinc-100 gap-1.5"><Save className="h-4 w-4" /> Simpan</Button>
+                  <span className="text-[11px] text-zinc-500">Expiry berlaku untuk login baru. Trial per IP, hit ke-{appSettings.trial_prompts + 1} wajib login.</span>
+                </CardContent>
+              </Card>
+
+              <Card className="border-white/[0.06] bg-zinc-900/30 overflow-hidden">
+                <CardContent className="p-0">
+                  {usersLoading ? <div className="p-6 text-sm text-zinc-500 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Memuat…</div> : users.length === 0 ? <div className="p-6 text-sm text-zinc-500">Belum ada user.</div> : (
+                    <div className="divide-y divide-white/[0.06]">
+                      {users.map((u: any) => {
+                        const remaining = Number(u.max_prompts) === 0 ? Infinity : Math.max(0, Number(u.max_prompts) - Number(u.prompts_used || 0));
+                        const exhausted = Number(u.max_prompts) > 0 && Number(u.prompts_used || 0) >= Number(u.max_prompts);
+                        return (
+                          <div key={u.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[13px] font-medium text-white">{u.username}</span>
+                                {u.display_name && <span className="text-[12px] text-zinc-500">— {u.display_name}</span>}
+                                {!u.is_active && <span className="rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] text-red-300">NONAKTIF</span>}
+                                {exhausted && <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300">HABIS — hubungi admin</span>}
+                              </div>
+                              <div className="mt-1 text-[11px] text-zinc-500">Dipakai {u.prompts_used || 0} / {Number(u.max_prompts) === 0 ? "∞" : u.max_prompts} {remaining !== Infinity && `· sisa ${remaining}`}</div>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              <Button variant="outline" size="sm" onClick={() => handleResetUsage(u.id)} className="h-8 border-white/10 gap-1">Reset</Button>
+                              <Button variant="outline" size="sm" onClick={() => { setEditingUserId(u.id); setUserForm({ username: u.username, password: "", display_name: u.display_name || "", max_prompts: Number(u.max_prompts), is_active: Boolean(u.is_active) }); setUserModalOpen(true); }} className="h-8 border-white/10">Edit</Button>
+                              <Button variant="ghost" size="sm" onClick={() => handleDeleteUser(u.id)} className="h-8 text-red-400 hover:bg-red-500/10 hover:text-red-300"><Trash2 className="h-3.5 w-3.5" /></Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {userModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={() => setUserModalOpen(false)}>
+                  <Card className="w-full max-w-md border-white/10 bg-zinc-900" onClick={(e) => e.stopPropagation()}>
+                    <CardHeader><CardTitle className="text-white">{editingUserId ? "Edit User" : "Tambah User"}</CardTitle></CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleCreateOrUpdateUser} className="space-y-3">
+                        {!editingUserId && <div className="space-y-1.5"><Label className="text-zinc-400">Username</Label><Input value={userForm.username} onChange={(e) => setUserForm((p) => ({ ...p, username: e.target.value }))} required minLength={3} maxLength={32} placeholder="johndoe" className="border-white/10 bg-zinc-800 text-white" /></div>}
+                        <div className="space-y-1.5"><Label className="text-zinc-400">{editingUserId ? "Password baru (kosongkan jika tidak ganti)" : "Password"}</Label><Input type="password" value={userForm.password} onChange={(e) => setUserForm((p) => ({ ...p, password: e.target.value }))} required={!editingUserId} minLength={6} className="border-white/10 bg-zinc-800 text-white" /></div>
+                        <div className="space-y-1.5"><Label className="text-zinc-400">Display name</Label><Input value={userForm.display_name} onChange={(e) => setUserForm((p) => ({ ...p, display_name: e.target.value }))} className="border-white/10 bg-zinc-800 text-white" /></div>
+                        <div className="space-y-1.5"><Label className="text-zinc-400">Batas prompt (0 = unlimited)</Label><Input type="number" min={0} max={100000} value={userForm.max_prompts} onChange={(e) => setUserForm((p) => ({ ...p, max_prompts: Number(e.target.value) }))} className="border-white/10 bg-zinc-800 text-white" /></div>
+                        <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" checked={userForm.is_active} onChange={(e) => setUserForm((p) => ({ ...p, is_active: e.target.checked }))} /> Aktif</label>
+                        <div className="flex justify-end gap-2 pt-2"><Button type="button" variant="ghost" onClick={() => setUserModalOpen(false)}>Batal</Button><Button type="submit" className="bg-white text-black hover:bg-zinc-100">Simpan</Button></div>
+                      </form>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </motion.div>
+          )}
+
           {/* Bulk JSON toolbar */}
-          {activeTab !== "models" && activeTab !== "dashboard" && (
+          {activeTab !== "models" && activeTab !== "dashboard" && activeTab !== "users" && (
             <Card className="border-white/[0.06] bg-zinc-900/60 backdrop-blur-xl shadow-lg">
               <CardContent className="flex flex-wrap items-center gap-2 py-3">
                 <span className="flex items-center gap-2 text-xs font-medium text-zinc-400">

@@ -1,88 +1,182 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, Response, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Dict, Any, List
+import re
 
 try:
     from backend.database.db import DatabaseService
     from backend.knowledge.knowledge_service import KnowledgeService
-    from backend.security.auth import verify_password, create_jwt, verify_jwt, COOKIE_NAME, settings
+    from backend.security.auth import verify_password, create_jwt, verify_jwt, COOKIE_NAME, settings, is_valid_username, JWT_EXPIRY_HOURS
+    from backend.security.rate_limiter import get_client_ip, is_rate_limited, is_locked_out, record_failed_login, clear_failed_login, check_rate_limit
 except ImportError:
     from database.db import DatabaseService
     from knowledge.knowledge_service import KnowledgeService
-    from security.auth import verify_password, create_jwt, verify_jwt, COOKIE_NAME, settings
+    from security.auth import verify_password, create_jwt, verify_jwt, COOKIE_NAME, settings, is_valid_username, JWT_EXPIRY_HOURS
+    from security.rate_limiter import get_client_ip, is_rate_limited, is_locked_out, record_failed_login, clear_failed_login, check_rate_limit
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
+# ── input limits ──
+MAX_STR_LEN = 8000
+MAX_DICT_KEYS = 30
+MAX_DICT_VALUE_LEN = 8000
+USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,32}$")
+
+def _sanitize_str(v: Any) -> str:
+    if v is None:
+        return ""
+    s = str(v).strip()
+    if len(s) > MAX_STR_LEN:
+        raise ValueError(f"Field too long (>{MAX_STR_LEN})")
+    return s
+
+def _validate_config_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    if not isinstance(data, dict):
+        raise ValueError("data must be object")
+    if len(data) > MAX_DICT_KEYS:
+        raise ValueError(f"Too many keys (>{MAX_DICT_KEYS})")
+    out: Dict[str, Any] = {}
+    for k, v in data.items():
+        if not isinstance(k, str) or len(k) > 64 or not re.match(r"^[a-zA-Z0-9_]+$", k):
+            raise ValueError(f"Invalid key: {k}")
+        if isinstance(v, str):
+            if len(v) > MAX_DICT_VALUE_LEN:
+                raise ValueError(f"Value too long for {k}")
+            out[k] = v.strip()
+        elif isinstance(v, (int, float, bool)) or v is None:
+            out[k] = v
+        elif isinstance(v, list):
+            if len(v) > 20:
+                raise ValueError(f"List too long for {k}")
+            out[k] = [str(x).strip()[:200] if isinstance(x, str) else x for x in v]
+        else:
+            out[k] = str(v).strip()[:MAX_DICT_VALUE_LEN]
+    return out
+
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=3, max_length=32)
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("username")
+    @classmethod
+    def check_username(cls, v: str) -> str:
+        v = v.strip()
+        if not USERNAME_RE.match(v):
+            raise ValueError("Invalid username format")
+        return v
 
 class ConfigUpdateRequest(BaseModel):
-    section: str # ai_identity, personal_information, ai_personality, communication_settings, system_instructions, ai_model_config
+    section: str = Field(min_length=3, max_length=64)
     data: Dict[str, Any]
+
+    @field_validator("section")
+    @classmethod
+    def check_section(cls, v: str) -> str:
+        v = v.strip()
+        if not re.match(r"^[a-z_]+$", v):
+            raise ValueError("Invalid section")
+        return v
 
 
 class ModelConfigUpdateRequest(BaseModel):
     """Validated model switch — accepts ANY model ID string, any OpenAI-compatible provider."""
-    active_model: str
+    active_model: str = Field(min_length=1, max_length=256)
     fallback_models: Optional[List[str]] = None
-    provider: Optional[str] = None
-    api_base_url: Optional[str] = None
-    temperature: Optional[float] = None
+    provider: Optional[str] = Field(default=None, max_length=64)
+    api_base_url: Optional[str] = Field(default=None, max_length=512)
+    temperature: Optional[float] = Field(default=None, ge=0, le=2)
     reasoning_enabled: Optional[bool] = None
 
+    @field_validator("active_model")
+    @classmethod
+    def check_active_model(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 1 or len(v) > 256 or not re.match(r"^[a-zA-Z0-9._/:-]+$", v):
+            raise ValueError("Invalid model ID")
+        return v
+
+    @field_validator("api_base_url")
+    @classmethod
+    def check_url(cls, v):  # type: ignore
+        if v is None:
+            return v
+        v = v.strip().rstrip("/")
+        if not re.match(r"^https://[a-zA-Z0-9._-]+", v):
+            raise ValueError("api_base_url must be https URL")
+        return v
+
 class KnowledgeEntryRequest(BaseModel):
-    id: Optional[str] = None
-    category_id: str
-    title: str
-    content: str
-    tags: Optional[List[str]] = []
+    id: Optional[str] = Field(default=None, max_length=64)
+    category_id: str = Field(min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=10000)
+    tags: Optional[List[str]] = Field(default=None, max_length=20)
     is_active: Optional[bool] = True
 
+    @field_validator("title", "content")
+    @classmethod
+    def strip_fields(cls, v: str) -> str:
+        return v.strip()
+
 def get_current_admin(request: Request) -> str:
+    # rate-limit token brute force: 30 checks/min per IP
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"admin:verify:{ip}", 60, 60)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
     token = request.cookies.get(COOKIE_NAME)
     if not token:
-        # Also check Authorization header Bearer token
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]
-            
     if not token:
         raise HTTPException(status_code=401, detail="Unauthorized: No token provided")
-    
     payload = verify_jwt(token)
     if not payload or payload.get("role") != "admin":
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid token")
-    
     return payload.get("sub", "admin")
 
 @router.post("/login")
-def admin_login(payload: LoginRequest, response: Response):
+def admin_login(payload: LoginRequest, request: Request, response: Response):
+    ip = get_client_ip(request)
+    # lockout check first
+    locked, retry = is_locked_out(ip)
+    if locked:
+        raise HTTPException(status_code=429, detail=f"Account locked. Retry after {retry}s", headers={"Retry-After": str(retry)})
+    # rate limit login: 10/min per IP
+    allowed, retry = check_rate_limit(f"admin:login:{ip}", 10, 60)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Too many login attempts. Retry after {retry}s", headers={"Retry-After": str(retry)})
+    # constant-time username check — still verify dummy hash to avoid timing leak
     if payload.username != settings.ADMIN_USERNAME:
+        # burn same time as verify_password
+        verify_password(payload.password, settings.ADMIN_PASSWORD_HASH)
+        record_failed_login(ip)
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    
-    # Verify password against hash
     if not verify_password(payload.password, settings.ADMIN_PASSWORD_HASH):
+        record_failed_login(ip)
         raise HTTPException(status_code=401, detail="Invalid username or password")
-
+    clear_failed_login(ip)
     token = create_jwt(payload.username)
+    # max_age matches JWT_EXPIRY_HOURS (2h)
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
         httponly=True,
         secure=settings.NODE_ENV == "production",
-        samesite="lax",
-        max_age=12 * 3600
+        samesite="strict",
+        max_age=JWT_EXPIRY_HOURS * 3600,
+        path="/",
     )
     return {"status": "success", "message": "Admin authenticated successfully"}
 
 @router.post("/logout")
-def admin_logout(response: Response):
-    response.delete_cookie(COOKIE_NAME)
+def admin_logout(request: Request, response: Response, admin: str = Depends(get_current_admin)):
+    response.delete_cookie(COOKIE_NAME, path="/")
     return {"status": "success", "message": "Logged out successfully"}
 
 @router.get("/verify")
-def verify_admin_session(admin: str = Depends(get_current_admin)):
+def verify_admin_session(request: Request, admin: str = Depends(get_current_admin)):
     return {"status": "authenticated", "admin": admin}
 
 @router.get("/config/{section}")
@@ -93,20 +187,31 @@ def get_config(section: str, admin: str = Depends(get_current_admin)):
     return DatabaseService.get_config_table(section)
 
 @router.put("/config")
-def update_config(payload: ConfigUpdateRequest, admin: str = Depends(get_current_admin)):
+def update_config(payload: ConfigUpdateRequest, request: Request, admin: str = Depends(get_current_admin)):
     valid_sections = ["ai_identity", "personal_information", "ai_personality", "communication_settings", "system_instructions", "ai_model_config"]
     if payload.section not in valid_sections:
         raise HTTPException(status_code=400, detail="Invalid configuration section")
-    # When saving ai_model_config, enforce no hardcoded validation — any model string allowed.
-    # Normalize strings so upstream model loop can't break on whitespace.
-    if payload.section == "ai_model_config" and isinstance(payload.data, dict):
-        if "active_model" in payload.data and isinstance(payload.data["active_model"], str):
-            payload.data["active_model"] = payload.data["active_model"].strip()
-        if "api_base_url" in payload.data and isinstance(payload.data["api_base_url"], str):
-            payload.data["api_base_url"] = payload.data["api_base_url"].strip().rstrip("/")
-        if "fallback_models" in payload.data and isinstance(payload.data["fallback_models"], list):
-            payload.data["fallback_models"] = [str(m).strip() for m in payload.data["fallback_models"] if str(m).strip()]
-    updated = DatabaseService.update_config_table(payload.section, payload.data)
+    # rate-limit config writes: 20/min per IP
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"admin:config:{ip}", 20, 60)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+    try:
+        data = _validate_config_data(payload.data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if payload.section == "ai_model_config":
+        if "active_model" in data and isinstance(data["active_model"], str):
+            data["active_model"] = data["active_model"].strip()
+            if data["active_model"] and not re.match(r"^[a-zA-Z0-9._/:-]+$", data["active_model"]):
+                raise HTTPException(status_code=400, detail="Invalid active_model")
+        if "api_base_url" in data and isinstance(data["api_base_url"], str):
+            data["api_base_url"] = data["api_base_url"].strip().rstrip("/")
+            if data["api_base_url"] and not data["api_base_url"].startswith("https://"):
+                raise HTTPException(status_code=400, detail="api_base_url must be https")
+        if "fallback_models" in data and isinstance(data["fallback_models"], list):
+            data["fallback_models"] = [str(m).strip()[:256] for m in data["fallback_models"] if str(m).strip()][:20]
+    updated = DatabaseService.update_config_table(payload.section, data)
     return {"status": "success", "section": payload.section, "data": updated}
 
 
@@ -152,8 +257,12 @@ def admin_list_models(
 
 
 @router.put("/models")
-def admin_update_models(payload: ModelConfigUpdateRequest, admin: str = Depends(get_current_admin)):
+def admin_update_models(payload: ModelConfigUpdateRequest, request: Request, admin: str = Depends(get_current_admin)):
     """Switch active model + fallbacks. Any model ID accepted — no whitelist, no Gemini hardcoding."""
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"admin:models_write:{ip}", 15, 60)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
     if not payload.active_model or not payload.active_model.strip():
         raise HTTPException(status_code=400, detail="active_model must be a non-empty model ID string")
     active = payload.active_model.strip()
@@ -191,7 +300,11 @@ def get_knowledge_entries(category: Optional[str] = None, admin: str = Depends(g
     return DatabaseService.get_knowledge_entries(category)
 
 @router.post("/knowledge/entries")
-def save_knowledge_entry(payload: KnowledgeEntryRequest, background_tasks: BackgroundTasks, admin: str = Depends(get_current_admin)):
+def save_knowledge_entry(payload: KnowledgeEntryRequest, request: Request, background_tasks: BackgroundTasks, admin: str = Depends(get_current_admin)):
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"admin:knowledge:{ip}", 30, 60)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
     data = payload.model_dump()
     saved = DatabaseService.create_or_update_knowledge_entry(data)
     # Trigger vector indexing in background (non-blocking)
@@ -199,7 +312,13 @@ def save_knowledge_entry(payload: KnowledgeEntryRequest, background_tasks: Backg
     return {"status": "success", "entry": saved}
 
 @router.delete("/knowledge/entries/{entry_id}")
-def delete_knowledge_entry(entry_id: str, admin: str = Depends(get_current_admin)):
+def delete_knowledge_entry(entry_id: str, request: Request, admin: str = Depends(get_current_admin)):
+    if not re.match(r"^[a-zA-Z0-9_-]{1,64}$", entry_id):
+        raise HTTPException(status_code=400, detail="Invalid entry_id")
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"admin:knowledge_del:{ip}", 20, 60)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
     DatabaseService.delete_knowledge_entry(entry_id)
     return {"status": "success", "message": f"Entry {entry_id} deleted"}
 
@@ -259,13 +378,24 @@ def _validate_bulk_section(section: str, data: Dict[str, Any]) -> Optional[str]:
 
 
 @router.post("/import")
-def admin_import_bulk(payload: BulkImportRequest, admin: str = Depends(get_current_admin)):
+def admin_import_bulk(payload: BulkImportRequest, request: Request, admin: str = Depends(get_current_admin)):
     """
     Apply a JSON blob to populate ai_identity → system_instructions + knowledge.
     ai_model_config is not bulk-importable — models are managed on the AI Models tab.
     Any subset of keys accepted. Unknown keys at top level are ignored.
     """
-    raw = payload.model_dump(exclude_none=True)
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"admin:import:{ip}", 10, 60)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+    # cap bulk payload size
+    raw_check = payload.model_dump(exclude_none=True)
+    total_chars = len(str(raw_check))
+    if total_chars > 200_000:
+        raise HTTPException(status_code=413, detail="Import payload too large (max 200KB chars)")
+    if raw_check.get("knowledge_entries") and len(raw_check["knowledge_entries"]) > 200:
+        raise HTTPException(status_code=400, detail="Too many knowledge_entries (max 200)")
+    raw = raw_check
     if not raw:
         raise HTTPException(status_code=400, detail="Empty import — no recognized keys found. Expected one of: ai_identity, personal_information, ai_personality, communication_settings, system_instructions, knowledge_entries")
 
@@ -278,6 +408,12 @@ def admin_import_bulk(payload: BulkImportRequest, admin: str = Depends(get_curre
         data = raw[sec]
         if not isinstance(data, dict):
             errors[sec] = "Expected an object"
+            continue
+        # validate + sanitize imported section data
+        try:
+            data = _validate_config_data(data)
+        except ValueError as e:
+            errors[sec] = str(e)
             continue
         err = _validate_bulk_section(sec, data)
         if err:
@@ -361,7 +497,7 @@ async def admin_import_file(request: Request, admin: str = Depends(get_current_a
             data = _json.loads(body.decode("utf-8") or "{}")
 
         payload = BulkImportRequest.model_validate(data)
-        return admin_import_bulk(payload, admin)
+        return admin_import_bulk(payload, request, admin)
     except HTTPException:
         raise
     except Exception as e:

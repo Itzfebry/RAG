@@ -215,3 +215,218 @@ class DatabaseService:
         entries = [e for e in entries if e["id"] != entry_id]
         _write_local_json("knowledge_entries.json", entries)
         return True
+
+    # ── Users + App Settings (local JSON fallback; Supabase if tables exist) ──
+
+    @staticmethod
+    def _users_file() -> str:
+        return "app_users.json"
+
+    @staticmethod
+    def _settings_file() -> str:
+        return "app_settings.json"
+
+    @staticmethod
+    def get_app_settings() -> Dict[str, Any]:
+        defaults = {"user_token_expiry_hours": 24, "trial_prompts": 3}
+        if supabase_client:
+            try:
+                res = supabase_client.table("app_settings").select("*").limit(1).execute()
+                if res.data and len(res.data) > 0:
+                    row = res.data[0]
+                    return {
+                        "user_token_expiry_hours": int(row.get("user_token_expiry_hours", 24)),
+                        "trial_prompts": int(row.get("trial_prompts", 3)),
+                    }
+            except Exception:
+                pass
+        data = _read_local_json(DatabaseService._settings_file(), defaults)
+        # migrate old files
+        if "trial_prompts" not in data:
+            data["trial_prompts"] = 3
+        if "user_token_expiry_hours" not in data:
+            data["user_token_expiry_hours"] = 24
+        return data
+
+    @staticmethod
+    def update_app_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
+        cur = DatabaseService.get_app_settings()
+        merged = {**cur, **patch}
+        try:
+            h = int(merged.get("user_token_expiry_hours", 24))
+            merged["user_token_expiry_hours"] = max(1, min(720, h))
+        except Exception:
+            merged["user_token_expiry_hours"] = 24
+        try:
+            t = int(merged.get("trial_prompts", 3))
+            merged["trial_prompts"] = max(0, min(100, t))
+        except Exception:
+            merged["trial_prompts"] = 3
+        merged["updated_at"] = datetime.now().isoformat()
+        if supabase_client:
+            try:
+                row = {"id": 1, **merged}
+                res = supabase_client.table("app_settings").upsert(row, on_conflict="id").execute()
+                if res.data:
+                    return {
+                        "user_token_expiry_hours": int(res.data[0].get("user_token_expiry_hours", 24)),
+                        "trial_prompts": int(res.data[0].get("trial_prompts", 3)),
+                        "updated_at": res.data[0].get("updated_at"),
+                    }
+            except Exception as e:
+                print(f"Error updating app_settings in Supabase: {e}")
+        _write_local_json(DatabaseService._settings_file(), merged)
+        return {
+            "user_token_expiry_hours": int(merged["user_token_expiry_hours"]),
+            "trial_prompts": int(merged["trial_prompts"]),
+            "updated_at": merged.get("updated_at"),
+        }
+
+    # trial usage per IP — local JSON + supabase optional
+    @staticmethod
+    def _trial_file() -> str:
+        return "trial_usage.json"
+
+    @staticmethod
+    def get_trial_used(ip: str) -> int:
+        if supabase_client:
+            try:
+                res = supabase_client.table("trial_usage").select("used").eq("ip", ip).limit(1).execute()
+                if res.data and len(res.data) > 0:
+                    return int(res.data[0].get("used", 0))
+            except Exception:
+                pass
+        data = _read_local_json(DatabaseService._trial_file(), {})
+        return int(data.get(ip, 0) or 0)
+
+    @staticmethod
+    def increment_trial(ip: str) -> int:
+        if supabase_client:
+            try:
+                cur = DatabaseService.get_trial_used(ip)
+                nxt = cur + 1
+                supabase_client.table("trial_usage").upsert({"ip": ip, "used": nxt, "updated_at": datetime.now().isoformat()}, on_conflict="ip").execute()
+                return nxt
+            except Exception:
+                pass
+        data = _read_local_json(DatabaseService._trial_file(), {})
+        nxt = int(data.get(ip, 0) or 0) + 1
+        data[ip] = nxt
+        _write_local_json(DatabaseService._trial_file(), data)
+        return nxt
+
+    @staticmethod
+    def list_users() -> List[Dict[str, Any]]:
+        if supabase_client:
+            try:
+                res = supabase_client.table("app_users").select("*").order("created_at", desc=True).execute()
+                if res.data is not None:
+                    return res.data
+            except Exception:
+                pass
+        return _read_local_json(DatabaseService._users_file(), [])
+
+    @staticmethod
+    def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+        if supabase_client:
+            try:
+                res = supabase_client.table("app_users").select("*").eq("id", user_id).limit(1).execute()
+                if res.data and len(res.data) > 0:
+                    return res.data[0]
+            except Exception:
+                pass
+        for u in _read_local_json(DatabaseService._users_file(), []):
+            if str(u.get("id")) == str(user_id):
+                return u
+        return None
+
+    @staticmethod
+    def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
+        uname = str(username or "").strip().lower()
+        if supabase_client:
+            try:
+                res = supabase_client.table("app_users").select("*").eq("username", uname).limit(1).execute()
+                if res.data and len(res.data) > 0:
+                    return res.data[0]
+            except Exception:
+                pass
+        for u in _read_local_json(DatabaseService._users_file(), []):
+            if str(u.get("username") or "").strip().lower() == uname:
+                return u
+        return None
+
+    @staticmethod
+    def create_user(data: Dict[str, Any]) -> Dict[str, Any]:
+        data = dict(data)
+        data["id"] = data.get("id") or str(uuid.uuid4())
+        data["username"] = str(data.get("username") or "").strip().lower()
+        now = datetime.now().isoformat()
+        data["created_at"] = data.get("created_at") or now
+        data["updated_at"] = now
+        data.setdefault("prompts_used", 0)
+        data.setdefault("is_active", True)
+        if supabase_client:
+            try:
+                res = supabase_client.table("app_users").insert(data).execute()
+                if res.data:
+                    return res.data[0]
+            except Exception as e:
+                print(f"Error creating user in Supabase: {e}")
+        users = _read_local_json(DatabaseService._users_file(), [])
+        users.append(data)
+        _write_local_json(DatabaseService._users_file(), users)
+        return data
+
+    @staticmethod
+    def update_user(user_id: str, patch: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if supabase_client:
+            try:
+                patch2 = dict(patch)
+                patch2["updated_at"] = datetime.now().isoformat()
+                res = supabase_client.table("app_users").update(patch2).eq("id", user_id).execute()
+                if res.data and len(res.data) > 0:
+                    return res.data[0]
+            except Exception as e:
+                print(f"Error updating user in Supabase: {e}")
+        users = _read_local_json(DatabaseService._users_file(), [])
+        for i, u in enumerate(users):
+            if str(u.get("id")) == str(user_id):
+                merged = {**u, **patch, "updated_at": datetime.now().isoformat()}
+                # keep username normalized
+                if "username" in merged:
+                    merged["username"] = str(merged["username"]).strip().lower()
+                users[i] = merged
+                _write_local_json(DatabaseService._users_file(), users)
+                return merged
+        return None
+
+    @staticmethod
+    def delete_user(user_id: str) -> bool:
+        if supabase_client:
+            try:
+                supabase_client.table("app_users").delete().eq("id", user_id).execute()
+                return True
+            except Exception as e:
+                print(f"Error deleting user in Supabase: {e}")
+        users = _read_local_json(DatabaseService._users_file(), [])
+        new_users = [u for u in users if str(u.get("id")) != str(user_id)]
+        if len(new_users) == len(users):
+            return False
+        _write_local_json(DatabaseService._users_file(), new_users)
+        return True
+
+    @staticmethod
+    def increment_prompt_usage(user_id: str) -> Optional[Dict[str, Any]]:
+        u = DatabaseService.get_user_by_id(user_id)
+        if not u:
+            return None
+        used = int(u.get("prompts_used", 0) or 0) + 1
+        return DatabaseService.update_user(user_id, {"prompts_used": used})
+
+    @staticmethod
+    def is_prompt_quota_exhausted(user: Dict[str, Any]) -> bool:
+        max_p = int(user.get("max_prompts", 0) or 0)
+        if max_p <= 0:
+            return False  # 0 = unlimited
+        used = int(user.get("prompts_used", 0) or 0)
+        return used >= max_p

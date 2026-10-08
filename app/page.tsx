@@ -23,11 +23,28 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [userInfo, setUserInfo] = useState<{ username: string; display_name?: string | null; max_prompts: number; prompts_used: number; remaining: number | null } | null>(null);
+  const [trialInfo, setTrialInfo] = useState<{ trial_prompts: number; used: number; remaining: number; allowed: boolean } | null>(null);
+  const [quotaAlert, setQuotaAlert] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isEmpty = messages.length === 0;
   const startedAtRef = useRef<number>(0);
   const [nowTick, setNowTick] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/python/user/me")
+      .then(async (r) => {
+        if (r.ok) { const j = await r.json(); setUserInfo(j); return; }
+        // guest -> fetch trial info
+        const t = await fetch("/api/python/trial").then((x) => x.json()).catch(() => null);
+        if (t) setTrialInfo(t);
+      })
+      .catch(async () => {
+        const t = await fetch("/api/python/trial").then((x) => x.json()).catch(() => null);
+        if (t) setTrialInfo(t);
+      });
+  }, []);
 
   useEffect(() => {
     if (!isLoading) return;
@@ -67,7 +84,19 @@ export default function ChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMessage, history: next.slice(0, -1) }),
       });
-      if (!res.ok) throw new Error(`Server ${res.status}`);
+      if (!res.ok) {
+        let msg = `Server ${res.status}`;
+        try { const j = await res.json(); msg = (j.detail || j.message || msg) as string; } catch {}
+        if (msg.includes("Trial habis") || msg.includes("Trial")) {
+          setQuotaAlert(msg + " — ");
+          // refresh trial info
+          fetch("/api/python/trial").then((x) => x.json()).then(setTrialInfo).catch(() => {});
+          throw new Error(msg);
+        }
+        if (res.status === 403 && msg.includes("Batas prompt habis")) { setQuotaAlert(msg); throw new Error(msg); }
+        if (res.status === 401 && msg.includes("Login diperlukan")) { setQuotaAlert(msg); throw new Error(msg); }
+        throw new Error(msg);
+      }
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       if (!reader) throw new Error("No reader");
@@ -90,10 +119,12 @@ export default function ChatPage() {
                 return u;
               });
             }
-            if (p.error) setError(p.error);
+            if (p.error) { if (String(p.error).includes("Batas prompt")) setQuotaAlert(String(p.error)); setError(p.error); }
           } catch {}
         }
       }
+      if (userInfo) fetch("/api/python/user/me").then(async (r) => { if (r.ok) { const j = await r.json(); setUserInfo(j); if (j.remaining === 0) setQuotaAlert("Batas prompt habis — hubungi admin untuk menambah kuota"); } }).catch(() => {});
+      else fetch("/api/python/trial").then((x) => x.json()).then(setTrialInfo).catch(() => {});
       const dur = Date.now() - started;
       setMessages((prev) => {
         const u = [...prev];
@@ -102,7 +133,9 @@ export default function ChatPage() {
         return u;
       });
     } catch (e: any) {
-      setError(e.message || "Gagal terhubung ke backend.");
+      const m = e.message || "Gagal terhubung ke backend.";
+      if (m.includes("Batas prompt habis")) setQuotaAlert(m);
+      setError(m);
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setIsLoading(false);
@@ -158,6 +191,20 @@ export default function ChatPage() {
           <span className="itz-brand text-[15.5px] font-semibold tracking-[0.14em]">ITZ AI</span>
         </div>
         <div className="flex items-center gap-2.5">
+          {userInfo ? (
+            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-zinc-400">
+              {userInfo.display_name || userInfo.username} · {userInfo.remaining === null ? "∞" : `${userInfo.remaining} tersisa`}
+            </span>
+          ) : trialInfo ? (
+            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-200">
+              Trial {trialInfo.used}/{trialInfo.trial_prompts} · {trialInfo.remaining} tersisa
+            </span>
+          ) : null}
+          {userInfo ? (
+            <button onClick={async () => { try { await fetch("/api/python/user/logout", { method: "POST" }); } catch {} window.location.href = "/login"; }} className="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[11.5px] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200">Keluar</button>
+          ) : (
+            <a href="/login" className="rounded-xl border border-white/[0.08] bg-white px-3.5 py-1.5 text-[11.5px] font-medium text-black hover:bg-zinc-100">Login</a>
+          )}
           <button 
             onClick={() => window.location.reload()} 
             className="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-[12.5px] font-medium tracking-wide text-zinc-400 transition-all duration-200 hover:border-white/[0.12] hover:bg-white/[0.08] hover:text-zinc-200 hover:scale-105 active:scale-95 focus-visible:outline-offset-0"
@@ -171,6 +218,14 @@ export default function ChatPage() {
         </div>
       </header>
 
+      {quotaAlert && (
+        <div className="relative z-20 mx-auto w-full max-w-[720px] px-4 pt-3 sm:px-6">
+          <div role="alert" className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[13px] leading-5 text-amber-200">
+            <span className="mt-0.5">⚠</span><span className="flex-1">{quotaAlert} <a href="/login" className="underline underline-offset-2">Login</a> atau hubungi admin.</span>
+            <button onClick={() => setQuotaAlert(null)} className="shrink-0 rounded-md px-2 py-1 text-amber-300 hover:bg-white/10">Tutup</button>
+          </div>
+        </div>
+      )}
       <main className="relative z-10 flex flex-1 flex-col overflow-hidden">
         {isEmpty ? (
           <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-12 sm:py-20">

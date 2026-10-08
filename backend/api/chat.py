@@ -1,16 +1,24 @@
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, Request, Query, HTTPException, Depends
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Dict, Optional
 import json
 import os
+import re
+
+try:
+    from backend.security.rate_limiter import get_client_ip, check_rate_limit
+    from backend.security.auth import USER_COOKIE_NAME, verify_user_jwt
+    from backend.database.db import DatabaseService
+except ImportError:
+    from security.rate_limiter import get_client_ip, check_rate_limit  # type: ignore
+    from security.auth import USER_COOKIE_NAME, verify_user_jwt  # type: ignore
+    from database.db import DatabaseService  # type: ignore
 
 try:
     from backend.agent.agent import AgentOrchestrator, _resolve_base_url, _resolve_api_key, _resolve_default_model
-    from backend.database.db import DatabaseService
 except ImportError:
     from agent.agent import AgentOrchestrator, _resolve_base_url, _resolve_api_key, _resolve_default_model # type: ignore
-    from database.db import DatabaseService
 
 router = APIRouter(prefix="/api", tags=["Chat"])
 v1_router = APIRouter(prefix="/v1", tags=["OpenAI Compatible"])
@@ -25,6 +33,28 @@ def _sanitize_model_list(models: List[str], active: str) -> List[str]:
     if active and active not in out:
         out.insert(0, active)
     return out
+
+
+def get_current_chat_user_optional(request: Request) -> Optional[Dict]:
+    token = request.cookies.get(USER_COOKIE_NAME)
+    if not token:
+        auth = request.headers.get("Authorization") or ""
+        if auth.startswith("Bearer "):
+            token = auth.split(" ", 1)[1].strip()
+    if not token:
+        return None
+    payload = verify_user_jwt(token)
+    if not payload:
+        return None
+    username = str(payload.get("sub") or "").strip().lower()
+    user = DatabaseService.get_user_by_username(username)
+    if not user:
+        return None
+    if not bool(user.get("is_active", True)):
+        raise HTTPException(status_code=403, detail="Akun dinonaktifkan — hubungi admin")
+    if DatabaseService.is_prompt_quota_exhausted(user):
+        raise HTTPException(status_code=403, detail="Batas prompt habis — hubungi admin untuk menambah kuota")
+    return user
 
 
 @v1_router.get("/models")
@@ -111,23 +141,64 @@ def list_available_models(limit: int = Query(default=100, ge=1, le=200), include
         return {"object": "list", "data": [], "error": str(e), "fallback": list_models()}
 
 class ChatMessage(BaseModel):
-    role: str
-    content: str
+    role: str = Field(pattern=r"^(user|assistant|system)$")
+    content: str = Field(min_length=1, max_length=8000)
+
+    @field_validator("content")
+    @classmethod
+    def strip_content(cls, v: str) -> str:
+        return v.strip()
 
 class ChatRequest(BaseModel):
-    message: str
-    history: Optional[List[ChatMessage]] = []
-    model: Optional[str] = None
+    message: str = Field(min_length=1, max_length=8000)
+    history: Optional[List[ChatMessage]] = Field(default=None, max_length=20)
+    model: Optional[str] = Field(default=None, max_length=256)
+
+    @field_validator("message")
+    @classmethod
+    def strip_message(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("message empty")
+        return v
+
+    @field_validator("model")
+    @classmethod
+    def check_model(cls, v):  # type: ignore
+        if v is None:
+            return v
+        v = v.strip()
+        if not re.match(r"^[a-zA-Z0-9._/:-]+$", v):
+            raise ValueError("Invalid model ID")
+        return v
 
 @router.post("/chat")
-async def stream_chat(payload: ChatRequest):
-    """
-    Streams ITZ AI response using Server-Sent Events (SSE).
-    Response format: text/event-stream
-    Each chunk is: data: {"content": "token"}
-    Terminal chunk: data: [DONE]
-    """
-    history_dicts = [m.dict() for m in payload.history] if payload.history else []
+async def stream_chat(payload: ChatRequest, request: Request):
+    ip = get_client_ip(request)
+    user = get_current_chat_user_optional(request)
+    if user is not None:
+        allowed, retry = check_rate_limit(f"chat:{user.get('id')}:{ip}", 30, 60)
+        if not allowed:
+            raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        fresh = DatabaseService.get_user_by_id(str(user.get("id")))
+        if fresh and DatabaseService.is_prompt_quota_exhausted(fresh):
+            raise HTTPException(status_code=403, detail="Batas prompt habis — hubungi admin untuk menambah kuota")
+        DatabaseService.increment_prompt_usage(str(user.get("id")))
+    else:
+        # trial gate — soft setting trial_prompts (0 = trial disabled => require login)
+        allowed, retry = check_rate_limit(f"chat:trial:{ip}", 30, 60)
+        if not allowed:
+            raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        s = DatabaseService.get_app_settings()
+        limit = max(0, int(s.get("trial_prompts", 3)))
+        if limit == 0:
+            raise HTTPException(status_code=401, detail="Login diperlukan — hubungi admin untuk akses")
+        used = DatabaseService.get_trial_used(ip)
+        if used >= limit:
+            raise HTTPException(status_code=403, detail="Trial habis — login atau hubungi admin untuk akses")
+        DatabaseService.increment_trial(ip)
+
+    history_dicts = [m.model_dump() for m in payload.history] if payload.history else []
 
     async def generate():
         async for chunk in agent_orchestrator.stream_chat_response(payload.message, history_dicts, model_override=payload.model):
