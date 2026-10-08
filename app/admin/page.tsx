@@ -80,28 +80,13 @@ import { motion, AnimatePresence } from "framer-motion";
 
 type TabType = "dashboard" | "users" | "identity" | "personal" | "knowledge" | "personality" | "communication" | "instructions" | "models";
 
-// Mock real-time data generator with more professional metrics
-const generateMockStats = () => ({
-  totalRequests: Math.floor(Math.random() * 5000) + 15000,
-  activeUsers: Math.floor(Math.random() * 150) + 250,
-  avgResponseTime: (Math.random() * 0.8 + 0.2).toFixed(3),
-  knowledgeEntries: Math.floor(Math.random() * 50) + 420,
-  uptime: "99.97%",
-  errorRate: (Math.random() * 0.5).toFixed(2),
-  tokensProcessed: Math.floor(Math.random() * 1000000) + 5000000,
-  cacheHitRate: (Math.random() * 15 + 85).toFixed(1),
-});
-
-const generateTimeSeriesData = () => {
-  const now = Date.now();
-  return Array.from({ length: 24 }, (_, i) => ({
-    time: new Date(now - (23 - i) * 3600000).getHours().toString().padStart(2, '0') + ":00",
-    requests: Math.floor(Math.random() * 200) + 500,
-    errors: Math.floor(Math.random() * 15) + 2,
-    responseTime: (Math.random() * 0.5 + 0.3).toFixed(3),
-    cpu: Math.floor(Math.random() * 30) + 40,
-    memory: Math.floor(Math.random() * 20) + 60,
-  }));
+type RealStats = {
+  totalRequests: number; totalUsers: number; activeUsers: number; disabledUsers: number;
+  knowledgeEntries: number; totalPromptsUsed: number; trialTotalUsed: number;
+  exhausted: number; unlimitedUsers: number; avgPrompts: number;
+  uptime: string; uptimeSeconds: number;
+  knowledgeByCategory: { name: string; value: number }[];
+  topPrompts: { username: string; prompts_used: number; max_prompts: number }[];
 };
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
@@ -129,15 +114,7 @@ export default function AdminPage() {
   }, []);
   const dismissToast = React.useCallback((id: string) => setToasts((prev) => prev.filter((t) => t.id !== id)), []);
 
-  // Real-time stats
-  const [stats, setStats] = useState(generateMockStats());
-  const [timeSeriesData, setTimeSeriesData] = useState(generateTimeSeriesData());
-  const [categoryData, setCategoryData] = useState([
-    { name: 'Technical', value: 45 },
-    { name: 'Projects', value: 25 },
-    { name: 'Personal', value: 20 },
-    { name: 'Other', value: 10 },
-  ]);
+  const [categoryData, setCategoryData] = useState<{ name: string; value: number }[]>([]);
 
   // Config states
   const [identityData, setIdentityData] = useState({ name: "", role: "", description: "", identity: "", purpose: "" });
@@ -160,6 +137,10 @@ export default function AdminPage() {
   const [modelSearch, setModelSearch] = useState("");
   const [freeOnly, setFreeOnly] = useState(false);
   const [fallbackInput, setFallbackInput] = useState("");
+  const [catalogApiKey, setCatalogApiKey] = useState("");
+  const [catalogBaseUrl, setCatalogBaseUrl] = useState("");
+  const [showCatalogKey, setShowCatalogKey] = useState(false);
+  const [modelTestResults, setModelTestResults] = useState<Record<string, { status: "ok" | "error" | "loading"; latency_ms?: number; sample?: string; error?: string }>>({});
 
   // Knowledge states
   const [knowledgeCategories, setKnowledgeCategories] = useState<any[]>([]);
@@ -182,15 +163,29 @@ export default function AdminPage() {
   const [jsonDrag, setJsonDrag] = useState(false);
   const jsonFileRef = React.useRef<HTMLInputElement>(null);
 
-  // Real-time updates
+  const [realStats, setRealStats] = useState<RealStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const fetchStats = React.useCallback(async () => {
+    if (!isAuthenticated) return;
+    setStatsLoading(true);
+    try {
+      const res = await fetch("/api/python/admin/stats");
+      if (res.ok) {
+        const j = await res.json();
+        setRealStats(j);
+        if (Array.isArray(j.knowledgeByCategory) && j.knowledgeByCategory.length) {
+          setCategoryData(j.knowledgeByCategory);
+        }
+      }
+    } catch {}
+    setStatsLoading(false);
+  }, [isAuthenticated]);
   useEffect(() => {
     if (!isAuthenticated) return;
-    const interval = setInterval(() => {
-      setStats(generateMockStats());
-      setTimeSeriesData(generateTimeSeriesData());
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
+    fetchStats();
+    const t = setInterval(fetchStats, 15000);
+    return () => clearInterval(t);
+  }, [isAuthenticated, fetchStats]);
 
   useEffect(() => {
     checkAuth();
@@ -319,25 +314,71 @@ export default function AdminPage() {
     setModelsLoading(true);
     try {
       const fo = opts?.freeOnly ?? freeOnly;
-      const res = await fetch(`/api/python/admin/models?include_free_only=${fo}&limit=120`);
+      // Use POST catalog preview when credentials supplied (avoid key in URL/logs)
       let data: any = null;
-      if (res.ok) {
-        const j = await res.json();
-        data = j.live_catalog?.data || j.live_catalog?.fallback?.data || j.data || null;
-        if (Array.isArray(data)) setAvailableModels(data);
-      }
-      if (!data || !Array.isArray(availableModels) || availableModels.length === 0) {
-        const res2 = await fetch(`/api/python/v1/models/available?limit=120&include_free_only=${fo}`);
-        if (res2.ok) {
-          const j2 = await res2.json();
-          if (Array.isArray(j2.data) && j2.data.length) setAvailableModels(j2.data);
-          else if (Array.isArray(j2.fallback?.data)) setAvailableModels(j2.fallback.data);
+      if (catalogApiKey.trim() || catalogBaseUrl.trim()) {
+        const res = await fetch("/api/python/admin/models/catalog", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ api_key: catalogApiKey.trim() || undefined, base_url: catalogBaseUrl.trim() || undefined, include_free_only: fo, limit: 120 }),
+        });
+        if (res.ok) {
+          const j = await res.json();
+          if (Array.isArray(j.data) && j.data.length) { setAvailableModels(j.data); data = j.data; }
+          if (j.error) pushToast("error", "Katalog gagal", String(j.error).slice(0, 160));
+        } else {
+          const j = await res.json().catch(() => ({}));
+          const msg = (j as any).detail || (j as any).error || "Katalog gagal";
+          pushToast("error", "Katalog gagal", typeof msg === "string" ? msg.slice(0, 160) : JSON.stringify(msg).slice(0, 160));
+        }
+      } else {
+        const params = new URLSearchParams({ include_free_only: String(fo), limit: "120" });
+        const res = await fetch(`/api/python/admin/models?${params.toString()}`);
+        if (res.ok) {
+          const j = await res.json();
+          data = j.live_catalog?.data || j.live_catalog?.fallback?.data || j.data || null;
+          if (Array.isArray(data)) setAvailableModels(data);
+          if (j.live_catalog?.error) pushToast("error", "Katalog gagal", String(j.live_catalog.error).slice(0, 160));
+        }
+        if (!data || !Array.isArray(data) || data.length === 0) {
+          const res2 = await fetch(`/api/python/v1/models/available?limit=120&include_free_only=${fo}`);
+          if (res2.ok) {
+            const j2 = await res2.json();
+            if (Array.isArray(j2.data) && j2.data.length) setAvailableModels(j2.data);
+            else if (Array.isArray(j2.fallback?.data)) setAvailableModels(j2.fallback.data);
+          }
         }
       }
     } catch (e) {
       console.error("refreshAvailableModels error:", e);
     } finally {
       setModelsLoading(false);
+    }
+  };
+
+  const handleTestModel = async (modelId: string) => {
+    const id = modelId.trim();
+    if (!id) return;
+    setModelTestResults((prev) => ({ ...prev, [id]: { status: "loading" } }));
+    try {
+      const body: any = { model: id };
+      if (catalogApiKey.trim()) body.api_key = catalogApiKey.trim();
+      if (catalogBaseUrl.trim()) body.base_url = catalogBaseUrl.trim();
+      if (modelConfig.provider) body.provider = modelConfig.provider;
+      const res = await fetch("/api/python/admin/models/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok && j.status === "ok") {
+        setModelTestResults((prev) => ({ ...prev, [id]: { status: "ok", latency_ms: j.latency_ms, sample: j.sample } }));
+        pushToast("success", "Model OK", `${id.slice(0, 40)} · ${j.latency_ms}ms`);
+      } else {
+        const err = (j.detail?.error || j.detail || j.error || "Gagal") as string;
+        const latency = j.detail?.latency_ms ?? j.latency_ms;
+        setModelTestResults((prev) => ({ ...prev, [id]: { status: "error", latency_ms: latency, error: typeof err === "string" ? err : JSON.stringify(err) } }));
+        pushToast("error", "Model gagal", typeof err === "string" ? err.slice(0, 160) : "Cek kredensial / model");
+      }
+    } catch (e: any) {
+      setModelTestResults((prev) => ({ ...prev, [id]: { status: "error", error: e.message || String(e) } }));
+      pushToast("error", "Model gagal", (e.message || String(e)).slice(0, 160));
     }
   };
 
@@ -798,290 +839,180 @@ export default function AdminPage() {
         <div className="mx-auto max-w-6xl space-y-5">
           {/* Reserved for page header per-tab — banners removed, toast handles feedback */}
 
-          {/* DASHBOARD TAB */}
+          {/* DASHBOARD TAB — real data */}
           {activeTab === "dashboard" && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-6"
-            >
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-white leading-none">Dashboard</h2>
+                <div>
+                  <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-white leading-none">Dashboard</h2>
+                  <p className="mt-1 text-[11px] tracking-wide text-zinc-500">Data real dari Supabase / storage lokal · refresh 15s</p>
+                </div>
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium tracking-wide text-emerald-300">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
                     LIVE
                   </span>
+                  <Button variant="outline" size="sm" onClick={fetchStats} disabled={statsLoading} className="h-7 border-white/10 bg-white/[0.04] text-[11px] text-zinc-300">
+                    {statsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Activity className="h-3 w-3" />} Refresh
+                  </Button>
                   <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium tracking-wide text-zinc-400">v2.1</span>
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-                {[
-                  { label: "Requests", value: stats.totalRequests.toLocaleString(), icon: TrendingUp, iconBg: "bg-emerald-500/10 border-emerald-500/15", iconColor: "text-emerald-400", labelColor: "text-emerald-300/70" },
-                  { label: "Sessions", value: stats.activeUsers.toString(), icon: User, iconBg: "bg-sky-500/10 border-sky-500/15", iconColor: "text-sky-400", labelColor: "text-sky-300/70" },
-                  { label: "Latency", value: `${stats.avgResponseTime}s`, icon: Zap, iconBg: "bg-amber-500/10 border-amber-500/15", iconColor: "text-amber-400", labelColor: "text-amber-300/70" },
-                  { label: "Knowledge", value: stats.knowledgeEntries.toString(), icon: Database, iconBg: "bg-violet-500/10 border-violet-500/15", iconColor: "text-violet-400", labelColor: "text-violet-300/70" },
-                ].map((stat, idx) => {
-                  const Icon = stat.icon;
-                  return (
-                    <motion.div key={stat.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }}>
-                      <Card className="border-white/[0.06] bg-zinc-900/40">
-                        <CardContent className="flex items-center justify-between gap-3 p-4">
-                          <div className="min-w-0">
-                            <p className={`text-[11px] font-medium tracking-[0.08em] ${stat.labelColor}`}>{stat.label}</p>
-                            <p className="mt-1 text-[20px] font-semibold tracking-tight text-white leading-none truncate tabular-nums">{stat.value}</p>
-                          </div>
-                          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${stat.iconBg}`} aria-hidden>
-                            <Icon className={`h-4 w-4 ${stat.iconColor}`} />
-                          </span>
+              {!realStats ? (
+                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                  {[1,2,3,4].map((i) => (
+                    <Card key={i} className="border-white/[0.06] bg-zinc-900/30"><CardContent className="p-4"><div className="h-12 animate-pulse rounded bg-white/5" /></CardContent></Card>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                    {[
+                      { label: "Total Requests", value: realStats.totalRequests.toLocaleString(), sub: `${realStats.totalPromptsUsed} user + ${realStats.trialTotalUsed} trial`, icon: TrendingUp, iconBg: "bg-emerald-500/10 border-emerald-500/15", iconColor: "text-emerald-400", labelColor: "text-emerald-300/70" },
+                      { label: "Users", value: `${realStats.activeUsers}/${realStats.totalUsers}`, sub: `${realStats.disabledUsers} nonaktif · ${realStats.exhausted} quota habis`, icon: User, iconBg: "bg-sky-500/10 border-sky-500/15", iconColor: "text-sky-400", labelColor: "text-sky-300/70" },
+                      { label: "Avg Prompts / User", value: String(realStats.avgPrompts), sub: `${realStats.unlimitedUsers} unlimited`, icon: Zap, iconBg: "bg-amber-500/10 border-amber-500/15", iconColor: "text-amber-400", labelColor: "text-amber-300/70" },
+                      { label: "Knowledge", value: String(realStats.knowledgeEntries), sub: `${realStats.knowledgeByCategory.length} kategori`, icon: Database, iconBg: "bg-violet-500/10 border-violet-500/15", iconColor: "text-violet-400", labelColor: "text-violet-300/70" },
+                    ].map((stat, idx) => {
+                      const Icon = stat.icon;
+                      return (
+                        <motion.div key={stat.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }}>
+                          <Card className="border-white/[0.06] bg-zinc-900/40">
+                            <CardContent className="flex items-center justify-between gap-3 p-4">
+                              <div className="min-w-0">
+                                <p className={`text-[11px] font-medium tracking-[0.08em] ${stat.labelColor}`}>{stat.label}</p>
+                                <p className="mt-1 text-[20px] font-semibold tracking-tight text-white leading-none truncate tabular-nums">{stat.value}</p>
+                                <p className="mt-1 text-[10px] leading-none text-zinc-500 truncate">{stat.sub}</p>
+                              </div>
+                              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${stat.iconBg}`} aria-hidden><Icon className={`h-4 w-4 ${stat.iconColor}`} /></span>
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-4">
+                    {[
+                      { k: "Uptime", v: realStats.uptime, labelColor: "text-emerald-300/60", valueColor: "text-emerald-200" },
+                      { k: "Trial Used", v: String(realStats.trialTotalUsed), labelColor: "text-amber-300/60", valueColor: "text-amber-200" },
+                      { k: "Quota Habis", v: String(realStats.exhausted), labelColor: "text-red-300/60", valueColor: "text-red-200" },
+                      { k: "Unlimited", v: String(realStats.unlimitedUsers), labelColor: "text-violet-300/60", valueColor: "text-violet-200" },
+                    ].map((m) => (
+                      <Card key={m.k} className="border-white/[0.06] bg-zinc-900/30">
+                        <CardContent className="flex items-baseline justify-between gap-2 px-4 py-3">
+                          <span className={`text-[11px] font-medium tracking-[0.08em] ${m.labelColor}`}>{m.k}</span>
+                          <span className={`text-[13px] font-semibold tabular-nums ${m.valueColor}`}>{m.v}</span>
                         </CardContent>
                       </Card>
-                    </motion.div>
-                  );
-                })}
-              </div>
+                    ))}
+                  </div>
 
-              <div className="grid gap-3 md:grid-cols-4">
-                {[
-                  { k: "Uptime", v: stats.uptime, labelColor: "text-emerald-300/60", valueColor: "text-emerald-200" },
-                  { k: "Error", v: `${stats.errorRate}%`, labelColor: "text-red-300/60", valueColor: "text-red-200" },
-                  { k: "Tokens", v: `${(stats.tokensProcessed / 1000000).toFixed(1)}M`, labelColor: "text-sky-300/60", valueColor: "text-sky-200" },
-                  { k: "Cache", v: `${stats.cacheHitRate}%`, labelColor: "text-violet-300/60", valueColor: "text-violet-200" },
-                ].map((m) => (
-                  <Card key={m.k} className="border-white/[0.06] bg-zinc-900/30">
-                    <CardContent className="flex items-baseline justify-between gap-2 px-4 py-3">
-                      <span className={`text-[11px] font-medium tracking-[0.08em] ${m.labelColor}`}>{m.k}</span>
-                      <span className={`text-[13px] font-semibold tabular-nums ${m.valueColor}`}>{m.v}</span>
+                  {/* Models summary — counts + names from katalog */}
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Card className="border-emerald-500/20 bg-emerald-500/[0.04]">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center justify-between gap-2 text-[11px] font-medium tracking-[0.08em] text-emerald-300/70">
+                          <span className="flex items-center gap-2"><Cpu className="h-3.5 w-3.5 text-emerald-400" /> READY — KATALOG</span>
+                          <Badge variant="outline" className="border-emerald-500/20 bg-emerald-500/10 text-emerald-200 font-mono text-[11px] tabular-nums">{availableModels.length} model</Badge>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {availableModels.length === 0 ? (
+                          <p className="text-[11px] leading-relaxed text-zinc-500">Belum load katalog. Buka tab AI Models → isi Kredensial Katalog → Muat ulang.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5 max-h-[88px] overflow-auto pr-1">
+                            {availableModels.slice(0, 24).map((m: any) => (
+                              <span key={m.id} className="inline-flex max-w-[220px] truncate rounded-full border border-emerald-500/15 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-200" title={m.id}>{m.name ? `${m.name} — ${m.id}` : m.id}</span>
+                            ))}
+                            {availableModels.length > 24 && <span className="text-[10px] text-zinc-500">+{availableModels.length - 24} lagi</span>}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                    <Card className="border-amber-500/20 bg-amber-500/[0.04]">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center justify-between gap-2 text-[11px] font-medium tracking-[0.08em] text-amber-300/70">
+                          <span className="flex items-center gap-2"><Layers className="h-3.5 w-3.5 text-amber-400" /> FALLBACK CHAIN</span>
+                          <Badge variant="outline" className="border-amber-500/20 bg-amber-500/10 text-amber-200 font-mono text-[11px] tabular-nums">{modelConfig.fallback_models.length} model</Badge>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {modelConfig.fallback_models.length === 0 ? (
+                          <p className="text-[11px] text-zinc-500">Belum ada fallback. Tambah di AI Models.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {modelConfig.fallback_models.map((mid: string) => {
+                              const isActive = mid === modelConfig.active_model;
+                              return (
+                                <span key={mid} className={`inline-flex max-w-[220px] truncate rounded-full border px-2 py-1 text-[10px] font-medium ${isActive ? "border-zinc-500/30 bg-white/10 text-zinc-200" : "border-amber-500/15 bg-amber-500/10 text-amber-200"}`} title={mid}>{mid}</span>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <p className="mt-2 text-[10px] text-zinc-500">Aktif: <span className="font-mono text-zinc-300">{modelConfig.active_model || "—"}</span></p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <Card className="border-white/[0.06] bg-zinc-900/30">
+                      <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-violet-300/70"><Database className="h-3.5 w-3.5 text-violet-400" /> KNOWLEDGE BY CATEGORY</CardTitle></CardHeader>
+                      <CardContent>
+                        {categoryData.length === 0 ? (
+                          <div className="py-16 text-center text-sm text-zinc-500">Belum ada knowledge.</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height={280}>
+                            <PieChart>
+                              <Pie data={categoryData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`} outerRadius={90} dataKey="value">
+                                {categoryData.map((entry, index) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}
+                              </Pie>
+                              <Tooltip contentStyle={{ backgroundColor: '#000', border: '1px solid #27272a', borderRadius: '8px', color: '#fff', fontFamily: 'monospace' }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-white/[0.06] bg-zinc-900/30">
+                      <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-emerald-300/70"><BarChart3 className="h-3.5 w-3.5 text-emerald-400" /> TOP PROMPTS BY USER</CardTitle></CardHeader>
+                      <CardContent>
+                        {!realStats.topPrompts || realStats.topPrompts.length === 0 ? (
+                          <div className="py-16 text-center text-sm text-zinc-500">Belum ada usage.</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height={280}>
+                            <BarChart data={realStats.topPrompts} layout="vertical" margin={{ left: 12, right: 16 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.08} />
+                              <XAxis type="number" stroke="#71717a" fontSize={10} fontFamily="monospace" />
+                              <YAxis type="category" dataKey="username" stroke="#a1a1aa" fontSize={11} width={90} />
+                              <Tooltip contentStyle={{ backgroundColor: '#000', border: '1px solid #27272a', borderRadius: '8px', color: '#fff', fontFamily: 'monospace' }} />
+                              <Bar dataKey="prompts_used" fill="#34d399" radius={[0, 8, 8, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card className="border-white/[0.06] bg-zinc-900/30">
+                    <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-emerald-300/70"><Activity className="h-3.5 w-3.5 text-emerald-400" /> SYSTEM</CardTitle></CardHeader>
+                    <CardContent>
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <div className="flex items-center justify-between rounded-lg border border-emerald-500/10 bg-emerald-500/[0.04] px-3 py-2.5">
+                          <span className="text-[11px] font-medium tracking-[0.06em] text-emerald-300/60">UPTIME</span>
+                          <span className="text-[11px] font-medium tracking-wide text-emerald-200 tabular-nums">{realStats.uptime} · ONLINE</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg border border-sky-500/10 bg-sky-500/[0.04] px-3 py-2.5">
+                          <span className="text-[11px] font-medium tracking-[0.06em] text-sky-300/60">API</span><span className="text-[11px] font-medium tracking-wide text-sky-200">READY · LIVE</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 rounded-lg border border-violet-500/10 bg-violet-500/[0.04] px-3 py-2.5">
+                          <span className="text-[11px] font-medium tracking-[0.06em] text-violet-300/60">MODEL</span><span className="text-[11px] font-medium text-violet-200 truncate max-w-[160px] tabular-nums">{modelConfig.active_model.split('/')[1]?.slice(0, 22) || '—'}</span>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
-                ))}
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card className="border-white/[0.06] bg-zinc-900/30">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-sky-300/70">
-                      <Activity className="h-3.5 w-3.5 text-sky-400" />
-                      REQUEST VOLUME
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={280}>
-                      <AreaChart data={timeSeriesData}>
-                        <defs>
-                          <linearGradient id="colorRequests" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.25}/>
-                            <stop offset="95%" stopColor="#38bdf8" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.08} />
-                        <XAxis dataKey="time" stroke="#71717a" fontSize={10} fontFamily="monospace" />
-                        <YAxis stroke="#71717a" fontSize={10} fontFamily="monospace" />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: '#000', 
-                            border: '1px solid #27272a',
-                            borderRadius: '8px',
-                            color: '#fff',
-                            fontFamily: 'monospace'
-                          }} 
-                        />
-                        <Area type="monotone" dataKey="requests" stroke="#38bdf8" fillOpacity={1} fill="url(#colorRequests)" strokeWidth={2} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-white/[0.06] bg-zinc-900/30">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-amber-300/70">
-                      <Zap className="h-3.5 w-3.5 text-amber-400" />
-                      LATENCY
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={280}>
-                      <LineChart data={timeSeriesData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.08} />
-                        <XAxis dataKey="time" stroke="#71717a" fontSize={10} fontFamily="monospace" />
-                        <YAxis stroke="#71717a" fontSize={10} fontFamily="monospace" />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: '#000', 
-                            border: '1px solid #27272a',
-                            borderRadius: '8px',
-                            color: '#fff',
-                            fontFamily: 'monospace'
-                          }} 
-                        />
-                        <Line type="monotone" dataKey="responseTime" stroke="#f59e0b" strokeWidth={2.5} dot={{ fill: '#f59e0b', r: 3, strokeWidth: 0 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-white/[0.06] bg-zinc-900/30">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-violet-300/70">
-                      <Database className="h-3.5 w-3.5 text-violet-400" />
-                      KNOWLEDGE
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={280}>
-                      <PieChart>
-                        <Pie
-                          data={categoryData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
-                          outerRadius={90}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {categoryData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: '#000', 
-                            border: '1px solid #27272a',
-                            borderRadius: '8px',
-                            color: '#fff',
-                            fontFamily: 'monospace'
-                          }} 
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-white/[0.06] bg-zinc-900/30">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-red-300/70">
-                      <AlertCircle className="h-3.5 w-3.5 text-red-400" />
-                      ERRORS
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={280}>
-                      <BarChart data={timeSeriesData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.08} />
-                        <XAxis dataKey="time" stroke="#71717a" fontSize={10} fontFamily="monospace" />
-                        <YAxis stroke="#71717a" fontSize={10} fontFamily="monospace" />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: '#000', 
-                            border: '1px solid #27272a',
-                            borderRadius: '8px',
-                            color: '#fff',
-                            fontFamily: 'monospace'
-                          }} 
-                        />
-                        <Bar dataKey="errors" fill="#ef4444" radius={[8, 8, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card className="border-white/[0.06] bg-zinc-900/30">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-emerald-300/70">
-                      <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
-                      CPU
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <AreaChart data={timeSeriesData}>
-                        <defs>
-                          <linearGradient id="colorCPU" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#34d399" stopOpacity={0.2}/>
-                            <stop offset="95%" stopColor="#34d399" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.08} />
-                        <XAxis dataKey="time" stroke="#71717a" fontSize={10} fontFamily="monospace" />
-                        <YAxis stroke="#71717a" fontSize={10} fontFamily="monospace" />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: '#000', 
-                            border: '1px solid #27272a',
-                            borderRadius: '8px',
-                            color: '#fff',
-                            fontFamily: 'monospace'
-                          }} 
-                        />
-                        <Area type="monotone" dataKey="cpu" stroke="#34d399" fillOpacity={1} fill="url(#colorCPU)" strokeWidth={2} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-white/[0.06] bg-zinc-900/30">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-violet-300/70">
-                      <Database className="h-3.5 w-3.5 text-violet-400" />
-                      MEMORY
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <AreaChart data={timeSeriesData}>
-                        <defs>
-                          <linearGradient id="colorMemory" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.1} />
-                        <XAxis dataKey="time" stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
-                        <YAxis stroke="#a1a1aa" fontSize={10} fontFamily="monospace" />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: '#000', 
-                            border: '1px solid #27272a',
-                            borderRadius: '8px',
-                            color: '#fff',
-                            fontFamily: 'monospace'
-                          }} 
-                        />
-                        <Area type="monotone" dataKey="memory" stroke="#10b981" fillOpacity={1} fill="url(#colorMemory)" strokeWidth={2} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card className="border-white/[0.06] bg-zinc-900/30">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-[12px] font-medium tracking-[0.08em] text-emerald-300/70">
-                    <Activity className="h-3.5 w-3.5 text-emerald-400" />
-                    SYSTEM
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <div className="flex items-center justify-between rounded-lg border border-emerald-500/10 bg-emerald-500/[0.04] px-3 py-2.5">
-                      <span className="text-[11px] font-medium tracking-[0.06em] text-emerald-300/60">UPTIME</span>
-                      <span className="text-[11px] font-medium tracking-wide text-emerald-200 tabular-nums">{stats.uptime} · ONLINE</span>
-                    </div>
-                    <div className="flex items-center justify-between rounded-lg border border-sky-500/10 bg-sky-500/[0.04] px-3 py-2.5">
-                      <span className="text-[11px] font-medium tracking-[0.06em] text-sky-300/60">API</span>
-                      <span className="text-[11px] font-medium tracking-wide text-sky-200">READY · LIVE</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 rounded-lg border border-violet-500/10 bg-violet-500/[0.04] px-3 py-2.5">
-                      <span className="text-[11px] font-medium tracking-[0.06em] text-violet-300/60">MODEL</span>
-                      <span className="text-[11px] font-medium text-violet-200 truncate max-w-[160px] tabular-nums">{modelConfig.active_model.split('/')[1]?.slice(0, 22) || '—'}</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                </>
+              )}
             </motion.div>
           )}
 
@@ -1222,7 +1153,24 @@ export default function AdminPage() {
                 </CardHeader>
                 <CardContent className="grid gap-4">
                   <div className="space-y-2">
-                    <Label className="flex items-center gap-2 text-[#8fa88a]"><Cpu className="h-3.5 w-3.5" />ID model aktif</Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="flex items-center gap-2 text-[#8fa88a]"><Cpu className="h-3.5 w-3.5" />ID model aktif</Label>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleTestModel(modelConfig.active_model)}
+                        disabled={!modelConfig.active_model.trim() || modelTestResults[modelConfig.active_model]?.status === "loading"}
+                        className="h-7 border-white/10 bg-white/5 px-2 text-[11px] text-zinc-300"
+                      >
+                        {modelTestResults[modelConfig.active_model]?.status === "loading" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />} Test
+                      </Button>
+                    </div>
+                    {modelTestResults[modelConfig.active_model] && modelTestResults[modelConfig.active_model].status !== "loading" && (
+                      <div className={`rounded-md border px-2 py-1.5 text-[11px] ${modelTestResults[modelConfig.active_model].status === "ok" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200" : "border-red-500/20 bg-red-500/10 text-red-200"}`}>
+                        {modelTestResults[modelConfig.active_model].status === "ok" ? `OK · ${modelTestResults[modelConfig.active_model].latency_ms}ms` : `Gagal · ${modelTestResults[modelConfig.active_model].error?.slice(0,120)}`}
+                        {modelTestResults[modelConfig.active_model].sample ? ` · "${modelTestResults[modelConfig.active_model].sample}"` : ""}
+                      </div>
+                    )}
                     <Input 
                       list="admin-model-options" 
                       value={modelConfig.active_model} 
@@ -1295,20 +1243,35 @@ export default function AdminPage() {
 
               <Card className="border-white/[0.06] bg-zinc-900/60 backdrop-blur-xl shadow-lg">
                 <CardHeader>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <CardTitle>Katalog model live</CardTitle>
-                      <CardDescription className="text-zinc-400">Sumber: katalog provider</CardDescription>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <CardTitle>Katalog model live</CardTitle>
+                        <CardDescription className="text-zinc-400">Sumber: katalog provider · API key & base URL katalog terpisah dari model aktif</CardDescription>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Label className="flex cursor-pointer items-center gap-2 text-xs font-normal text-zinc-300">
+                          <Checkbox checked={freeOnly} onCheckedChange={(checked) => { setFreeOnly(Boolean(checked)); refreshAvailableModels({ freeOnly: Boolean(checked) }); }} />
+                          Hanya gratis
+                        </Label>
+                        <Button variant="outline" size="sm" onClick={() => refreshAvailableModels()} disabled={modelsLoading} className="border-white/10 bg-white/5 text-zinc-300">
+                          {modelsLoading ? "Memuat..." : "Muat ulang"}
+                        </Button>
+                        <Input value={modelSearch} onChange={(e) => setModelSearch(e.target.value)} placeholder="Cari model..." className="h-8 w-40 border-white/10 bg-white/5 text-white" />
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Label className="flex cursor-pointer items-center gap-2 text-xs font-normal text-zinc-300">
-                        <Checkbox checked={freeOnly} onCheckedChange={(checked) => { setFreeOnly(Boolean(checked)); refreshAvailableModels({ freeOnly: Boolean(checked) }); }} />
-                        Hanya gratis
-                      </Label>
-                      <Button variant="outline" size="sm" onClick={() => refreshAvailableModels()} disabled={modelsLoading} className="border-white/10 bg-white/5 text-zinc-300">
-                        {modelsLoading ? "Memuat..." : "Muat ulang"}
-                      </Button>
-                      <Input value={modelSearch} onChange={(e) => setModelSearch(e.target.value)} placeholder="Cari model..." className="h-8 w-40 border-white/10 bg-white/5 text-white" />
+                    <div className="grid gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label className="flex items-center gap-1.5 text-[10px] tracking-[0.08em] text-zinc-400"><KeyRound className="h-3 w-3" /> API KEY KATALOG (preview saja, tidak disimpan)</Label>
+                        <div className="flex gap-1.5">
+                          <Input type={showCatalogKey ? "text" : "password"} value={catalogApiKey} onChange={(e) => setCatalogApiKey(e.target.value)} placeholder="sk-... (kosong = pakai env/server)" className="h-8 border-white/10 bg-zinc-800 text-white placeholder:text-zinc-500" />
+                          <Button variant="ghost" size="icon" onClick={() => setShowCatalogKey((v) => !v)} className="h-8 w-8 shrink-0 text-zinc-400" type="button">{showCatalogKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</Button>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="flex items-center gap-1.5 text-[10px] tracking-[0.08em] text-zinc-400"><Globe className="h-3 w-3" /> BASE URL KATALOG</Label>
+                        <Input value={catalogBaseUrl} onChange={(e) => setCatalogBaseUrl(e.target.value)} placeholder="https://api.groq.com/openai/v1 (kosong = default)" className="h-8 border-white/10 bg-zinc-800 text-white placeholder:text-zinc-500" />
+                      </div>
                     </div>
                   </div>
                 </CardHeader>
@@ -1341,8 +1304,19 @@ export default function AdminPage() {
                                   {m.context_length ? <div className="text-[11px] text-zinc-500">context: {Number(m.context_length).toLocaleString("id-ID")}</div> : null}
                                 </div>
                                 <div className="flex shrink-0 flex-col gap-1">
-                                  <Button variant={isActive ? "secondary" : "default"} size="sm" onClick={() => setModelConfig({ ...modelConfig, active_model: m.id })} className={isActive ? "bg-zinc-800 text-zinc-200" : "bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10 hover:bg-emerald-500 text-white border border-emerald-500/20 shadow-lg shadow-emerald-600/20"}>{isActive ? "Aktif" : "Pakai"}</Button>
+                                  <Button variant={isActive ? "secondary" : "default"} size="sm" onClick={() => setModelConfig({ ...modelConfig, active_model: m.id })} className={isActive ? "bg-zinc-800 text-zinc-200" : "bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10"}>{isActive ? "Aktif" : "Pakai"}</Button>
                                   <Button variant="outline" size="sm" onClick={() => { if (!modelConfig.fallback_models.includes(m.id)) setModelConfig({ ...modelConfig, fallback_models: [...modelConfig.fallback_models, m.id] }); }} disabled={modelConfig.fallback_models.includes(m.id) || isActive} className="border-white/10 bg-white/5 text-zinc-300">+ Fallback</Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleTestModel(m.id)}
+                                    disabled={modelTestResults[m.id]?.status === "loading"}
+                                    className={`h-7 border-white/10 text-[11px] ${modelTestResults[m.id]?.status === "ok" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200" : modelTestResults[m.id]?.status === "error" ? "border-red-500/20 bg-red-500/10 text-red-300" : "bg-white/5 text-zinc-300"}`}
+                                  >
+                                    {modelTestResults[m.id]?.status === "loading" ? <Loader2 className="h-3 w-3 animate-spin" /> : modelTestResults[m.id]?.status === "ok" ? `OK ${modelTestResults[m.id]?.latency_ms}ms` : modelTestResults[m.id]?.status === "error" ? "Gagal" : "Test"}
+                                  </Button>
+                                  {modelTestResults[m.id]?.error && <span className="max-w-[140px] truncate text-[10px] text-red-300/70" title={modelTestResults[m.id]?.error}>{modelTestResults[m.id]?.error}</span>}
+                                  {modelTestResults[m.id]?.sample && <span className="max-w-[140px] truncate text-[10px] text-emerald-300/70">“{modelTestResults[m.id]?.sample}”</span>}
                                 </div>
                               </li>
                             );

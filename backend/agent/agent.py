@@ -35,14 +35,19 @@ except ImportError:
     from database.db import DatabaseService
 
 
+def _strip_key(v: str) -> str:
+    return (v or "").strip().strip('"').strip("'").strip()
+
 def _resolve_api_key(provider: str = "") -> str:
     p = (provider or "").lower()
-    groq = (getattr(settings, "GROQ_API_KEY", "") or "").strip() or os.getenv("GROQ_API_KEY", "").strip()
-    openrouter = (getattr(settings, "OPENROUTER_API_KEY", "") or "").strip() or os.getenv("OPENROUTER_API_KEY", "").strip()
-    gemini = (getattr(settings, "GEMINI_API_KEY", "") or "").strip() or os.getenv("GEMINI_API_KEY", "").strip()
+    groq = _strip_key(getattr(settings, "GROQ_API_KEY", "") or "") or _strip_key(os.getenv("GROQ_API_KEY", "") or "")
+    openrouter = _strip_key(getattr(settings, "OPENROUTER_API_KEY", "") or "") or _strip_key(os.getenv("OPENROUTER_API_KEY", "") or "")
+    # also accept OPENROUTER_API_KEY from 9router alias if user uses that naming
+    nine = _strip_key(os.getenv("OPENROUTER_API_KEY", "") or "") or _strip_key(os.getenv("NINE_ROUTER_API_KEY", "") or "")
+    gemini = _strip_key(getattr(settings, "GEMINI_API_KEY", "") or "") or _strip_key(os.getenv("GEMINI_API_KEY", "") or "")
     if p == "groq":
-        return groq or openrouter or gemini
-    return openrouter or groq or gemini
+        return groq or openrouter or nine or gemini
+    return openrouter or nine or groq or gemini
 
 def _resolve_nvidia_api_key() -> str:
     return (getattr(settings, "NVIDIA_API_KEY", "") or "").strip() \

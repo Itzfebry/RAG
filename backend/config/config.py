@@ -5,7 +5,7 @@ from pathlib import Path
 # Load .env file manually (ensure it's found regardless of working directory)
 from dotenv import load_dotenv
 env_path = Path(__file__).parent.parent.parent / ".env"
-load_dotenv(env_path)
+load_dotenv(env_path, override=True)
 
 class Settings(BaseSettings):
     # Primary keys — generic, provider-agnostic. OPENROUTER_* is canonical.
@@ -19,8 +19,8 @@ class Settings(BaseSettings):
 
     # Generic active model + base URL. Any OpenAI-compatible provider works.
     ACTIVE_MODEL: str = os.getenv("ACTIVE_MODEL", "") or os.getenv("GROQ_MODEL", "") or os.getenv("GEMINI_MODEL", "") or "llama-3.1-8b-instant"
-    API_BASE_URL: str = os.getenv("API_BASE_URL", "") or os.getenv("OPENROUTER_BASE_URL", "") or "https://api.groq.com/openai/v1"
-    MODEL_PROVIDER: str = os.getenv("MODEL_PROVIDER", "groq")
+    API_BASE_URL: str = os.getenv("API_BASE_URL", "") or os.getenv("OPENROUTER_BASE_URL", "") or "https://openrouter.ai/api/v1"
+    MODEL_PROVIDER: str = os.getenv("MODEL_PROVIDER", "openrouter")
     NVIDIA_MODEL: str = os.getenv("NVIDIA_MODEL", "") or "poolside/laguna-xs-2.1"
     
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
