@@ -55,7 +55,7 @@ export default function AdminLoginPage() {
             <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-zinc-900">
               <img src="/image/favicon.png" alt="ITZ AI" width={36} height={36} className="h-full w-full object-cover" />
             </div>
-            <h1 className="mt-2 text-[10px] font-medium tracking-[0.16em] text-zinc-500">ITZ</h1>
+            <h1 className="mt-2 text-[12px] font-medium tracking-[0.16em] text-zinc-500">ITZ</h1>
           </div>
 
           <Card size="sm" className="border-white/[0.06] bg-[#0a0a0a]/80 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.7),0_1px_0_rgba(255,255,255,0.06)_inset] overflow-hidden">
@@ -65,14 +65,14 @@ export default function AdminLoginPage() {
                 <Lock className="h-3.5 w-3.5" />
               </span>
               <div>
-                <CardTitle className="text-[36px] font-bold tracking-[-0.03em] text-white leading-none">Login</CardTitle>
-                <p className="mt-1.5 text-[10px] font-medium tracking-[0.18em] text-zinc-500 leading-none">ADMIN</p>
+                <CardTitle className="text-[40px] font-bold tracking-[-0.03em] text-white leading-none">Login</CardTitle>
+                <p className="mt-1.5 text-[13px] font-medium tracking-[0.14em] text-zinc-500 leading-none">ADMIN</p>
               </div>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleLogin} className="space-y-4" noValidate>
                 <div className="space-y-2">
-                  <Label htmlFor="admin-username" className="text-[10px] font-medium tracking-[0.08em] text-zinc-400">USERNAME</Label>
+                  <Label htmlFor="admin-username" className="text-[13px] font-medium tracking-[0.06em] text-zinc-400 uppercase">Username</Label>
                   <div className="relative">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" aria-hidden>
                       <User className="h-4 w-4" />
@@ -89,13 +89,13 @@ export default function AdminLoginPage() {
                       aria-invalid={Boolean(authError)}
                       aria-describedby={authError ? "admin-login-error" : undefined}
                       placeholder="admin"
-                      className="h-10 border-white/10 bg-zinc-800/60 pl-10 pr-3 text-[14px] text-white placeholder:text-zinc-500 focus-visible:border-white/20 focus-visible:ring-0 focus-visible:ring-offset-0"
+                      className="h-10 border-white/10 bg-zinc-800/60 pl-10 pr-3 text-[16px] text-white placeholder:text-zinc-500 focus-visible:border-white/20 focus-visible:ring-0 focus-visible:ring-offset-0"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="admin-password" className="text-[10px] font-medium tracking-[0.08em] text-zinc-400">PASSWORD</Label>
+                  <Label htmlFor="admin-password" className="text-[13px] font-medium tracking-[0.06em] text-zinc-400 uppercase">Password</Label>
                   <div className="relative">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" aria-hidden>
                       <Lock className="h-4 w-4" />
@@ -111,7 +111,7 @@ export default function AdminLoginPage() {
                       aria-invalid={Boolean(authError)}
                       aria-describedby={authError ? "admin-login-error" : undefined}
                       placeholder="••••••••••••"
-                      className="h-10 border-white/10 bg-zinc-800/60 pl-10 pr-11 text-[14px] text-white placeholder:text-zinc-500 focus-visible:border-white/20 focus-visible:ring-0 focus-visible:ring-offset-0"
+                      className="h-10 border-white/10 bg-zinc-800/60 pl-10 pr-11 text-[16px] text-white placeholder:text-zinc-500 focus-visible:border-white/20 focus-visible:ring-0 focus-visible:ring-offset-0"
                     />
                     <button
                       type="button"

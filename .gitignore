@@ -22,6 +22,12 @@ venv/
 data/conversation_memory.json
 data/storage/
 
+# Live-data migration (berisi bcrypt hash user — jangan di-commit)
+supabase_migration.sql
+
+# File tes sementara
+_tmp*.txt
+
 # OS files
 .DS_Store
 Thumbs.db

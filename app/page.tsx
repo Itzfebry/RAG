@@ -12,11 +12,23 @@ interface Message {
   durationMs?: number;
 }
 
-const SUGGESTIONS = [
+const SUGGESTION_POOL = [
   "Ringkas knowledge base saya",
   "Buatkan outline artikel futuristik",
   "Jelaskan RAG dengan contoh sederhana",
+  "Apa saja yang kamu tahu tentang saya?",
+  "Bantu saya brainstorm ide konten",
+  "Review arsitektur proyek saya",
+  "Buatkan prompt untuk use case saya",
+  "Ringkas poin penting minggu ini",
+  "Jelaskan konsep AI agent secara sederhana",
+  "Saran cara improve workflow kerja saya",
 ];
+
+function pickSuggestions(): string[] {
+  const shuffled = [...SUGGESTION_POOL].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, 3);
+}
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -26,6 +38,44 @@ export default function ChatPage() {
   const [userInfo, setUserInfo] = useState<{ username: string; display_name?: string | null; max_prompts: number; prompts_used: number; remaining: number | null } | null>(null);
   const [trialInfo, setTrialInfo] = useState<{ trial_prompts: number; used: number; remaining: number; allowed: boolean } | null>(null);
   const [quotaAlert, setQuotaAlert] = useState<string | null>(null);
+  // Mulai kosong — diisi setelah mount saja. Math.random() di initializer
+  // bikin hydration mismatch (server & client dapat set berbeda).
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const infoRef = React.useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!infoOpen) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (!infoRef.current?.contains(e.target as Node)) setInfoOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setInfoOpen(false); };
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [infoOpen]);
+  const refreshSuggestions = useCallback(async () => {
+    try {
+      const r = await fetch("/api/python/suggestions?limit=3");
+      if (r.ok) {
+        const j = await r.json();
+        if (Array.isArray(j.suggestions) && j.suggestions.length) setSuggestions(j.suggestions);
+      }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    setSuggestions(pickSuggestions());
+    refreshSuggestions();
+  }, [refreshSuggestions]);
+  const quotaRem = userInfo ? userInfo.remaining : trialInfo ? trialInfo.remaining : null;
+  const remStatus =
+    quotaRem === null
+      ? { label: "Tanpa batas", color: "text-emerald-400" }
+      : quotaRem > 0
+        ? { label: "Aktif", color: "text-emerald-400" }
+        : { label: "Habis", color: "text-red-400" };
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isEmpty = messages.length === 0;
@@ -144,7 +194,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#05030a] text-zinc-100 antialiased selection:bg-white/10">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#101015] text-zinc-100 antialiased selection:bg-white/10">
       {/* Orbital sphere background */}
       <div className="pointer-events-none fixed inset-0 z-0">
         <OrbitalSphereBackground 
@@ -183,38 +233,80 @@ export default function ChatPage() {
         <span className="itz-dot" style={{ left: "74%", top: "38%", width: 4, height: 4, color: "rgba(124,92,255,0.6)", animationDelay: "1.3s", ["--dur" as any]: "5.2s" }} />
       </div>
 
-      <header className="relative z-20 flex h-[56px] shrink-0 items-center justify-between border-b border-white/[0.08] bg-[rgba(5,3,10,0.75)] px-4 backdrop-blur-xl supports-[backdrop-filter]:bg-[rgba(5,3,10,0.75)] sm:px-6">
+      <header className="relative z-30 flex h-[56px] shrink-0 items-center justify-between border-b border-white/[0.08] bg-[rgba(14,14,19,0.13)] px-4 backdrop-blur-xl supports-[backdrop-filter]:bg-[rgba(14,14,19,0.13)] sm:px-6">
         <div className="flex items-center gap-3">
           <div className="itz-logo itz-logo-sheen relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-white/[0.12] bg-zinc-900 shadow-lg">
             <Image src="/image/favicon.png" alt="ITZ" width={36} height={36} className="h-full w-full object-cover" priority />
           </div>
           <span className="itz-brand text-[15.5px] font-semibold tracking-[0.14em]">ITZ AI</span>
         </div>
-        <div className="flex items-center gap-2.5">
-          {userInfo ? (
-            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-zinc-400">
-              {userInfo.display_name || userInfo.username} · {userInfo.remaining === null ? "∞" : `${userInfo.remaining} tersisa`}
-            </span>
-          ) : trialInfo ? (
-            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-200">
-              Trial {trialInfo.used}/{trialInfo.trial_prompts} · {trialInfo.remaining} tersisa
-            </span>
-          ) : null}
-          {userInfo ? (
-            <button onClick={async () => { try { await fetch("/api/python/user/logout", { method: "POST" }); } catch {} window.location.href = "/login"; }} className="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[11.5px] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200">Keluar</button>
-          ) : (
-            <a href="/login" className="rounded-xl border border-white/[0.08] bg-white px-3.5 py-1.5 text-[11.5px] font-medium text-black hover:bg-zinc-100">Login</a>
-          )}
-          <button 
-            onClick={() => window.location.reload()} 
-            className="rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-[12.5px] font-medium tracking-wide text-zinc-400 transition-all duration-200 hover:border-white/[0.12] hover:bg-white/[0.08] hover:text-zinc-200 hover:scale-105 active:scale-95 focus-visible:outline-offset-0"
-          >
-            New Chat
-          </button>
-          <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 shadow-sm">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
-            <span className="text-[11.5px] font-medium tracking-wide text-zinc-400">GPT-4</span>
+        <div className="flex items-center gap-2">
+          {(() => {
+            const rem = userInfo ? userInfo.remaining : trialInfo ? trialInfo.remaining : null;
+            return (
+              <span className="mr-2 hidden items-center gap-2 sm:flex" title={rem === null ? "Kuota tanpa batas" : `Sisa ${rem} prompt`}>
+                <span className="relative flex h-2 w-2" aria-hidden>
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40 bg-emerald-400" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                </span>
+                <span className="font-mono text-[12.5px] tracking-tight text-zinc-200">
+                  {userInfo ? (userInfo.display_name || userInfo.username) : trialInfo ? "TRIAL" : "GUEST"}
+                  <span className="text-zinc-500"> · {rem === null ? "∞" : `${rem} sisa`}</span>
+                </span>
+              </span>
+            );
+          })()}
+          <div className="relative" ref={infoRef}>
+            <button
+              onClick={() => setInfoOpen((v) => !v)}
+              title="Informasi kuota"
+              aria-label="Informasi kuota"
+              aria-expanded={infoOpen}
+              className="flex items-center rounded-lg px-2 py-1.5 text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            </button>
+            {infoOpen && (
+              <div className="absolute right-0 top-full z-40 mt-2 w-60 overflow-hidden rounded-xl border border-white/10 bg-[#16161c] shadow-[0_16px_48px_rgba(0,0,0,0.65)]">
+                <div className="flex items-center justify-between border-b border-white/[0.07] bg-white/[0.03] px-4 py-2.5">
+                  <span className="text-[10.5px] font-medium uppercase tracking-wider text-zinc-500">Info Kuota</span>
+                  <span className="relative flex h-1.5 w-1.5" aria-hidden>
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40 bg-emerald-400" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  </span>
+                </div>
+                <div className="px-4 py-3.5">
+                  <p className="font-mono text-[14px] font-medium tracking-tight text-zinc-100">
+                    {userInfo ? (userInfo.display_name || userInfo.username) : trialInfo ? "Pengunjung Trial" : "Tamu"}
+                  </p>
+                  <p className="mt-1 text-[11.5px] text-zinc-400">
+                    Status prompt:{" "}
+                    <span className={remStatus.color}>{remStatus.label}</span>
+                  </p>
+                  <div className="mt-3.5 border-t border-white/[0.07] pt-3.5">
+                    <p className="text-[11.5px] leading-5 text-zinc-400">Sisa kuota anda sekarang</p>
+                    <p className="mt-1 font-mono text-[26px] font-semibold leading-none tracking-tight text-zinc-50">
+                      {quotaRem === null ? "∞" : quotaRem}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
+          <button 
+            onClick={() => { setMessages([]); setError(null); setQuotaAlert(null); setSuggestions(pickSuggestions()); refreshSuggestions(); }}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
+          >
+            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            <span className="hidden sm:inline">New Chat</span>
+          </button>
+          {userInfo ? (
+            <button onClick={async () => { try { await fetch("/api/python/user/logout", { method: "POST" }); } catch {} window.location.href = "/login"; }} title="Keluar" aria-label="Keluar" className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+            </button>
+          ) : (
+            <a href="/login" className="ml-1 rounded-lg bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-black transition-colors hover:bg-zinc-200">Login</a>
+          )}
         </div>
       </header>
 
@@ -246,7 +338,7 @@ export default function ChatPage() {
 
               <div className="mt-12 w-full">
                 <div className="mb-5 flex flex-wrap justify-center gap-2.5">
-                  {SUGGESTIONS.map((s) => (
+                  {suggestions.map((s) => (
                     <button
                       key={s}
                       onClick={() => setInput(s)}
@@ -259,8 +351,8 @@ export default function ChatPage() {
                 <AIChatInput value={input} onChange={setInput} onSubmit={handleSend} isLoading={isLoading} />
               </div>
 
-              <p className="mt-8 text-center text-[10.5px] tracking-[0.08em] text-zinc-700/70">
-                © {new Date().getFullYear()} ITZ AI
+              <p suppressHydrationWarning className="mt-8 text-center text-[11px] tracking-[0.06em] text-zinc-600">
+                © {new Date().getFullYear()} Mochammad Ginata Febryansyah
               </p>
             </div>
           </div>
@@ -295,7 +387,7 @@ export default function ChatPage() {
               <div className="mx-auto w-full max-w-[800px] px-4 pb-5 pt-4 sm:px-6">
                 <div className="mx-auto max-w-[720px]">
                   <AIChatInput value={input} onChange={setInput} onSubmit={handleSend} isLoading={isLoading} />
-                  <p className="mt-3 text-center text-[10.5px] tracking-[0.08em] text-zinc-700/70">© {new Date().getFullYear()} ITZ AI</p>
+                  <p suppressHydrationWarning className="mt-3 text-center text-[11px] tracking-[0.06em] text-zinc-600">© {new Date().getFullYear()} Mochammad Ginata Febryansyah</p>
                 </div>
               </div>
             </div>

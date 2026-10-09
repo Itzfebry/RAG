@@ -1,6 +1,8 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 try:
     from backend.api.admin import router as admin_router
@@ -28,6 +30,17 @@ app = FastAPI(
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(BodySizeLimitMiddleware)
 
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Balas 422 dengan pesan bersih — jangan bocorkan struktur schema Pydantic
+    (loc/msg/ctx) ke client. Detail tetap di-log ke console untuk debugging."""
+    print(f"[validation] {request.url.path}: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": "Format data tidak valid — periksa field yang dikirim."},
+    )
+
 # CORS — explicit, no wildcard when credentials involved. Rewrites are same-origin.
 app.add_middleware(
     CORSMiddleware,
@@ -41,6 +54,8 @@ app.add_middleware(
 
 app.include_router(chat_router)
 app.include_router(v1_router)
+app.include_router(v1_router, prefix="/api")  # alias: /api/v1/* so the OpenAI-compatible
+# endpoint stays reachable on Vercel, where only /api/* routes hit the Python function
 app.include_router(user_router)
 app.include_router(admin_router)
 app.include_router(admin_users_router)
@@ -58,6 +73,24 @@ def root():
 def health():
     return {"status": "ok"}
 
+@app.get("/api/cron/warmup")
+def cron_warmup():
+    """Vercel cron target (daily): keep the HF embedding model warm.
+
+    Free-tier HF Inference API unloads idle models; a tiny daily embed call
+    avoids cold-start latency on the first real user query.
+    """
+    try:
+        from backend.knowledge.knowledge_service import KnowledgeService
+    except ImportError:
+        from knowledge.knowledge_service import KnowledgeService
+    vec = KnowledgeService.get_embedding("warmup")
+    is_dummy = not vec or all(x == 0.0 for x in vec[:20])
+    return {"status": "ok" if not is_dummy else "embedding-fallback"}
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.api.main:app", host="0.0.0.0", port=settings.PORT, reload=True)
+    # UVICORN_RELOAD=0 kalau ingin server stabil (tanpa auto-reload — cocok
+    # saat sedang dipakai chat; reload bikin server mati beberapa detik)
+    _reload = os.getenv("UVICORN_RELOAD", "1") == "1"
+    uvicorn.run("backend.api.main:app", host="0.0.0.0", port=settings.PORT, reload=_reload)

@@ -5,6 +5,7 @@ from typing import List, Dict, Optional
 import json
 import os
 import re
+import random
 
 try:
     from backend.security.rate_limiter import get_client_ip, check_rate_limit
@@ -199,10 +200,31 @@ async def stream_chat(payload: ChatRequest, request: Request):
         DatabaseService.increment_trial(ip)
 
     history_dicts = [m.model_dump() for m in payload.history] if payload.history else []
+    # capture model/resolved latency for analytics — non-blocking
+    import time as _t
+    t0 = _t.perf_counter()
 
     async def generate():
+        last_model = None
         async for chunk in agent_orchestrator.stream_chat_response(payload.message, history_dicts, model_override=payload.model):
+            # try to sniff timing json chunk for model/latency? fallback to active_model
             yield chunk
+        try:
+            elapsed = int((_t.perf_counter() - t0) * 1000)
+            # best-effort: use override or active config model
+            mname = (payload.model or "").strip()
+            if not mname:
+                try:
+                    cfg = DatabaseService.get_config_table("ai_model_config")
+                    mname = (cfg.get("active_model") or "").strip() or "unknown"
+                except Exception:
+                    mname = "unknown"
+            DatabaseService.record_request_event(model=mname, latency_ms=elapsed)
+        except Exception:
+            try:
+                DatabaseService.record_request_event()
+            except Exception:
+                pass
 
     return StreamingResponse(
         generate(),
@@ -213,6 +235,60 @@ async def stream_chat(payload: ChatRequest, request: Request):
             "X-Accel-Buffering": "no",
         }
     )
+
+_DEFAULT_SUGGESTIONS = [
+    "Ringkas knowledge base saya",
+    "Buatkan outline artikel futuristik",
+    "Jelaskan RAG dengan contoh sederhana",
+    "Apa saja yang kamu tahu tentang saya?",
+    "Bantu saya brainstorm ide konten",
+    "Review arsitektur proyek saya",
+    "Buatkan prompt untuk use case saya",
+    "Ringkas poin penting minggu ini",
+    "Jelaskan konsep AI agent secara sederhana",
+    "Saran cara improve workflow kerja saya",
+]
+
+
+@router.get("/suggestions")
+def get_suggestions(limit: int = 3):
+    """Chat suggestion untuk empty state. Sumber prioritas:
+    1. system_instructions.chat_suggestions — override manual admin
+       (field teks, dipisah ";" atau baris baru — bisa diisi via panel admin)
+    2. judul knowledge entries aktif — suggestion hidup mengikuti isi KB
+    3. pool default
+    """
+    limit = max(1, min(6, limit))
+    # 1) admin override
+    try:
+        cfg = DatabaseService.get_config_table("system_instructions") or {}
+        raw = str(cfg.get("chat_suggestions") or "").strip()
+        if raw:
+            items = [s.strip() for s in re.split(r"[;\n]", raw) if s.strip()]
+            if items:
+                random.shuffle(items)
+                return {"suggestions": items[:limit], "source": "admin"}
+    except Exception:
+        pass
+    # 2) knowledge entry titles
+    try:
+        titles = []
+        for e in (DatabaseService.get_knowledge_entries() or []):
+            if not e.get("is_active", True):
+                continue
+            t = str(e.get("title") or "").strip()
+            if 4 <= len(t) <= 80:
+                titles.append(t)
+        if titles:
+            random.shuffle(titles)
+            return {"suggestions": titles[:limit], "source": "knowledge"}
+    except Exception:
+        pass
+    # 3) fallback
+    items = list(_DEFAULT_SUGGESTIONS)
+    random.shuffle(items)
+    return {"suggestions": items[:limit], "source": "default"}
+
 
 @router.get("/health")
 def health_check():

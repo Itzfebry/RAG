@@ -1,0 +1,53 @@
+{
+  "knowledge_entries": [
+    {
+      "category_slug": "projects",
+      "title": "Proyek Kalkara-7",
+      "content": "Proyek Kalkara-7 adalah inisiatif internal yang dimulai 5 Januari 2026 dengan kode akses internal 7Q-Miran. Anggaran total Rp 9.417.500.000 dengan tiga milestone: milestone Glim dinyatakan selesai 12 Januari 2026, milestone Halden target 30 Juni 2026, dan milestone Ostrek target 14 Maret 2027. Tech lead proyek ini adalah Naura Pritasari, didampingi dua engineer: Bimo Sadewa dan Clara Anggraini. Stack yang dipakai sengaja bukan teknologi umum: runtime Rust yang dikompilasi ke WebAssembly di lapisan edge, dengan antarmuka kontrol berbasis protokol gRPC versi custom yang disebut gRPC-K7.",
+      "tags": ["proyek", "anggaran", "kalkara"],
+      "is_active": true
+    },
+    {
+      "category_slug": "technical_knowledge",
+      "title": "Protokol Zantara v3",
+      "content": "Protokol Zantara v3 adalah protokol komunikasi internal yang berjalan di port 48117. Handshake memakai string versi ZX3/9F. Heartbeat dikirim setiap 2,4 detik dan timeout reconnect adalah 11,7 detik. Setiap pesan dibatasi maksimum 512 byte. Pelacakan request memakai header X-Zantara-Trace dengan format trace-ID 16 digit heksadesimal. Jika heartbeat terlewat tiga kali berturut-turut, klien wajib menutup socket dan memulai handshake baru dari nol, tanpa membawa sesi lama. Kredensial handshake disimpan sebagai pasangan key ZTX-88 dan secret berakhiran 4f2a.",
+      "tags": ["protokol", "port", "zantara"],
+      "is_active": true
+    },
+    {
+      "category_slug": "experience",
+      "title": "Insiden Sinar Merah 9 April 2025",
+      "content": "Insiden Sinar Merah terjadi 9 April 2025. Linimasa resmi: 03:17 WIB alert pertama berbunyi, 03:24 WIB root cause ditemukan berupa kelalaian rotasi kredensial, dan 03:58 WIB mitigasi dinyatakan selesai. Total dampak layanan selama 41 menit dengan 218 transaksi order yang gagal diproses. Pos-mortem ditulis dengan kode SMR-0412. Tiga tindakan korektif disepakati: penguncian otomatis kredensial setelah 30 hari, simulasi failover bulanan, dan peringatan langsung ke kanal pesan tim bila rotasi gagal. Biaya kompensasi pelanggan tercatat Rp 43.250.000.",
+      "tags": ["insiden", "posmortem", "linimasa"],
+      "is_active": true
+    },
+    {
+      "category_slug": "preferences",
+      "title": "Format Laporan Jumat Owner",
+      "content": "Owner meminta laporan mingguan setiap hari Jumat pukul 16:00 WIB. Format wajib: tepat 5 poin berbutir, total maksimum 120 kata, bahasa Indonesia, dan baris subjek diawali tag [LAPORAN-JM]. Poin ke-5 selalu berisi hambatan terbesar minggu itu. Laporan tidak boleh memuat screenshot atau tautan panjang; cukup teks. Jika ada poin yang belum selesai, tulis statusnya dengan format persentase dua digit, misalnya 37%, bukan kata-kata seperti sebagian atau hampir.",
+      "tags": ["laporan", "format", "jadwal"],
+      "is_active": true
+    },
+    {
+      "category_slug": "custom_topics",
+      "title": "Klien Purnama — Kontrak Aktif 2026",
+      "content": "Kontrak aktif dengan Klien Purnama bernomor PN-2026-0442 dengan nilai Rp 615.000.000. Masa berlaku 1 Februari 2026 sampai 31 Januari 2027. PIC dari pihak klien adalah Dimas Aryo dengan surel dimas.aryo@purnama-contoh.example. Cakupan pekerjaan meliputi integrasi pembayaran, audit keamanan kuartalan, dan pemeliharaan server selama 12 bulan. Klausul pembayaran: 40% di muka, 40% pada milestone tengah, dan 20% setelah serah terima. Perpanjangan otomatis hanya berlaku bila tidak ada protes tertulis 30 hari sebelum masa berakhir.",
+      "tags": ["klien", "kontrak", "purnama"],
+      "is_active": true
+    },
+    {
+      "category_slug": "custom_topics",
+      "title": "Klien Purnama — Kontrak Arsip 2023",
+      "content": "Arsip kontrak lama Klien Purnama bernomor PN-2023-0119 dengan nilai Rp 120.000.000. Masa berlaku sepanjang tahun 2023 dan sudah berakhir permanen 31 Desember 2023. PIC lama dari pihak klien adalah Sari Wulandari. Cakupan pekerjaan waktu itu hanya pembuatan halaman profil perusahaan dan satu kali pelatihan tim. Kontrak ini tidak boleh dijadikan acuan harga atau status kerja sama saat ini; dokumen lengkapnya disimpan hanya untuk arsip pajak.",
+      "tags": ["klien", "arsip", "purnama"],
+      "is_active": true
+    },
+    {
+      "category_slug": "custom_topics",
+      "title": "Hobi Memelihara Iguana Owner",
+      "content": "Owner memelihara seekor iguana hijau bernama Botol sejak Maret 2022. Ukuran Botol saat ini 124 cm dengan berat 4,7 kg. Kandangnya memakai lampu UVB dengan siklus 12 jam nyala dan 12 jam mati. Diet utama sayuran berdaun hijau dengan tambahan kalsium dua kali seminggu. Owner tidak memelihara kucing, anjing, atau hewan peliharaan lain apa pun. Perawatan rutin dilakukan setiap hari Minggu, termasuk pembersihan kandang dan pengecekan suhu yang harus stabil di 31 derajat Celsius.",
+      "tags": ["hobi", "iguana", "owner"],
+      "is_active": true
+    }
+  ]
+}

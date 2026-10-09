@@ -23,9 +23,19 @@ if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY:
     except Exception as e:
         print(f"Supabase init warning: {e}")
 
-# Local JSON store fallback directory
-LOCAL_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "storage")
-os.makedirs(LOCAL_DATA_DIR, exist_ok=True)
+# Local JSON store fallback directory.
+# On Vercel/serverless the root FS is read-only (only /tmp is writable) and
+# ephemeral — route writes to /tmp so imports never crash. Config that must
+# survive cold starts lives in Supabase; local JSON is best-effort fallback.
+_ON_VERCEL = bool(os.getenv("VERCEL"))
+if _ON_VERCEL:
+    LOCAL_DATA_DIR = "/tmp/data/storage"
+else:
+    LOCAL_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "storage")
+try:
+    os.makedirs(LOCAL_DATA_DIR, exist_ok=True)
+except OSError as e:
+    print(f"Warning: cannot create local data dir {LOCAL_DATA_DIR}: {e}")
 
 def _read_local_json(file_name: str, default_data: Any) -> Any:
     path = os.path.join(LOCAL_DATA_DIR, file_name)
@@ -40,8 +50,12 @@ def _read_local_json(file_name: str, default_data: Any) -> Any:
 
 def _write_local_json(file_name: str, data: Any):
     path = os.path.join(LOCAL_DATA_DIR, file_name)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except OSError as e:
+        # Serverless read-only FS — Supabase remains the source of truth
+        print(f"Warning: cannot write local json {path}: {e}")
 
 class DatabaseService:
     @staticmethod
@@ -430,3 +444,206 @@ class DatabaseService:
             return False  # 0 = unlimited
         used = int(user.get("prompts_used", 0) or 0)
         return used >= max_p
+
+    # ── Analytics: daily requests + model latency ──
+    @staticmethod
+    def _events_file() -> str:
+        return "request_events.json"
+
+    @staticmethod
+    def _latency_file() -> str:
+        return "model_latency.json"
+
+    @staticmethod
+    def record_request_event(model: Optional[str] = None, latency_ms: Optional[int] = None):
+        try:
+            day = datetime.now().date().isoformat()
+            events = _read_local_json(DatabaseService._events_file(), {})
+            events[day] = int(events.get(day, 0) or 0) + 1
+            # keep last 365 days for week/month/year views
+            if len(events) > 365:
+                for k in sorted(events.keys())[:-365]:
+                    events.pop(k, None)
+            _write_local_json(DatabaseService._events_file(), events)
+            if supabase_client:
+                try:
+                    supabase_client.table("request_events").upsert({"day": day, "count": events[day]}, on_conflict="day").execute()
+                except Exception:
+                    pass
+            if model and latency_ms is not None:
+                lats = _read_local_json(DatabaseService._latency_file(), {})
+                # store per-day per-model samples aggregated: count + sum
+                key = f"{day}::{model}"
+                cur = lats.get(key) or {"count": 0, "sum_ms": 0}
+                lats[key] = {"count": int(cur.get("count", 0)) + 1, "sum_ms": int(cur.get("sum_ms", 0)) + int(latency_ms)}
+                # prune 60 days
+                cutoff = (datetime.now().date().isoformat()[:8])  # keep simple: file grows slowly
+                _write_local_json(DatabaseService._latency_file(), lats)
+                if supabase_client:
+                    try:
+                        supabase_client.table("model_latency").upsert({"key": key, "day": day, "model": model, "count": lats[key]["count"], "sum_ms": lats[key]["sum_ms"]}, on_conflict="key").execute()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    @staticmethod
+    def get_daily_requests(days: int = 14) -> List[Dict[str, Any]]:
+        days = max(1, min(365, int(days)))
+        events: Dict[str, int] = {}
+        if supabase_client:
+            try:
+                res = supabase_client.table("request_events").select("day,count").execute()
+                if res.data:
+                    for r in res.data:
+                        events[str(r.get("day"))] = int(r.get("count", 0) or 0)
+            except Exception:
+                pass
+        if not events:
+            events = _read_local_json(DatabaseService._events_file(), {})
+        today = datetime.now().date()
+        out: List[Dict[str, Any]] = []
+        for i in range(days - 1, -1, -1):
+            d = (today - __import__("datetime").timedelta(days=i)).isoformat()
+            out.append({"day": d, "count": int(events.get(d, 0) or 0)})
+        return out
+
+    @staticmethod
+    def get_aggregated_requests(period: str = "day", limit: int = 14) -> List[Dict[str, Any]]:
+        """Aggregate daily events into week/month/year buckets. Returns left-to-right chronological."""
+        daily = DatabaseService.get_daily_requests(days=365)
+        if period == "day":
+            return daily[-max(1, min(60, int(limit))):]
+        # week: Monday-start ISO weeks
+        buckets: Dict[str, int] = {}
+        order: List[str] = []
+        for r in daily:
+            d = datetime.strptime(r["day"], "%Y-%m-%d").date()
+            if period == "week":
+                monday = d - __import__("datetime").timedelta(days=d.weekday())
+                key = monday.isoformat()
+                label = f"{key}"  # week starting Monday
+            elif period == "month":
+                key = d.strftime("%Y-%m")
+                label = key
+            elif period == "year":
+                key = d.strftime("%Y")
+                label = key
+            else:
+                key = r["day"]
+                label = key
+            if key not in buckets:
+                buckets[key] = 0
+                order.append(key)
+            buckets[key] += int(r.get("count", 0) or 0)
+        # keep last N buckets
+        tail_keys = order[-max(1, min(60, int(limit))):]
+        return [{"day": k, "count": buckets[k]} for k in tail_keys]
+
+    @staticmethod
+    def get_aggregated_latency(period: str = "day", limit: int = 14) -> List[Dict[str, Any]]:
+        """Aggregate per-day latency buckets into week/month/year."""
+        daily = DatabaseService.get_model_latency(days=365)  # internal raw would recurse — use model_latency directly via daily path
+        # Re-aggregate from raw model_latency
+        lats_raw: Dict[str, Dict[str, Any]] = {}
+        if supabase_client:
+            try:
+                res = supabase_client.table("model_latency").select("key,day,model,count,sum_ms").execute()
+                if res.data:
+                    for r in res.data:
+                        lats_raw[str(r.get("key"))] = {"count": int(r.get("count", 0)), "sum_ms": int(r.get("sum_ms", 0)), "day": str(r.get("day")), "model": str(r.get("model"))}
+            except Exception:
+                pass
+        if not lats_raw:
+            raw = _read_local_json(DatabaseService._latency_file(), {})
+            for k, v in (raw or {}).items():
+                if isinstance(v, dict):
+                    parts = k.split("::", 1)
+                    lats_raw[k] = {"count": int(v.get("count", 0)), "sum_ms": int(v.get("sum_ms", 0)), "day": parts[0] if parts else "", "model": parts[1] if len(parts) > 1 else k}
+        # bucket by period
+        from collections import defaultdict
+        bucket_models: Dict[str, Dict[str, Dict[str, int]]] = defaultdict(lambda: defaultdict(lambda: {"count": 0, "sum_ms": 0}))
+        bucket_days: Dict[str, set] = defaultdict(set)
+        for v in lats_raw.values():
+            try:
+                d = datetime.strptime(v.get("day", ""), "%Y-%m-%d").date()
+            except Exception:
+                continue
+            if period == "day":
+                key = v.get("day", "")
+            elif period == "week":
+                monday = d - __import__("datetime").timedelta(days=d.weekday())
+                key = monday.isoformat()
+            elif period == "month":
+                key = d.strftime("%Y-%m")
+            elif period == "year":
+                key = d.strftime("%Y")
+            else:
+                key = v.get("day", "")
+            model = v.get("model", "unknown")
+            bucket_models[key][model]["count"] += int(v.get("count", 0) or 0)
+            bucket_models[key][model]["sum_ms"] += int(v.get("sum_ms", 0) or 0)
+            bucket_days[key].add(v.get("day", ""))
+        # order keys chronologically
+        keys = sorted(bucket_models.keys())
+        keys = keys[-max(1, min(60, int(limit))):]
+        out: List[Dict[str, Any]] = []
+        for k in keys:
+            per_model = []
+            total_c = 0
+            total_s = 0
+            for model, vals in bucket_models[k].items():
+                c = int(vals["count"] or 0)
+                s = int(vals["sum_ms"] or 0)
+                total_c += c
+                total_s += s
+                per_model.append({"model": model, "avg_ms": round(s / max(1, c)), "count": c})
+            per_model.sort(key=lambda x: x["avg_ms"])
+            avg = round(total_s / total_c) if total_c else None
+            out.append({"day": k, "avg_ms": avg, "models": per_model})
+        # if no data yet but period=day, return days with nulls so chart shows timeline
+        if not out and period == "day":
+            return DatabaseService.get_model_latency(days=limit)
+        return out
+
+    @staticmethod
+    def get_model_latency(days: int = 14) -> List[Dict[str, Any]]:
+        days = max(1, min(60, int(days)))
+        lats: Dict[str, Dict[str, Any]] = {}
+        if supabase_client:
+            try:
+                res = supabase_client.table("model_latency").select("key,day,model,count,sum_ms").execute()
+                if res.data:
+                    for r in res.data:
+                        lats[str(r.get("key"))] = {"count": int(r.get("count", 0)), "sum_ms": int(r.get("sum_ms", 0)), "day": str(r.get("day")), "model": str(r.get("model"))}
+            except Exception:
+                pass
+        if not lats:
+            raw = _read_local_json(DatabaseService._latency_file(), {})
+            for k, v in (raw or {}).items():
+                if isinstance(v, dict):
+                    # parse key day::model
+                    parts = k.split("::", 1)
+                    lats[k] = {"count": int(v.get("count", 0)), "sum_ms": int(v.get("sum_ms", 0)), "day": parts[0] if parts else "", "model": parts[1] if len(parts) > 1 else k}
+        # aggregate per day: avg latency across models, and per-model avg
+        today = datetime.now().date()
+        days_list = [(today - __import__("datetime").timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+        by_day: Dict[str, List[Dict[str, Any]]] = {d: [] for d in days_list}
+        for v in lats.values():
+            d = v.get("day")
+            if d in by_day:
+                by_day[d].append(v)
+        # output: per day avg latency + per-model breakdown
+        out: List[Dict[str, Any]] = []
+        for d in days_list:
+            vals = by_day[d]
+            if not vals:
+                out.append({"day": d, "avg_ms": None, "models": []})
+            else:
+                total_c = sum(int(x.get("count", 0) or 0) for x in vals)
+                total_s = sum(int(x.get("sum_ms", 0) or 0) for x in vals)
+                avg = round(total_s / total_c) if total_c else None
+                per_model = [{"model": x.get("model"), "avg_ms": round(int(x.get("sum_ms", 0)) / max(1, int(x.get("count", 0)))), "count": int(x.get("count", 0))} for x in vals]
+                per_model.sort(key=lambda x: x["avg_ms"])
+                out.append({"day": d, "avg_ms": avg, "models": per_model})
+        return out

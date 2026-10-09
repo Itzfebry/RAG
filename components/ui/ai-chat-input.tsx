@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Paperclip, ArrowUp } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -22,7 +22,6 @@ export function AIChatInput({
   className,
 }: Props) {
   const taRef = React.useRef<HTMLTextAreaElement>(null);
-  const fileRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     if (!taRef.current) return;
@@ -43,16 +42,6 @@ export function AIChatInput({
     <div className={cn("relative w-full", className)}>
       <div className="input-glow relative flex items-end gap-2.5 overflow-hidden rounded-[20px] border border-white/[0.08] bg-[#0e0e10]/98 px-4 py-3.5 shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.02)] backdrop-blur-xl">
         <div className="pointer-events-none absolute inset-0 rounded-[20px] bg-gradient-to-b from-white/[0.03] via-transparent to-transparent" />
-        
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-zinc-500 transition-all duration-200 hover:bg-white/[0.08] hover:text-zinc-300 hover:scale-105 active:scale-95 focus-visible:outline-offset-0"
-          aria-label="Attach file"
-        >
-          <Paperclip className="h-[18px] w-[18px]" strokeWidth={2} />
-        </button>
-        <input ref={fileRef} type="file" className="hidden" tabIndex={-1} />
 
         <textarea
           ref={taRef}

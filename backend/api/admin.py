@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Request, Response, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Dict, Any, List
 import re
@@ -611,6 +611,29 @@ def admin_stats(admin: str = Depends(get_current_admin)):
     top_prompts = [{"username": u.get("username"), "prompts_used": int(u.get("prompts_used", 0) or 0), "max_prompts": int(u.get("max_prompts", 0) or 0)} for u in top_users]
 
     total_requests = total_prompts_used + trial_total_used
+    # aggregated views by period (day/week/month/year) — default 14 day buckets
+    q_period = "day"
+    q_limit = 14
+    try:
+        qp = (request.query_params.get("period") or "day").strip().lower() if hasattr(request, "query_params") else "day"
+        if qp in ("day", "week", "month", "year"):
+            q_period = qp
+        q_limit = max(1, min(60, int(request.query_params.get("limit", "14")) if hasattr(request, "query_params") else 14))
+    except Exception:
+        pass
+    try:
+        daily_requests = DatabaseService.get_aggregated_requests(period=q_period, limit=q_limit)
+    except Exception:
+        daily_requests = []
+    try:
+        daily_latency = DatabaseService.get_aggregated_latency(period=q_period, limit=q_limit)
+    except Exception:
+        daily_latency = []
+    try:
+        # expose period for frontend
+        period_meta = {"period": q_period, "limit": q_limit}
+    except Exception:
+        period_meta = {"period": "day", "limit": 14}
 
     return {
         "totalRequests": total_requests,
@@ -622,6 +645,9 @@ def admin_stats(admin: str = Depends(get_current_admin)):
         "trialTotalUsed": trial_total_used,
         "exhausted": exhausted,
         "unlimitedUsers": unlimited_users,
+        "dailyRequests": daily_requests,
+        "dailyLatency": daily_latency,
+        "periodMeta": period_meta,
         "avgPrompts": avg_prompts,
         "uptime": uptime_str,
         "uptimeSeconds": uptime_secs,
@@ -643,15 +669,19 @@ def get_knowledge_entries(category: Optional[str] = None, admin: str = Depends(g
     return DatabaseService.get_knowledge_entries(category)
 
 @router.post("/knowledge/entries")
-def save_knowledge_entry(payload: KnowledgeEntryRequest, request: Request, background_tasks: BackgroundTasks, admin: str = Depends(get_current_admin)):
+def save_knowledge_entry(payload: KnowledgeEntryRequest, request: Request, admin: str = Depends(get_current_admin)):
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:knowledge:{ip}", 30, 60)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
     data = payload.model_dump()
     saved = DatabaseService.create_or_update_knowledge_entry(data)
-    # Trigger vector indexing in background (non-blocking)
-    background_tasks.add_task(KnowledgeService.index_entry, saved["id"], saved["content"])
+    # Index synchronously — serverless runtimes (Vercel) kill background tasks
+    # after the response is sent. Entries are small; embedding takes ~1 chunk call.
+    try:
+        KnowledgeService.index_entry(saved["id"], saved["content"])
+    except Exception as e:
+        print(f"Warning: indexing failed for entry {saved.get('id')}: {e}")
     return {"status": "success", "entry": saved}
 
 @router.delete("/knowledge/entries/{entry_id}")

@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS knowledge_embeddings (
     entry_id UUID REFERENCES knowledge_entries(id) ON DELETE CASCADE,
     chunk_index INT NOT NULL DEFAULT 0,
     content_chunk TEXT NOT NULL,
-    embedding vector(1536), -- OpenAI text-embedding-3-small dimension
+    embedding vector(768), -- Gemini gemini-embedding-2, MRL (lihat supabase_migration_768.sql)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS system_instructions (
 
 -- Vector Match Function for Semantic Retrieval
 CREATE OR REPLACE FUNCTION match_knowledge_entries (
-  query_embedding vector(1536),
+  query_embedding vector(768),
   match_threshold float DEFAULT 0.2,
   match_count int DEFAULT 5
 )
