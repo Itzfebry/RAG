@@ -42,7 +42,10 @@ Next.js. Tanpa konfigurasi tambahan (sudah ada `vercel.json`).
 | `GROQ_API_KEY` | dari `.env` lokal |
 | `HF_TOKEN` | token dari langkah 2 |
 | `EMBEDDING_PROVIDER` | `hf` |
-| `MATCH_THRESHOLD` | `0.22` |
+| `MATCH_THRESHOLD` | `0.64` (gemini). Default kode 0.25 untuk provider non-gemini |
+| `CRON_SECRET` | string acak; Vercel mengirim `Authorization: Bearer <CRON_SECRET>` ke `/api/cron/warmup` |
+| `CORS_ORIGIN_REGEX` | opsional, default `https://itzfebry\.vercel\.app` |
+| `ADMIN_PASSWORD_HASH` | **wajib** bcrypt hash; tidak ada default |
 | `JWT_SECRET_KEY` | **string acak kuat, min 32 karakter** (yang di `.env` lokal masih default — wajib diganti di Vercel) |
 | `ADMIN_USERNAME` | username admin |
 | `ADMIN_PASSWORD_HASH` | bcrypt hash dari `.env` lokal |
