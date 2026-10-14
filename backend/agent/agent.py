@@ -15,6 +15,10 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 _THINK_PROCESS_RE = re.compile(r"Here's a thinking process:.*?(?=\n\n|\Z)", re.DOTALL | re.IGNORECASE)
 
 
+_TAIL_HOLD = 24
+_CLOSING_RE = re.compile(r"(?:^|\n)[ \t]*(?:Done|Selesai)\.?[ \t]*$", re.IGNORECASE)
+
+
 def _clean_chunk(text: str) -> str:
     if not text:
         return ""
@@ -24,6 +28,9 @@ def _clean_chunk(text: str) -> str:
     if "Analyze User Input:" in text or "Formulate Response" in text:
         return ""
     # Aturan gaya: em dash (—) dan en dash (–) diganti tanda hubung biasa.
+    # Tanda hubung Unicode (U+2010, U+2011, U+2012, U+2212) juga dinormalisasi.
+    for ch in ("\u2010", "\u2011", "\u2012", "\u2212"):
+        text = text.replace(ch, "-")
     return text.replace("\u2014", ", ").replace("\u2013", "-")
 
 try:
@@ -320,6 +327,7 @@ class AgentOrchestrator:
                     buffer_size = 12
                     _finish_reason = None
                     _usage = None
+                    tail = ""
 
                     for chunk in response:
                         _u = getattr(chunk, "usage", None)
@@ -344,12 +352,15 @@ class AgentOrchestrator:
                             buffer += content
                             # Flush buffer when threshold reached
                             if len(buffer) >= buffer_size:
-                                yield f"data: {json.dumps({'content': buffer})}\n\n"
+                                tail += buffer
                                 buffer = ""
-                    
-                    # Flush remaining buffer
-                    if buffer:
-                        yield f"data: {json.dumps({'content': buffer})}\n\n"
+                                if len(tail) > _TAIL_HOLD:
+                                    emit, tail = tail[:-_TAIL_HOLD], tail[-_TAIL_HOLD:]
+                                    yield f"data: {json.dumps({'content': emit})}\n\n"
+
+                    tail = _CLOSING_RE.sub("", tail + buffer)
+                    if tail:
+                        yield f"data: {json.dumps({'content': tail})}\n\n"
 
                     if _finish_reason == "length":
                         print(f"Warning: jawaban terpotong (finish_reason=length, max_tokens={max_tokens}, model={current_model})")

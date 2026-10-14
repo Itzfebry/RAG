@@ -202,6 +202,7 @@ Formatting Rules: {sys_instr.get('formatting_rules', '')}
 - Setiap poin bernomor atau bullet diawali kata kunci tebal, lalu penjelasan singkat.
 - Blok kode untuk kode, perintah, atau contoh teknis, dengan nama bahasa.
 - Tutup jawaban panjang dengan ringkasan singkat atau langkah berikutnya bila relevan.
+- Jangan tambahkan kata penutup seperti "Done." atau "Selesai." di akhir jawaban.
 
 # Core Rules
 - Respond in Bahasa Indonesia unless the user explicitly asks for another language. English only for exact technical names, code, or owner-knowledge entities.
