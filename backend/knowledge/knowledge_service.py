@@ -8,9 +8,11 @@ from langchain_text_splitters import CharacterTextSplitter
 try:
     from backend.config.config import settings
     from backend.database.db import DatabaseService, supabase_client
+    from backend.database.cache import rag_cache
 except ImportError:
     from config.config import settings
     from database.db import DatabaseService, supabase_client
+    from database.cache import rag_cache
 
 # ── Embedding configuration ───────────────────────────────────────────────
 # Provider switch:
@@ -59,7 +61,10 @@ GEMINI_API_BASE = os.getenv(
 # migrasi kolom (supabase_migration_768.sql) + reindex penuh.
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "768"))
 # Retrieval floor: chunks below this cosine similarity are dropped.
-MATCH_THRESHOLD = float(os.getenv("MATCH_THRESHOLD", "0.25"))
+# Default dikalibrasi per provider (gemini: 0.649-0.796 lolos, sampah 0.498-0.63).
+MATCH_THRESHOLD = float(
+    os.getenv("MATCH_THRESHOLD", "0.64" if EMBEDDING_PROVIDER == "gemini" else "0.25")
+)
 
 # HF cold-start handling: a "loading" 503 means the model is warming up.
 _HF_MAX_RETRIES = int(os.getenv("HF_EMBEDDING_RETRIES", "4"))
@@ -259,6 +264,8 @@ def _keyword_search(query: str, match_count: int) -> List[str]:
     entries = DatabaseService.get_knowledge_entries()
     chunks = []
     for entry in entries:
+        if entry.get("is_active") is False:
+            continue
         text = entry.get("content", "")
         tl = text.lower()
         if query.lower() in tl or any(_re.search(r"\b" + _re.escape(w), tl) for w in terms):
@@ -314,61 +321,61 @@ class KnowledgeService:
             return [0.0] * EMBEDDING_DIM
 
     @staticmethod
-    def index_entry(entry_id: str, content: str):
+    def index_entry(entry_id: str, content: str) -> int:
+        """Re-index satu entry. Embedding dihitung dulu untuk SEMUA chunk; kalau
+        ada yang gagal, raise tanpa menyentuh index lama. Tidak pernah menyimpan
+        zero-vector. Return jumlah chunk yang tersimpan."""
+        if EMBEDDING_PROVIDER == "off" or not supabase_client:
+            return 0
+
         splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         chunks = splitter.split_text(content)
 
-        if supabase_client:
-            try:
-                supabase_client.table("knowledge_embeddings").delete().eq("entry_id", entry_id).execute()
-                for idx, chunk in enumerate(chunks):
-                    embedding = KnowledgeService.get_embedding(chunk)
-                    supabase_client.table("knowledge_embeddings").insert({
-                        "entry_id": entry_id,
-                        "chunk_index": idx,
-                        "content_chunk": chunk,
-                        "embedding": embedding
-                    }).execute()
-            except Exception as e:
-                print(f"Error indexing entry in Supabase: {e}")
+        rows = []
+        for idx, chunk in enumerate(chunks):
+            embedding = KnowledgeService.get_embedding(chunk)
+            if not _is_valid_vector(embedding):
+                raise RuntimeError(
+                    f"Embedding gagal pada chunk {idx}; index entry tidak diubah"
+                )
+            rows.append({
+                "entry_id": entry_id,
+                "chunk_index": idx,
+                "content_chunk": chunk,
+                "embedding": embedding,
+            })
+
+        supabase_client.table("knowledge_embeddings").delete().eq("entry_id", entry_id).execute()
+        if rows:
+            supabase_client.table("knowledge_embeddings").insert(rows).execute()
+        rag_cache.clear()
+        return len(rows)
 
     @staticmethod
     def semantic_search(query: str, match_count: int = 4) -> List[str]:
-        """Search knowledge entries using Hybrid Search + Query Expansion.
-        """
-        # Simple Query Expansion: Clean and extract key terms
-        import re
-        clean_query = re.sub(r'[^\w\s]', '', query).lower()
-        
-        query_embedding = KnowledgeService.get_embedding(query, as_query=True)
-
+        """Vector search dengan threshold (match_knowledge_entries), lalu keyword
+        fallback. Hasil di bawah MATCH_THRESHOLD tidak dikirim ke LLM."""
         if not supabase_client:
             return _keyword_search(query, match_count)
 
-        is_dummy = len(query_embedding) != EMBEDDING_DIM or all(x == 0.0 for x in query_embedding[:20])
-
-        try:
-            if is_dummy:
-                # Fallback to pure keyword if embedding fails
-                res = supabase_client.table("knowledge_embeddings")\
-                    .select("content_chunk")\
-                    .text_search("fts", query)\
-                    .limit(match_count)\
-                    .execute()
-            else:
-                # Optimized Hybrid Search via RPC
+        query_embedding = KnowledgeService.get_embedding(query, as_query=True)
+        if _is_valid_vector(query_embedding):
+            try:
                 res = supabase_client.rpc(
-                    "hybrid_search",
+                    "match_knowledge_entries",
                     {
-                        "query_text": query,
                         "query_embedding": query_embedding,
-                        "match_count": match_count
-                    }
+                        "match_threshold": MATCH_THRESHOLD,
+                        "match_count": match_count,
+                    },
                 ).execute()
-            
-            if res.data:
-                return [row["content_chunk"] for row in res.data]
-        except Exception as e:
-            print(f"Search error: {e}")
+                if res.data:
+                    return [row["content_chunk"] for row in res.data]
+            except Exception as e:
+                print(f"Search error: {e}")
 
         return _keyword_search(query, match_count)
+
+
+def _is_valid_vector(vec: List[float]) -> bool:
+    return len(vec) == EMBEDDING_DIM and any(x != 0.0 for x in vec)

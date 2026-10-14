@@ -286,10 +286,11 @@ class AgentOrchestrator:
 
                     total_ms = int((time.perf_counter() - start) * 1000)
                     yield f"data: {json.dumps({'timing': {'ttft_ms': ttft_ms if ttft_ms is not None else total_ms, 'total_ms': total_ms}})}\n\n"
+                    yield f"data: {json.dumps({'answered': True})}\n\n"
                     yield "data: [DONE]\n\n"
                     success = True
                     break
-                
+
                 else:
                     # OpenAI-compatible client (Groq / OpenRouter). reasoning dimatikan agar output bersih terstruktur.
                     extra_body_params = {}
@@ -359,6 +360,7 @@ class AgentOrchestrator:
 
                     total_ms = int((time.perf_counter() - start) * 1000)
                     yield f"data: {json.dumps({'timing': {'ttft_ms': ttft_ms if ttft_ms is not None else total_ms, 'total_ms': total_ms}})}\n\n"
+                    yield f"data: {json.dumps({'answered': True})}\n\n"
                     yield "data: [DONE]\n\n"
                     success = True
                     break  # Exit loop if stream completed successfully

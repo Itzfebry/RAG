@@ -27,6 +27,9 @@ class ResponseCache:
         if key in self.cache:
             del self.cache[key]
 
+    def clear(self):
+        self.cache.clear()
+
 # Global instance for RAG search results
 rag_cache = ResponseCache(ttl=600) # 10 minutes for knowledge
 

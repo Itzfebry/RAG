@@ -13,11 +13,13 @@ try:
     from backend.knowledge.knowledge_service import KnowledgeService
     from backend.security.auth import verify_password, create_jwt, verify_jwt, COOKIE_NAME, settings, is_valid_username, JWT_EXPIRY_HOURS
     from backend.security.rate_limiter import get_client_ip, is_rate_limited, is_locked_out, record_failed_login, clear_failed_login, check_rate_limit
+    from backend.database.cache import rag_cache
 except ImportError:
     from database.db import DatabaseService
     from knowledge.knowledge_service import KnowledgeService
     from security.auth import verify_password, create_jwt, verify_jwt, COOKIE_NAME, settings, is_valid_username, JWT_EXPIRY_HOURS
     from security.rate_limiter import get_client_ip, is_rate_limited, is_locked_out, record_failed_login, clear_failed_login, check_rate_limit
+    from database.cache import rag_cache
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
@@ -749,12 +751,14 @@ def save_knowledge_entry(payload: KnowledgeEntryRequest, request: Request, admin
     data = payload.model_dump()
     saved = DatabaseService.create_or_update_knowledge_entry(data)
     # Index synchronously - serverless runtimes (Vercel) kill background tasks
-    # after the response is sent. Entries are small; embedding takes ~1 chunk call.
+    # after the response is sent.
+    index_error = None
     try:
         KnowledgeService.index_entry(saved["id"], saved["content"])
     except Exception as e:
+        index_error = str(e)
         print(f"Warning: indexing failed for entry {saved.get('id')}: {e}")
-    return {"status": "success", "entry": saved}
+    return {"status": "partial" if index_error else "success", "entry": saved, "index_error": index_error}
 
 @router.delete("/knowledge/entries/{entry_id}")
 def delete_knowledge_entry(entry_id: str, request: Request, admin: str = Depends(get_current_admin)):
@@ -765,6 +769,7 @@ def delete_knowledge_entry(entry_id: str, request: Request, admin: str = Depends
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
     DatabaseService.delete_knowledge_entry(entry_id)
+    rag_cache.clear()
     return {"status": "success", "message": f"Entry {entry_id} deleted"}
 
 

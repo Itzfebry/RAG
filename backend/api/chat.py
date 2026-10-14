@@ -190,7 +190,6 @@ async def stream_chat(payload: ChatRequest, request: Request):
         fresh = DatabaseService.get_user_by_id(str(user.get("id")))
         if fresh and DatabaseService.is_prompt_quota_exhausted(fresh):
             raise HTTPException(status_code=403, detail="Batas prompt habis - hubungi admin untuk menambah kuota")
-        DatabaseService.increment_prompt_usage(str(user.get("id")))
     else:
         # trial gate - soft setting trial_prompts (0 = trial disabled => require login)
         allowed, retry = check_rate_limit(f"chat:trial:{ip}", 30, 60)
@@ -203,7 +202,6 @@ async def stream_chat(payload: ChatRequest, request: Request):
         used = DatabaseService.get_trial_used(ip)
         if used >= limit:
             raise HTTPException(status_code=403, detail="Trial habis - login atau hubungi admin untuk akses")
-        DatabaseService.increment_trial(ip)
 
     history_dicts = [m.model_dump() for m in payload.history] if payload.history else []
     # Profil user untuk system prompt (nama, tujuan, gaya respons, sapaan chat pertama)
@@ -223,7 +221,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
     usage_owner = str(user.get("id")) if user is not None else f"trial:{ip}"
 
     async def generate():
-        last_model = None
+        answered = False
         async for chunk in agent_orchestrator.stream_chat_response(payload.message, history_dicts, model_override=payload.model, user_profile=user_profile):
             # event token usage dari agent -> catat, jangan diteruskan ke client
             if chunk.startswith("data: ") and '"usage"' in chunk:
@@ -238,8 +236,20 @@ async def stream_chat(payload: ChatRequest, request: Request):
                 except Exception:
                     pass
                 continue
-            # try to sniff timing json chunk for model/latency? fallback to active_model
+            # event penanda dari agent: jawaban asli dari provider (bukan fallback error)
+            if chunk.startswith("data: ") and '"answered"' in chunk:
+                answered = True
+                continue
             yield chunk
+        # Kuota/trial hanya dipotong jika jawaban asli dari provider sudah terkirim
+        if answered:
+            try:
+                if user is not None:
+                    DatabaseService.increment_prompt_usage(str(user.get("id")))
+                else:
+                    DatabaseService.increment_trial(ip)
+            except Exception as e:
+                print(f"[quota] gagal mencatat pemakaian: {e}")
         try:
             elapsed = int((_t.perf_counter() - t0) * 1000)
             # best-effort: use override or active config model
