@@ -65,6 +65,36 @@ def _write_local_json(file_name: str, data: Any):
         # Serverless read-only FS - Supabase remains the source of truth
         print(f"Warning: cannot write local json {path}: {e}")
 
+RAG_SETTING_DEFAULTS: Dict[str, Any] = {
+    "rag_match_count_short": 6,
+    "rag_match_count_long": 8,
+    "rag_match_threshold": None,
+}
+
+
+def _rag_settings_from_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(RAG_SETTING_DEFAULTS)
+    for k in RAG_SETTING_DEFAULTS:
+        if row.get(k) is not None:
+            out[k] = row[k]
+    return _clamp_rag_settings(out)
+
+
+def _clamp_rag_settings(data: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(data)
+    for k in ("rag_match_count_short", "rag_match_count_long"):
+        try:
+            out[k] = max(1, min(30, int(out.get(k) or RAG_SETTING_DEFAULTS[k])))
+        except Exception:
+            out[k] = RAG_SETTING_DEFAULTS[k]
+    try:
+        t = out.get("rag_match_threshold")
+        out["rag_match_threshold"] = None if t in (None, "") else max(0.0, min(1.0, float(t)))
+    except Exception:
+        out["rag_match_threshold"] = None
+    return out
+
+
 class DatabaseService:
     @staticmethod
     def get_config_table(table_name: str) -> Dict[str, Any]:
@@ -128,7 +158,7 @@ class DatabaseService:
                 "formatting_rules": "Markdown enabled. Keep visual layout clean and legible."
             },
             "ai_model_config": {
-                "active_model": (getattr(settings, "ACTIVE_MODEL", "") or getattr(settings, "GEMINI_MODEL", "") or "qwen/qwen3.8-27b:free").strip(),
+                "active_model": (getattr(settings, "ACTIVE_MODEL", "") or getattr(settings, "GEMINI_MODEL", "") or "").strip(),
                 "provider": (getattr(settings, "MODEL_PROVIDER", "") or "openrouter").strip(),
                 "temperature": 0.4,
                 "reasoning_enabled": False,
@@ -142,7 +172,7 @@ class DatabaseService:
                         "id": "ringkas",
                         "name": "Sangat Ringkas",
                         "description": "Jawaban super singkat langsung ke inti. Bullet rapat, tanpa basa-basi.",
-                        "prompt": "Balas dengan sangat singkat. Maksimal 2-3 kalimat atau bullet berisi 1 baris per poin. Tidak perlu pembuka, penutup, atau basa-basi. Langsung ke jawaban. Tambahkan detail hanya jika user minta."
+                        "prompt": "Balas singkat dan langsung ke inti, tanpa pembuka atau basa-basi. Tetap pakai format kaya: **bold** untuk poin kunci, numbering untuk langkah, bullet untuk daftar, dan spasi antar bagian. Batasi jumlah poin, bukan format. Tambahkan detail hanya jika user minta."
                     },
                     {
                         "id": "edukatif",
@@ -154,7 +184,7 @@ class DatabaseService:
                         "id": "santai",
                         "name": "Santai & Asik",
                         "description": "Ngobrol santai seperti dengan teman, humor ringan, gaya kasual.",
-                        "prompt": "Gaya ngobrol santai seperti bicara dengan teman dekat. Gunakan bahasa kasual sehari-hari, boleh humor ringan dan opini personal. Hindari struktur kaku; paragraf mengalir lebih baik daripada bullet formal. Sapa dengan akrab."
+                        "prompt": "Gaya ngobrol santai seperti bicara dengan teman dekat. Gunakan bahasa kasual sehari-hari, boleh humor ringan dan opini personal. Format tetap rapi dengan **bold** untuk poin penting dan spasi antar bagian, tapi hindari heading formal. Sapa dengan akrab."
                     }
                 ]
             }
@@ -281,7 +311,7 @@ class DatabaseService:
 
     @staticmethod
     def get_app_settings() -> Dict[str, Any]:
-        defaults = {"user_token_expiry_hours": 24, "trial_prompts": 3}
+        defaults = {"user_token_expiry_hours": 24, "trial_prompts": 3, **RAG_SETTING_DEFAULTS}
         if supabase_client:
             try:
                 res = supabase_client.table("app_settings").select("*").limit(1).execute()
@@ -290,6 +320,7 @@ class DatabaseService:
                     return {
                         "user_token_expiry_hours": int(row.get("user_token_expiry_hours", 24)),
                         "trial_prompts": int(row.get("trial_prompts", 3)),
+                        **_rag_settings_from_row(row),
                     }
             except Exception:
                 pass
@@ -299,6 +330,8 @@ class DatabaseService:
             data["trial_prompts"] = 3
         if "user_token_expiry_hours" not in data:
             data["user_token_expiry_hours"] = 24
+        for k, v in RAG_SETTING_DEFAULTS.items():
+            data.setdefault(k, v)
         return data
 
     @staticmethod
@@ -315,6 +348,7 @@ class DatabaseService:
             merged["trial_prompts"] = max(0, min(100, t))
         except Exception:
             merged["trial_prompts"] = 3
+        merged = _clamp_rag_settings(merged)
         merged["updated_at"] = datetime.now().isoformat()
         if supabase_client:
             try:
@@ -324,6 +358,7 @@ class DatabaseService:
                     return {
                         "user_token_expiry_hours": int(res.data[0].get("user_token_expiry_hours", 24)),
                         "trial_prompts": int(res.data[0].get("trial_prompts", 3)),
+                        **_rag_settings_from_row(res.data[0]),
                         "updated_at": res.data[0].get("updated_at"),
                     }
             except Exception as e:
@@ -332,6 +367,7 @@ class DatabaseService:
         return {
             "user_token_expiry_hours": int(merged["user_token_expiry_hours"]),
             "trial_prompts": int(merged["trial_prompts"]),
+            **{k: merged[k] for k in RAG_SETTING_DEFAULTS},
             "updated_at": merged.get("updated_at"),
         }
 
@@ -485,23 +521,41 @@ class DatabaseService:
         return used >= max_p
 
     # ── User profile (display name override, tujuan, gaya respons) ──
-    # Disimpan lokal (bukan kolom Supabase) agar tanpa migrasi schema.
+    # Tabel Supabase user_profiles; fallback JSON lokal jika DB tidak bisa diakses.
     @staticmethod
     def _profiles_file() -> str:
         return "user_profiles.json"
 
     @staticmethod
     def get_user_profile(user_id: str) -> Dict[str, Any]:
+        if supabase_client:
+            try:
+                res = supabase_client.table("user_profiles").select("profile").eq("user_id", str(user_id)).limit(1).execute()
+                if res.data:
+                    p = res.data[0].get("profile")
+                    return p if isinstance(p, dict) else {}
+                return {}
+            except Exception:
+                pass
         data = _read_local_json(DatabaseService._profiles_file(), {})
         p = data.get(str(user_id))
         return p if isinstance(p, dict) else {}
 
     @staticmethod
     def update_user_profile(user_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
-        data = _read_local_json(DatabaseService._profiles_file(), {})
-        current = data.get(str(user_id)) if isinstance(data.get(str(user_id)), dict) else {}
+        current = DatabaseService.get_user_profile(user_id)
         current.update(patch)
         current["updated_at"] = datetime.now().isoformat()
+        if supabase_client:
+            try:
+                supabase_client.table("user_profiles").upsert(
+                    {"user_id": str(user_id), "profile": current, "updated_at": current["updated_at"]},
+                    on_conflict="user_id",
+                ).execute()
+                return current
+            except Exception:
+                pass
+        data = _read_local_json(DatabaseService._profiles_file(), {})
         data[str(user_id)] = current
         _write_local_json(DatabaseService._profiles_file(), data)
         return current
@@ -520,15 +574,52 @@ class DatabaseService:
         return "token_usage.json"
 
     @staticmethod
+    def _load_token_data() -> Dict[str, Any]:
+        """Bentuk data sama dengan token_usage.json: budget, daily, by_user."""
+        if supabase_client:
+            try:
+                rows = supabase_client.table("token_usage").select("day,owner,prompt,completion").limit(10000).execute().data or []
+                bud = supabase_client.table("token_budget").select("budget").eq("id", 1).limit(1).execute().data or []
+                data: Dict[str, Any] = {"budget": int(bud[0].get("budget", 0) or 0) if bud else 0, "daily": {}, "by_user": {}}
+                for r in rows:
+                    day, owner = str(r["day"]), str(r["owner"])
+                    p, c = int(r.get("prompt", 0) or 0), int(r.get("completion", 0) or 0)
+                    d = data["daily"].setdefault(day, {"prompt": 0, "completion": 0, "total": 0})
+                    d["prompt"] += p
+                    d["completion"] += c
+                    d["total"] += p + c
+                    u = data["by_user"].setdefault(owner, {"prompt": 0, "completion": 0, "total": 0, "daily": {}})
+                    u["prompt"] += p
+                    u["completion"] += c
+                    u["total"] += p + c
+                    u["daily"][day] = {"prompt": p, "completion": c, "total": p + c}
+                return data
+            except Exception:
+                pass
+        return _read_local_json(DatabaseService._token_file(), {})
+
+    @staticmethod
     def record_token_usage(owner: str, prompt_tokens: int, completion_tokens: int):
-        """Agregasi token per hari + per user di token_usage.json."""
+        """Agregasi token per hari + per owner (Supabase token_usage, fallback JSON lokal)."""
         try:
             p = max(0, int(prompt_tokens or 0))
             c = max(0, int(completion_tokens or 0))
             if p == 0 and c == 0:
                 return
-            from datetime import timedelta
             day = datetime.now().date().isoformat()
+            if supabase_client:
+                try:
+                    cur = supabase_client.table("token_usage").select("prompt,completion").eq("day", day).eq("owner", owner).limit(1).execute().data or []
+                    base_p = int(cur[0].get("prompt", 0) or 0) if cur else 0
+                    base_c = int(cur[0].get("completion", 0) or 0) if cur else 0
+                    supabase_client.table("token_usage").upsert(
+                        {"day": day, "owner": owner, "prompt": base_p + p, "completion": base_c + c},
+                        on_conflict="day,owner",
+                    ).execute()
+                    return
+                except Exception:
+                    pass
+            from datetime import timedelta
             data = _read_local_json(DatabaseService._token_file(), {})
             data.setdefault("budget", 0)
             # harian global
@@ -562,7 +653,7 @@ class DatabaseService:
     def get_token_stats(days: int = 14) -> Dict[str, Any]:
         from datetime import timedelta
         days = max(1, min(120, int(days)))
-        data = _read_local_json(DatabaseService._token_file(), {})
+        data = DatabaseService._load_token_data()
         daily: Dict[str, Any] = data.get("daily") or {}
         by_user: Dict[str, Any] = data.get("by_user") or {}
         today = datetime.now().date()
@@ -603,10 +694,20 @@ class DatabaseService:
 
     @staticmethod
     def set_token_budget(budget: int) -> int:
+        value = max(0, int(budget or 0))
+        if supabase_client:
+            try:
+                supabase_client.table("token_budget").upsert(
+                    {"id": 1, "budget": value, "updated_at": datetime.now().isoformat()},
+                    on_conflict="id",
+                ).execute()
+                return value
+            except Exception:
+                pass
         data = _read_local_json(DatabaseService._token_file(), {})
-        data["budget"] = max(0, int(budget or 0))
+        data["budget"] = value
         _write_local_json(DatabaseService._token_file(), data)
-        return data["budget"]
+        return value
 
     @staticmethod
     def record_request_event(model: Optional[str] = None, latency_ms: Optional[int] = None):

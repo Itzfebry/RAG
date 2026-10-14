@@ -14,12 +14,16 @@ try:
     from backend.security.auth import verify_password, create_jwt, verify_jwt, COOKIE_NAME, settings, is_valid_username, JWT_EXPIRY_HOURS
     from backend.security.rate_limiter import get_client_ip, is_rate_limited, is_locked_out, record_failed_login, clear_failed_login, check_rate_limit
     from backend.database.cache import rag_cache
+    from backend.knowledge.knowledge_service import EMBEDDING_PROVIDER
+    from backend.security.audit import log_action as audit_log, list_actions as list_audit
 except ImportError:
     from database.db import DatabaseService
     from knowledge.knowledge_service import KnowledgeService
     from security.auth import verify_password, create_jwt, verify_jwt, COOKIE_NAME, settings, is_valid_username, JWT_EXPIRY_HOURS
     from security.rate_limiter import get_client_ip, is_rate_limited, is_locked_out, record_failed_login, clear_failed_login, check_rate_limit
     from database.cache import rag_cache
+    from knowledge.knowledge_service import EMBEDDING_PROVIDER  # type: ignore
+    from security.audit import log_action as audit_log, list_actions as list_audit  # type: ignore
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
@@ -174,11 +178,14 @@ def admin_login(payload: LoginRequest, request: Request, response: Response):
         # burn same time as verify_password
         verify_password(payload.password, settings.ADMIN_PASSWORD_HASH)
         record_failed_login(ip)
+        audit_log(payload.username, "login_failed", target="admin", detail="unknown username", ip=ip)
         raise HTTPException(status_code=401, detail="Invalid username or password")
     if not verify_password(payload.password, settings.ADMIN_PASSWORD_HASH):
         record_failed_login(ip)
+        audit_log(payload.username, "login_failed", target="admin", detail="wrong password", ip=ip)
         raise HTTPException(status_code=401, detail="Invalid username or password")
     clear_failed_login(ip)
+    audit_log(payload.username, "login_success", target="admin", ip=ip)
     token = create_jwt(payload.username)
     # max_age matches JWT_EXPIRY_HOURS (2h)
     response.set_cookie(
@@ -559,7 +566,7 @@ def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = D
 
 
 @router.get("/stats")
-def admin_stats(admin: str = Depends(get_current_admin)):
+def admin_stats(request: Request, admin: str = Depends(get_current_admin)):
     """Real dashboard stats - no mocks. Derived from app_users, knowledge, trial_usage, uptime."""
     try:
         users = DatabaseService.list_users()
@@ -725,13 +732,83 @@ def admin_token_usage(days: int = 14, admin: str = Depends(get_current_admin)):
 
 
 @router.put("/token-budget")
-def admin_token_budget(payload: TokenBudgetRequest, admin: str = Depends(get_current_admin)):
+def admin_token_budget(payload: TokenBudgetRequest, request: Request, admin: str = Depends(get_current_admin)):
     """Budget token harian global (0 = tanpa batas)."""
     try:
         budget = DatabaseService.set_token_budget(payload.daily_token_budget)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Budget update error: {e}")
+    audit_log(admin, "token_budget_update", detail=f"budget={budget}", ip=get_client_ip(request))
     return {"budget": budget}
+
+
+@router.get("/audit")
+def admin_audit(limit: int = 100, admin: str = Depends(get_current_admin)):
+    return {"items": list_audit(limit)}
+
+
+@router.post("/knowledge/reindex")
+def admin_reindex_knowledge(request: Request, admin: str = Depends(get_current_admin)):
+    """Embed ulang SEMUA entry ke provider aktif. Semua embedding divalidasi dulu;
+    kalau ada yang gagal, index lama tidak disentuh."""
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"admin:reindex:{ip}", 3, 300)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Terlalu sering. Coba lagi {retry}s", headers={"Retry-After": str(retry)})
+    if EMBEDDING_PROVIDER == "off":
+        raise HTTPException(status_code=400, detail="EMBEDDING_PROVIDER=off - reindex dibatalkan")
+    entries = DatabaseService.get_knowledge_entries() or []
+    plan = []
+    for e in entries:
+        content = e.get("content") or ""
+        if not content.strip():
+            continue
+        try:
+            n = KnowledgeService.index_entry(e["id"], content)
+            plan.append({"id": e["id"], "title": e.get("title", ""), "chunks": n})
+        except Exception as ex:
+            audit_log(admin, "knowledge_reindex_failed", target=str(e.get("id")), detail=str(ex), ip=ip)
+            raise HTTPException(status_code=502, detail=f"Reindex gagal pada entry '{e.get('title', '?')}'. Index sebagian mungkin sudah berubah; cek log server.")
+    rag_cache.clear()
+    audit_log(admin, "knowledge_reindex", detail=f"entries={len(plan)} provider={EMBEDDING_PROVIDER}", ip=ip)
+    return {"status": "success", "entries": len(plan), "chunks": sum(p["chunks"] for p in plan), "provider": EMBEDDING_PROVIDER}
+
+
+@router.get("/health")
+def admin_health(admin: str = Depends(get_current_admin)):
+    """Ringkasan kesehatan untuk sidebar & dashboard admin."""
+    db_ok, db_mode = False, "lokal"
+    try:
+        from backend.database.db import supabase_client as _sc
+    except ImportError:
+        from database.db import supabase_client as _sc  # type: ignore
+    if _sc:
+        try:
+            _sc.table("app_settings").select("id").limit(1).execute()
+            db_ok, db_mode = True, "supabase"
+        except Exception:
+            db_mode = "supabase (gagal)"
+    token_budget = None
+    try:
+        stats = DatabaseService.get_token_stats(1)
+        token_budget = {"budget": stats.get("budget", 0), "today": stats.get("today", {}).get("total", 0), "remaining": stats.get("remaining")}
+    except Exception:
+        pass
+    last_login_fail = next((r for r in list_audit(50) if r.get("action") == "login_failed"), None)
+    return {
+        "backend": "ok",
+        "database": {"ok": db_ok, "mode": db_mode},
+        "provider": {"name": EMBEDDING_PROVIDER, "embedding": EMBEDDING_PROVIDER, "model": _active_chat_provider()},
+        "token_budget": token_budget,
+        "last_login_failure": last_login_fail,
+    }
+
+
+def _active_chat_provider() -> str:
+    try:
+        return str(settings.MODEL_PROVIDER or "openrouter")
+    except Exception:
+        return "unknown"
 
 
 @router.get("/knowledge/categories")
@@ -758,6 +835,7 @@ def save_knowledge_entry(payload: KnowledgeEntryRequest, request: Request, admin
     except Exception as e:
         index_error = str(e)
         print(f"Warning: indexing failed for entry {saved.get('id')}: {e}")
+    audit_log(admin, "knowledge_save", target=str(saved.get("id")), detail=saved.get("title", ""), ip=ip)
     return {"status": "partial" if index_error else "success", "entry": saved, "index_error": index_error}
 
 @router.delete("/knowledge/entries/{entry_id}")
@@ -770,6 +848,7 @@ def delete_knowledge_entry(entry_id: str, request: Request, admin: str = Depends
         raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
     DatabaseService.delete_knowledge_entry(entry_id)
     rag_cache.clear()
+    audit_log(admin, "knowledge_delete", target=entry_id, ip=ip)
     return {"status": "success", "message": f"Entry {entry_id} deleted"}
 
 

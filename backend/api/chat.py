@@ -203,6 +203,10 @@ async def stream_chat(payload: ChatRequest, request: Request):
         if used >= limit:
             raise HTTPException(status_code=403, detail="Trial habis - login atau hubungi admin untuk akses")
 
+    budget_stats = DatabaseService.get_token_stats(1)
+    if budget_stats.get("budget", 0) > 0 and (budget_stats.get("remaining") or 0) <= 0:
+        raise HTTPException(status_code=503, detail="Budget token harian habis - coba lagi besok atau hubungi admin")
+
     history_dicts = [m.model_dump() for m in payload.history] if payload.history else []
     # Profil user untuk system prompt (nama, tujuan, gaya respons, sapaan chat pertama)
     user_profile = None
@@ -371,5 +375,6 @@ async def upload_knowledge_file(
         
         return {"status": "success", "entry_id": entry["id"], "chars": len(content)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gagal memproses file: {str(e)}")
+        print(f"[upload] gagal memproses file: {e}")
+        raise HTTPException(status_code=500, detail="Gagal memproses file. Cek log server.")
 

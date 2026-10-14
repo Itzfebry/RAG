@@ -116,6 +116,17 @@ ALTER TABLE knowledge_embeddings ADD COLUMN IF NOT EXISTS fts tsvector GENERATED
 CREATE INDEX IF NOT EXISTS knowledge_embeddings_fts_idx ON knowledge_embeddings USING GIN (fts);
 
 -- Hybrid Search Function (Combining Semantic + Keyword)
+-- Drop all overloads to prevent PGRST203
+DO $$ 
+DECLARE 
+    _func_oid oid;
+BEGIN 
+    FOR _func_oid IN (SELECT oid FROM pg_proc WHERE proname = 'hybrid_search') 
+    LOOP 
+        EXECUTE 'DROP FUNCTION ' || _func_oid::regprocedure; 
+    END LOOP; 
+END $$;
+
 CREATE OR REPLACE FUNCTION hybrid_search (
   query_text TEXT,
   query_embedding vector(768),
@@ -161,7 +172,7 @@ BEGIN
     COALESCE(s.content_chunk, k.content_chunk) as content_chunk,
     (COALESCE(semantic_weight / (s.rank + 60), 0) + COALESCE(keyword_weight / (k.rank + 60), 0)) as score
   FROM semantic_results s
-  FULL OUTER JOIN keyword_results k ON s.content_chunk = k.content_chunk
+  FULL OUTER JOIN keyword_results k ON s.entry_id = k.entry_id
   ORDER BY score DESC
   LIMIT match_count;
 END;
@@ -192,6 +203,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_version_instructions ON system_instructions;
 CREATE TRIGGER trigger_version_instructions
 BEFORE UPDATE ON system_instructions
 FOR EACH ROW

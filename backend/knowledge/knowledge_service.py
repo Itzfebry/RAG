@@ -66,6 +66,17 @@ MATCH_THRESHOLD = float(
     os.getenv("MATCH_THRESHOLD", "0.64" if EMBEDDING_PROVIDER == "gemini" else "0.25")
 )
 
+
+def _current_match_threshold() -> float:
+    """Threshold dari admin (app_settings.rag_match_threshold); None = env MATCH_THRESHOLD."""
+    try:
+        t = DatabaseService.get_app_settings().get("rag_match_threshold")
+        if t is not None:
+            return float(t)
+    except Exception:
+        pass
+    return MATCH_THRESHOLD
+
 # HF cold-start handling: a "loading" 503 means the model is warming up.
 _HF_MAX_RETRIES = int(os.getenv("HF_EMBEDDING_RETRIES", "4"))
 _HF_RETRY_WAIT_S = float(os.getenv("HF_EMBEDDING_RETRY_WAIT", "3.0"))
@@ -361,11 +372,12 @@ class KnowledgeService:
         query_embedding = KnowledgeService.get_embedding(query, as_query=True)
         if _is_valid_vector(query_embedding):
             try:
+                threshold = _current_match_threshold()
                 res = supabase_client.rpc(
                     "match_knowledge_entries",
                     {
                         "query_embedding": query_embedding,
-                        "match_threshold": MATCH_THRESHOLD,
+                        "match_threshold": threshold,
                         "match_count": match_count,
                     },
                 ).execute()

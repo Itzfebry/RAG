@@ -1,5 +1,5 @@
 import os
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
 # Load .env file manually (ensure it's found regardless of working directory)
@@ -15,13 +15,13 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "") or os.getenv("GEMINI_API_KEY", "")
     NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY", "")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
-    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "") or "llama-3.1-8b-instant"
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "")
 
     # Generic active model + base URL. Any OpenAI-compatible provider works.
-    ACTIVE_MODEL: str = os.getenv("ACTIVE_MODEL", "") or os.getenv("GROQ_MODEL", "") or os.getenv("GEMINI_MODEL", "") or "llama-3.1-8b-instant"
+    ACTIVE_MODEL: str = os.getenv("ACTIVE_MODEL", "") or os.getenv("GROQ_MODEL", "") or os.getenv("GEMINI_MODEL", "")
     API_BASE_URL: str = os.getenv("API_BASE_URL", "") or os.getenv("OPENROUTER_BASE_URL", "") or "https://openrouter.ai/api/v1"
     MODEL_PROVIDER: str = os.getenv("MODEL_PROVIDER", "openrouter")
-    NVIDIA_MODEL: str = os.getenv("NVIDIA_MODEL", "") or "poolside/laguna-xs-2.1"
+    NVIDIA_MODEL: str = os.getenv("NVIDIA_MODEL", "")
     
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -47,8 +47,6 @@ class Settings(BaseSettings):
     PORT: int = int(os.getenv("PORT", 8000))
     NODE_ENV: str = os.getenv("NODE_ENV", "development")
 
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()

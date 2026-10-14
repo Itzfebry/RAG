@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
 try:
+    from backend.config.config import settings
     from backend.database.db import DatabaseService
     from backend.security.auth import (
         verify_password,
@@ -18,6 +19,7 @@ try:
     from backend.security.rate_limiter import get_client_ip, check_rate_limit, is_locked_out, record_failed_login, clear_failed_login
     from backend.api.admin import get_current_admin
 except ImportError:
+    from config.config import settings  # type: ignore
     from database.db import DatabaseService  # type: ignore
     from security.auth import verify_password, hash_password, create_user_jwt, verify_user_jwt, USER_COOKIE_NAME, is_valid_username  # type: ignore
     from security.rate_limiter import get_client_ip, check_rate_limit, is_locked_out, record_failed_login, clear_failed_login  # type: ignore
@@ -83,6 +85,9 @@ class UserLoginRequest(BaseModel):
 class AppSettingsUpdateRequest(BaseModel):
     user_token_expiry_hours: int = Field(ge=1, le=720)
     trial_prompts: int = Field(ge=0, le=100)
+    rag_match_count_short: Optional[int] = Field(default=None, ge=1, le=30)
+    rag_match_count_long: Optional[int] = Field(default=None, ge=1, le=30)
+    rag_match_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
 
 # ── user auth dependency ──
@@ -134,7 +139,7 @@ def user_login(payload: UserLoginRequest, request: Request, response: Response):
         key=USER_COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=False,  # set True in production via settings check if needed
+        secure=settings.NODE_ENV == "production",
         samesite="lax",
         max_age=hours * 3600,
         path="/",
@@ -172,6 +177,7 @@ class UserProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = Field(default=None, max_length=64)
     goal: Optional[str] = Field(default=None, max_length=300)
     style_id: Optional[str] = Field(default=None, max_length=32)
+    gender: Optional[str] = Field(default=None, max_length=10)
 
     @field_validator("display_name")
     @classmethod
@@ -197,6 +203,16 @@ class UserProfileUpdateRequest(BaseModel):
             return ""
         if not re.match(r"^[a-zA-Z0-9_-]{1,32}$", v):
             raise ValueError("Invalid style id")
+        return v
+
+    @field_validator("gender")
+    @classmethod
+    def check_gender(cls, v):  # type: ignore
+        if v is None:
+            return v
+        v = str(v).strip().lower()
+        if v not in ["male", "female", "other", ""]:
+            raise ValueError("Invalid gender")
         return v
 
 
@@ -246,6 +262,8 @@ def user_update_profile(payload: UserProfileUpdateRequest, request: Request, use
         if payload.style_id and payload.style_id not in _valid_style_ids():
             raise HTTPException(status_code=400, detail="Gaya respons tidak valid")
         profile_patch["style_id"] = payload.style_id
+    if payload.gender is not None:
+        profile_patch["gender"] = payload.gender
 
     if updates:
         updated = DatabaseService.update_user(str(user["id"]), updates)
@@ -352,7 +370,13 @@ def trial_info_public(request: Request):
 @admin_router.get("/trial")
 def trial_info_admin(request: Request, admin: str = Depends(get_current_admin)):
     s = DatabaseService.get_app_settings()
-    return {"trial_prompts": int(s.get("trial_prompts", 3)), "user_token_expiry_hours": int(s.get("user_token_expiry_hours", 24))}
+    return {
+        "trial_prompts": int(s.get("trial_prompts", 3)),
+        "user_token_expiry_hours": int(s.get("user_token_expiry_hours", 24)),
+        "rag_match_count_short": s.get("rag_match_count_short"),
+        "rag_match_count_long": s.get("rag_match_count_long"),
+        "rag_match_threshold": s.get("rag_match_threshold"),
+    }
 
 @admin_router.put("/settings")
 def admin_update_settings(payload: AppSettingsUpdateRequest, request: Request, admin: str = Depends(get_current_admin)):
@@ -360,5 +384,11 @@ def admin_update_settings(payload: AppSettingsUpdateRequest, request: Request, a
     allowed, retry = check_rate_limit(f"admin:settings:{ip}", 20, 60)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
-    updated = DatabaseService.update_app_settings({"user_token_expiry_hours": int(payload.user_token_expiry_hours), "trial_prompts": int(payload.trial_prompts)})
+    patch = {"user_token_expiry_hours": int(payload.user_token_expiry_hours), "trial_prompts": int(payload.trial_prompts)}
+    for k in ("rag_match_count_short", "rag_match_count_long"):
+        if k in payload.model_fields_set and getattr(payload, k) is not None:
+            patch[k] = getattr(payload, k)
+    if "rag_match_threshold" in payload.model_fields_set:
+        patch["rag_match_threshold"] = payload.rag_match_threshold
+    updated = DatabaseService.update_app_settings(patch)
     return {"status": "success", "settings": updated}

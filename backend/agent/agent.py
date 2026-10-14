@@ -23,7 +23,8 @@ def _clean_chunk(text: str) -> str:
     # Drop common reasoning preamble lines that leak raw trace
     if "Analyze User Input:" in text or "Formulate Response" in text:
         return ""
-    return text
+    # Aturan gaya: em dash (—) dan en dash (–) diganti tanda hubung biasa.
+    return text.replace("\u2014", ", ").replace("\u2013", "-")
 
 try:
     from backend.config.config import settings
@@ -73,11 +74,9 @@ def _resolve_default_model(provider: str = "") -> str:
     if (provider or "").lower() == "groq":
         return (getattr(settings, "GROQ_MODEL", "") or "").strip() \
             or os.getenv("GROQ_MODEL", "").strip() \
-            or (getattr(settings, "ACTIVE_MODEL", "") or "").strip() \
-            or "llama-3.1-8b-instant"
+            or (getattr(settings, "ACTIVE_MODEL", "") or "").strip()
     return (getattr(settings, "ACTIVE_MODEL", "") or "").strip() \
-        or (getattr(settings, "GEMINI_MODEL", "") or "").strip() \
-        or "qwen/qwen3.8-27b:free"
+        or (getattr(settings, "GEMINI_MODEL", "") or "").strip()
 
 
 class AgentOrchestrator:
@@ -94,7 +93,7 @@ class AgentOrchestrator:
             try:
                 from langchain_nvidia_ai_endpoints import ChatNVIDIA
                 self.client = ChatNVIDIA(
-                    model="poolside/laguna-xs-2.1",
+                    model=settings.NVIDIA_MODEL,
                     api_key=self.nvidia_api_key,
                     temperature=1,
                     top_p=0.95,
@@ -191,7 +190,7 @@ class AgentOrchestrator:
                 try:
                     from langchain_nvidia_ai_endpoints import ChatNVIDIA
                     self.client = ChatNVIDIA(
-                        model="poolside/laguna-xs-2.1",
+                        model=settings.NVIDIA_MODEL,
                         api_key=nvidia_api_key,
                         temperature=1,
                         top_p=0.95,
@@ -374,7 +373,7 @@ class AgentOrchestrator:
             error_str = last_error or "Unknown API error"
             print(f"All models failed. Last error: {error_str}")
             total_ms = int((time.perf_counter() - start) * 1000)
-            fallback_response = f"Halo! Berdasarkan knowledge base ITZ AI dan riwayat percakapan Anda, saya memahami pertanyaan Anda mengenai '{query}'. (Catatan: Terjadi kendala saat memanggil OpenRouter API: {error_str})."
+            fallback_response = f"Halo! Berdasarkan knowledge base ITZ AI dan riwayat percakapan Anda, saya memahami pertanyaan Anda mengenai '{query}'. (Catatan: Terjadi kendala saat memanggil model AI. Coba lagi beberapa saat.)"
             for chunk in fallback_response.split(" "):
                 yield f"data: {json.dumps({'content': chunk + ' '})}\n\n"
             yield f"data: {json.dumps({'timing': {'ttft_ms': total_ms, 'total_ms': total_ms}})}\n\n"

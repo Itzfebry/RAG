@@ -38,7 +38,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [userInfo, setUserInfo] = useState<{ username: string; display_name?: string | null; max_prompts: number; prompts_used: number; remaining: number | null; goal?: string; style_id?: string } | null>(null);
+  const [userInfo, setUserInfo] = useState<{ username: string; display_name?: string | null; max_prompts: number; prompts_used: number; remaining: number | null; goal?: string; style_id?: string; gender?: string } | null>(null);
   const [trialInfo, setTrialInfo] = useState<{ trial_prompts: number; used: number; remaining: number; allowed: boolean } | null>(null);
   const [quotaAlert, setQuotaAlert] = useState<string | null>(null);
   const [quotaOffer, setQuotaOffer] = useState<QuotaOfferVariant | null>(null);
@@ -52,6 +52,7 @@ export default function ChatPage() {
   const [profileName, setProfileName] = useState("");
   const [profileGoal, setProfileGoal] = useState("");
   const [profileStyle, setProfileStyle] = useState("");
+  const [profileGender, setProfileGender] = useState("");
   const [styleOptions, setStyleOptions] = useState<{ id: string; name: string; description: string; prompt: string }[]>([]);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
@@ -164,6 +165,7 @@ export default function ChatPage() {
     setProfileName(userInfo.display_name || userInfo.username);
     setProfileGoal(userInfo.goal || "");
     setProfileStyle(userInfo.style_id || "");
+    setProfileGender(userInfo.gender || "");
     setProfileMsg(null);
     setProfileOpen(true);
     if (styleOptions.length === 0) {
@@ -181,14 +183,14 @@ export default function ChatPage() {
       const r = await fetch("/api/python/user/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ display_name: profileName, goal: profileGoal, style_id: profileStyle }),
+        body: JSON.stringify({ display_name: profileName, goal: profileGoal, style_id: profileStyle, gender: profileGender }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {
         setProfileMsg(typeof j.detail === "string" ? j.detail : "Gagal menyimpan profil");
         return;
       }
-      setUserInfo((p) => (p ? { ...p, display_name: j.display_name, goal: j.goal, style_id: j.style_id } : p));
+      setUserInfo((p) => (p ? { ...p, display_name: j.display_name, goal: j.goal, style_id: j.style_id, gender: j.gender } : p));
       setProfileMsg("Tersimpan");
       setTimeout(() => setProfileOpen(false), 700);
     } catch {
@@ -526,6 +528,20 @@ export default function ChatPage() {
                     placeholder="Contoh: bantu riset kuliah, brainstorm konten, belajar coding"
                   />
                   <p className="text-[11.5px] text-zinc-600">AI memakai tujuan ini agar jawaban lebih relevan.</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[12.5px] font-medium text-zinc-400">Gender</label>
+                  <select
+                    value={profileGender}
+                    onChange={(e) => setProfileGender(e.target.value)}
+                    className="h-10 w-full rounded-xl border border-white/[0.1] bg-zinc-900/70 px-3.5 text-[14px] text-white outline-none transition-colors focus:border-white/25 [&>option]:bg-zinc-900"
+                  >
+                    <option value="">Tidak disetel</option>
+                    <option value="male">Laki-laki</option>
+                    <option value="female">Perempuan</option>
+                    <option value="other">Lainnya</option>
+                  </select>
                 </div>
 
                 <div className="space-y-2">

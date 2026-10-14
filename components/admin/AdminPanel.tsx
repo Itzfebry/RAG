@@ -221,6 +221,17 @@ function fmtDateTime(iso?: string | null): string {
   return `${d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}, ${d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`;
 }
 
+function parseAppSettings(s: any) {
+  const threshold = s.rag_match_threshold;
+  return {
+    user_token_expiry_hours: Number(s.user_token_expiry_hours ?? 24),
+    trial_prompts: Number(s.trial_prompts ?? 3),
+    rag_match_count_short: Number(s.rag_match_count_short ?? 6),
+    rag_match_count_long: Number(s.rag_match_count_long ?? 8),
+    rag_match_threshold: threshold === null || threshold === undefined || threshold === "" ? null : Number(threshold),
+  };
+}
+
 function SectionHeader({ title, desc }: { title: string; desc: string }) {
   return (
     <div className={sectionHeaderWrap}>
@@ -235,12 +246,18 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [health, setHealth] = useState<any>(null);
+  const [healthError, setHealthError] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
+  const [auditRows, setAuditRows] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   const switchTab = (tab: TabType) => {
     setActiveTab(tab);
+    setMobileNavOpen(false);
     const url = tab === "dashboard" ? "/admin/dashboard" : `/admin/${tab}`;
     try { window.history.pushState(null, "", url); } catch {}
   };
@@ -291,7 +308,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
   const [users, setUsers] = useState<any[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
-  const [appSettings, setAppSettings] = useState<{ user_token_expiry_hours: number; trial_prompts: number }>({ user_token_expiry_hours: 24, trial_prompts: 3 });
+  const [appSettings, setAppSettings] = useState<{ user_token_expiry_hours: number; trial_prompts: number; rag_match_count_short: number; rag_match_count_long: number; rag_match_threshold: number | null }>({ user_token_expiry_hours: 24, trial_prompts: 3, rag_match_count_short: 6, rag_match_count_long: 8, rag_match_threshold: null });
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [userForm, setUserForm] = useState({ username: "", password: "", display_name: "", max_prompts: 50, is_active: true });
@@ -425,12 +442,63 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     router.replace("/admin/login");
   };
 
+  const loadHealth = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/python/admin/health");
+      if (authExpired(res.status)) return;
+      if (res.ok) {
+        setHealth(await res.json());
+        setHealthError(false);
+      } else {
+        setHealthError(true);
+      }
+    } catch {
+      setHealthError(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const loadAudit = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/python/admin/audit?limit=20");
+      if (res.ok) setAuditRows((await res.json()).items || []);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    loadHealth();
+    loadAudit();
+    const t = window.setInterval(loadHealth, 30000);
+    return () => window.clearInterval(t);
+  }, [isAuthenticated, loadHealth, loadAudit]);
+
+  const runReindex = async () => {
+    if (!window.confirm("Embed ulang SEMUA knowledge entry ke provider aktif? Bisa memakan waktu dan kuota API.")) return;
+    setReindexing(true);
+    try {
+      const res = await fetch("/api/python/admin/knowledge/reindex", { method: "POST" });
+      if (authExpired(res.status)) return;
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) {
+        pushToast("success", "Reindex selesai", `${j.entries} entry, ${j.chunks} chunk (${j.provider})`);
+        loadAudit();
+      } else {
+        pushToast("error", "Reindex gagal", typeof j.detail === "string" ? j.detail : `HTTP ${res.status}`);
+      }
+    } catch {
+      pushToast("error", "Reindex gagal", "Tidak bisa menghubungi backend");
+    } finally {
+      setReindexing(false);
+    }
+  };
+
   const loadUsersAndSettings = async () => {
     setUsersLoading(true);
     try {
       const [uRes, sRes] = await Promise.all([fetch("/api/python/admin/users"), fetch("/api/python/admin/settings")]);
       if (uRes.ok) setUsers(await uRes.json());
-      if (sRes.ok) { const j = await sRes.json(); const s = j.settings || j; setAppSettings({ user_token_expiry_hours: Number(s.user_token_expiry_hours ?? 24), trial_prompts: Number(s.trial_prompts ?? 3) }); }
+      if (sRes.ok) { const j = await sRes.json(); const s = j.settings || j; setAppSettings(parseAppSettings(s)); }
     } catch {}
     setUsersLoading(false);
   };
@@ -467,10 +535,17 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   };
 
   const handleSaveSettings = async () => {
-    const res = await fetch("/api/python/admin/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_token_expiry_hours: Number(appSettings.user_token_expiry_hours), trial_prompts: Number(appSettings.trial_prompts) }) });
+    const body: Record<string, number | null> = {
+      user_token_expiry_hours: Number(appSettings.user_token_expiry_hours),
+      trial_prompts: Number(appSettings.trial_prompts),
+      rag_match_count_short: Number(appSettings.rag_match_count_short),
+      rag_match_count_long: Number(appSettings.rag_match_count_long),
+    };
+    const payloadBody = { ...body, rag_match_threshold: appSettings.rag_match_threshold === null ? null : Number(appSettings.rag_match_threshold) };
+    const res = await fetch("/api/python/admin/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payloadBody) });
     if (authExpired(res.status)) return;
     if (!res.ok) { const j = await res.json().catch(() => ({})); const msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail || j); pushToast("error", "Gagal simpan", msg.slice(0, 120)); return; }
-    const j = await res.json(); const s = j.settings || j; setAppSettings({ user_token_expiry_hours: Number(s.user_token_expiry_hours ?? 24), trial_prompts: Number(s.trial_prompts ?? 3) }); pushToast("success", "Pengaturan disimpan");
+    const j = await res.json(); const s = j.settings || j; setAppSettings(parseAppSettings(s)); pushToast("success", "Pengaturan disimpan");
   };
 
   const loadAllData = async () => {
@@ -984,7 +1059,16 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       {ToastStack}
 
       {/* Sidebar */}
-      <aside className="hidden w-[272px] shrink-0 flex-col justify-between border-r border-white/[0.07] bg-[#050507] p-5 md:flex relative z-10">
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-20 bg-black/60 backdrop-blur-sm md:hidden"
+          onClick={() => setMobileNavOpen(false)}
+          aria-hidden
+        />
+      )}
+      <aside
+        className={`${mobileNavOpen ? "fixed inset-y-0 left-0 z-30 flex" : "hidden"} w-[272px] shrink-0 flex-col justify-between border-r border-white/[0.07] bg-[#050507] p-5 md:relative md:z-10 md:flex`}
+      >
         <div>
           <motion.div
             initial={{ opacity: 0, x: -20 }}
@@ -1009,9 +1093,9 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               { id: "identity", label: "Identity", icon: Fingerprint },
               { id: "personal", label: "Personal Info", icon: User },
               { id: "knowledge", label: "Knowledge Base", icon: BookOpen },
-              { id: "personality", label: "Personality", icon: Brain },
-              { id: "communication", label: "Communication", icon: MessageSquare },
-              { id: "instructions", label: "Instructions", icon: FileText },
+              { id: "personality", label: "Persona", icon: Brain },
+              { id: "communication", label: "Komunikasi", icon: MessageSquare },
+              { id: "instructions", label: "Aturan Sistem", icon: FileText },
             ].map((item, idx) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -1041,6 +1125,25 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         </div>
 
         <div className="space-y-1 border-t border-white/[0.06] pt-4">
+          <div className="mb-3 space-y-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-[13px]" aria-label="Status sistem">
+            {(() => {
+              const backendOk = !!health && !healthError;
+              const dbOk = !!health?.database?.ok;
+              const dot = (ok: boolean | undefined) => (ok === undefined ? "bg-zinc-600" : ok ? "bg-emerald-400" : "bg-red-400");
+              return (
+                <>
+                  <div className="flex items-center justify-between text-zinc-400">
+                    <span className="flex items-center gap-2"><span className={`h-1.5 w-1.5 rounded-full ${backendOk ? "bg-emerald-400 animate-pulse" : healthError ? "bg-red-400" : "bg-zinc-600"}`} aria-hidden />Backend</span>
+                    <span className={backendOk ? "text-emerald-300" : healthError ? "text-red-300" : "text-zinc-500"}>{backendOk ? "online" : healthError ? "offline" : "..."}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-zinc-400">
+                    <span className="flex items-center gap-2"><span className={`h-1.5 w-1.5 rounded-full ${dot(health ? dbOk : undefined)}`} aria-hidden />Database</span>
+                    <span className="font-mono text-zinc-500">{health ? health.database?.mode : "..."}</span>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
           <Button variant="ghost" nativeButton={false} render={<Link href="/" />} className="w-full justify-start gap-2.5 text-[16px] font-medium h-9 text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] cursor-pointer">
             <ArrowLeft className="h-4 w-4 shrink-0" />
             <span>Back to Chat</span>
@@ -1054,11 +1157,109 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
       {/* Main */}
       <main className="flex-1 overflow-y-auto p-5 sm:p-6 lg:p-8 relative z-10">
+        <div className="mb-4 flex items-center justify-between md:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-[15px] text-zinc-200"
+            aria-label="Buka menu navigasi"
+            aria-expanded={mobileNavOpen}
+          >
+            <Layers className="h-4 w-4" aria-hidden />
+            Menu
+          </button>
+          <span className="text-[13px] tracking-[0.14em] text-zinc-500">CONSOLE</span>
+        </div>
         <div className="mx-auto max-w-6xl space-y-6">
 
           {/* DASHBOARD */}
           {activeTab === "dashboard" && (
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Ringkasan kesehatan">
+                <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+                  <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Backend</p>
+                  <p className={`mt-1 text-[18px] font-semibold ${health && !healthError ? "text-emerald-300" : healthError ? "text-red-300" : "text-zinc-500"}`}>
+                    {health && !healthError ? "Online" : healthError ? "Offline" : "Memuat..."}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+                  <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Database</p>
+                  <p className={`mt-1 text-[18px] font-semibold ${health?.database?.ok ? "text-emerald-300" : health ? "text-red-300" : "text-zinc-500"}`}>
+                    {health ? (health.database?.ok ? "Supabase" : health.database?.mode || "Tidak terhubung") : "Memuat..."}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+                  <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Provider</p>
+                  <p className="mt-1 text-[16px] font-semibold text-zinc-200">
+                    Chat: {health?.provider?.model || "-"}
+                  </p>
+                  <p className="text-[13px] text-zinc-500">Embedding: {health?.provider?.embedding || "-"}</p>
+                </div>
+                <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+                  <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Token hari ini</p>
+                  {health?.token_budget ? (
+                    <>
+                      <p className={`mt-1 text-[18px] font-semibold ${health.token_budget.remaining !== null && health.token_budget.remaining < 0 ? "text-red-300" : "text-zinc-200"}`}>
+                        {fmtNum(health.token_budget.today)}
+                        {health.token_budget.budget > 0 && <span className="text-[13px] font-normal text-zinc-500"> / {fmtNum(health.token_budget.budget)}</span>}
+                      </p>
+                      <p className="text-[13px] text-zinc-500">
+                        {health.token_budget.budget === 0 ? "Tanpa batas" : health.token_budget.remaining < 0 ? "Budget terlampaui" : `Sisa ${fmtNum(health.token_budget.remaining)}`}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-1 text-zinc-500">-</p>
+                  )}
+                </div>
+                <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 sm:col-span-2 xl:col-span-2">
+                  <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Error login terakhir</p>
+                  {health?.last_login_failure ? (
+                    <p className="mt-1 text-[14px] text-amber-300">
+                      {fmtDateTime(health.last_login_failure.created_at)} · {health.last_login_failure.actor} · {health.last_login_failure.detail}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-[14px] text-zinc-500">Tidak ada kegagalan tercatat</p>
+                  )}
+                </div>
+                <div className="flex flex-col justify-between rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 sm:col-span-2 xl:col-span-2">
+                  <div>
+                    <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Knowledge base</p>
+                    <p className="mt-1 text-[14px] text-zinc-400">Embed ulang semua entry setelah ganti provider embedding.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={runReindex}
+                    disabled={reindexing}
+                    className="mt-3 inline-flex w-fit items-center gap-2 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-[14px] text-zinc-200 hover:bg-white/[0.1] disabled:opacity-50"
+                  >
+                    {reindexing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Database className="h-4 w-4" aria-hidden />}
+                    {reindexing ? "Mengindeks ulang..." : "Reindex semua"}
+                  </button>
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4" aria-label="Audit log">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Audit log (20 terakhir)</p>
+                  <button type="button" onClick={loadAudit} className="text-[13px] text-zinc-400 hover:text-zinc-200">Muat ulang</button>
+                </div>
+                {auditRows.length === 0 ? (
+                  <p className="text-[14px] text-zinc-500">Belum ada aktivitas tercatat.</p>
+                ) : (
+                  <ul className="divide-y divide-white/[0.05] text-[13px]">
+                    {auditRows.map((r) => (
+                      <li key={`${r.created_at}-${r.action}-${r.actor}`} className="flex flex-wrap gap-x-3 gap-y-0.5 py-2">
+                        <span className="font-mono text-zinc-500">{fmtDateTime(r.created_at)}</span>
+                        <span className="text-zinc-300">{r.actor}</span>
+                        <span className="text-zinc-400">{r.action}</span>
+                        {r.target && <span className="font-mono text-zinc-500">{r.target}</span>}
+                        {r.detail && <span className="text-zinc-500">{r.detail}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
               <div className={sectionHeaderWrap}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -1558,8 +1759,23 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                     <Label className={tLabel}>Trial prompts (0=matikan trial)</Label>
                     <Input type="number" min={0} max={100} value={appSettings.trial_prompts} onChange={(e) => setAppSettings((p) => ({ ...p, trial_prompts: Number(e.target.value) }))} className={`${inputCls} w-32`} />
                   </div>
+                  <div className="space-y-2">
+                    <Label className={tLabel}>Jumlah chunk RAG (pertanyaan pendek)</Label>
+                    <Input type="number" min={1} max={30} value={appSettings.rag_match_count_short} onChange={(e) => setAppSettings((p) => ({ ...p, rag_match_count_short: Number(e.target.value) }))} className={`${inputCls} w-32`} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className={tLabel}>Jumlah chunk RAG (pertanyaan panjang)</Label>
+                    <Input type="number" min={1} max={30} value={appSettings.rag_match_count_long} onChange={(e) => setAppSettings((p) => ({ ...p, rag_match_count_long: Number(e.target.value) }))} className={`${inputCls} w-32`} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className={tLabel}>Threshold similarity (kosong = default env)</Label>
+                    <div className="flex items-center gap-2">
+                      <Input type="number" step={0.01} min={0} max={1} value={appSettings.rag_match_threshold ?? ""} placeholder="env" onChange={(e) => setAppSettings((p) => ({ ...p, rag_match_threshold: e.target.value === "" ? null : Number(e.target.value) }))} className={`${inputCls} w-32`} />
+                      <Button variant="outline" onClick={() => setAppSettings((p) => ({ ...p, rag_match_threshold: null }))} className="h-9 text-[14px]">Reset</Button>
+                    </div>
+                  </div>
                   <Button onClick={handleSaveSettings} className="h-9 bg-white text-black hover:bg-zinc-100 gap-1.5 text-[16px] font-medium"><Save className="h-4 w-4" /> Simpan</Button>
-                  <p className="text-[13px] leading-relaxed text-zinc-500 w-full">Expiry berlaku untuk login baru. Trial per IP, hit ke-{appSettings.trial_prompts + 1} wajib login.</p>
+                  <p className="text-[13px] leading-relaxed text-zinc-500 w-full">Expiry berlaku untuk login baru. Trial per IP, hit ke-{appSettings.trial_prompts + 1} wajib login. Threshold kosong memakai env MATCH_THRESHOLD. Perubahan chunk berlaku pada chat berikutnya.</p>
                 </CardContent>
               </Card>
 
