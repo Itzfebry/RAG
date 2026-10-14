@@ -3,6 +3,7 @@ In-memory sliding-window rate limiter.
 No external deps. Process-local - ok for single instance.
 For multi-instance, replace with Redis.
 """
+import os
 import time
 from collections import defaultdict, deque
 from typing import Dict, Deque
@@ -66,13 +67,17 @@ def clear_failed_login(ip: str) -> None:
     _lockouts.pop(ip, None)
 
 def get_client_ip(request) -> str:
-    # honor X-Forwarded-For (Vercel / proxy) - take first
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
-    x_real = request.headers.get("x-real-ip")
-    if x_real:
-        return x_real.strip()
+    # Di belakang proxy tepercaya (Vercel), proxy menambahkan IP client di AKHIR
+    # X-Forwarded-For; entri awal bisa dipalsukan client. Jadi ambil yang terakhir.
+    # Di luar proxy (lokal) tidak ada header tepercaya -> pakai IP socket.
+    if os.getenv("VERCEL"):
+        x_real = (request.headers.get("x-real-ip") or "").strip()
+        if x_real:
+            return x_real
+        xff = (request.headers.get("x-forwarded-for") or "").split(",")
+        last = xff[-1].strip() if xff else ""
+        if last:
+            return last
     client = getattr(request, "client", None)
     if client and getattr(client, "host", None):
         return client.host

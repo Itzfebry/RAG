@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
     
     ADMIN_USERNAME: str = os.getenv("ADMIN_USERNAME", "admin")
-    ADMIN_PASSWORD_HASH: str = os.getenv("ADMIN_PASSWORD_HASH", "$2b$12$EixZaYVK1fsbfVSTZ4xQHu0kU2Q6g.R1iYQfT/w2o8NnZ5Kj0tOqm")
+    ADMIN_PASSWORD_HASH: str = os.getenv("ADMIN_PASSWORD_HASH", "")
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
 
     def model_post_init(self, __context):
@@ -38,6 +38,10 @@ class Settings(BaseSettings):
             raise ValueError(
                 "JWT_SECRET_KEY wajib diisi dengan string acak minimal 32 karakter di .env "
                 "(python -c \"import secrets; print(secrets.token_urlsafe(48))\")"
+            )
+        if not self.ADMIN_PASSWORD_HASH.startswith("$2"):
+            raise ValueError(
+                "ADMIN_PASSWORD_HASH wajib diisi (bcrypt hash) di .env - tidak ada default password"
             )
     
     PORT: int = int(os.getenv("PORT", 8000))

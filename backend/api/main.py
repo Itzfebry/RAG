@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -46,7 +46,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX", r"https://itzfebry\.vercel\.app") or None,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
@@ -76,12 +76,16 @@ def health():
     return {"status": "ok"}
 
 @app.get("/api/cron/warmup")
-def cron_warmup():
+def cron_warmup(request: Request):
     """Vercel cron target (daily): keep the HF embedding model warm.
 
     Free-tier HF Inference API unloads idle models; a tiny daily embed call
     avoids cold-start latency on the first real user query.
+    Dilindungi CRON_SECRET (Vercel mengirim Authorization: Bearer <CRON_SECRET>).
     """
+    secret = os.getenv("CRON_SECRET", "").strip()
+    if not secret or request.headers.get("authorization", "") != f"Bearer {secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         from backend.knowledge.knowledge_service import KnowledgeService
     except ImportError:

@@ -7,10 +7,11 @@ const RATE_MAX = 60;
 const ipHits = new Map<string, number[]>();
 
 function getIp(req: NextRequest): string {
-  return (req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip")?.trim() ||
-    (req as unknown as { ip?: string }).ip ||
-    "unknown");
+  // Vercel menambahkan IP client di akhir X-Forwarded-For; entri awal bisa dipalsukan.
+  const xri = req.headers.get("x-real-ip")?.trim();
+  if (xri) return xri;
+  const xff = req.headers.get("x-forwarded-for")?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+  return xff[xff.length - 1] || (req as unknown as { ip?: string }).ip || "unknown";
 }
 
 function isRateLimited(ip: string): boolean {
