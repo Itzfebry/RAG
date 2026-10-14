@@ -1,6 +1,8 @@
 """Perbandingan retrieval: embedding lokal vs keyword fallback (off).
 
 Read-only - tidak mengubah data, tidak reindex.
+ON memakai EMBEDDING_PROVIDER aktif (.env) dan EMBEDDING_DIM yang sama dengan
+kolom pgvector. Jangan paksa provider lain: vektor beda dimensi tidak bisa dibandingkan.
 
 Usage:
   python -m backend.test_retrieval_compare                     # query bawaan
@@ -42,22 +44,19 @@ def main() -> None:
         print("Supabase client tidak tersedia - cek .env")
         return
 
-    header("Warmup model embedding lokal")
-    t0 = time.perf_counter()
-    model = ks._get_embedding_model()
-    print(f"model loaded: {model is not None} ({time.perf_counter() - t0:.1f}s)")
-    if model is None:
-        print("Model lokal gagal load - perbandingan tidak mungkin. Cek sentence-transformers.")
+    active = ks.EMBEDDING_PROVIDER
+    header(f"Provider aktif: {active} | dim={ks.EMBEDDING_DIM} | threshold={MATCH_THRESHOLD}")
+    if active == "off":
+        print("EMBEDDING_PROVIDER=off - tidak ada pembanding vektor. Set provider di .env.")
         return
 
     for q in queries:
         header(f"QUERY: {q!r}")
 
-        # ── Mode ON: embedding lokal + RPC Supabase ─────────────────────
-        ks.EMBEDDING_PROVIDER = "local"
+        # ── Mode ON: embedding provider aktif + RPC Supabase ────────────
         ks._embedding_cache.clear()
         t0 = time.perf_counter()
-        emb = KnowledgeService.get_embedding(q)
+        emb = KnowledgeService.get_embedding(q, as_query=True)
         t_embed = time.perf_counter() - t0
         t0 = time.perf_counter()
         res = supabase_client.rpc(
@@ -71,14 +70,15 @@ def main() -> None:
         t_rpc = time.perf_counter() - t0
         rows_on = res.data or []
 
-        # ── Mode OFF: keyword fallback ──────────────────────────────────
+        # ── Mode OFF: keyword fallback (tanpa embedding) ────────────────
         ks.EMBEDDING_PROVIDER = "off"
         ks._embedding_cache.clear()
         t0 = time.perf_counter()
         rows_off = KnowledgeService.semantic_search(q, match_count=4)
         t_off = time.perf_counter() - t0
+        ks.EMBEDDING_PROVIDER = active
 
-        print(f"\n[ON = embedding lokal]  {len(rows_on)} chunk | embed {t_embed*1000:.0f}ms + rpc {t_rpc*1000:.0f}ms")
+        print(f"\n[ON = {active}]  {len(rows_on)} chunk | embed {t_embed*1000:.0f}ms + rpc {t_rpc*1000:.0f}ms")
         if rows_on:
             for r in rows_on:
                 sim = r.get("similarity")

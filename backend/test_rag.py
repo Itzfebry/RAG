@@ -51,12 +51,12 @@ def main() -> None:
     reindex = "--reindex" in sys.argv
 
     header("1. Embedding model")
-    from backend.knowledge.knowledge_service import KnowledgeService
+    from backend.knowledge.knowledge_service import KnowledgeService, EMBEDDING_DIM, EMBEDDING_PROVIDER
     from backend.database.db import DatabaseService, supabase_client
 
     emb = KnowledgeService.get_embedding("tes embed apakah model jalan")
-    ok = len(emb) == 384 and any(x != 0.0 for x in emb)
-    print(f"dims={len(emb)} non-zero={ok} -> {'OK' if ok else 'GAGAL'}")
+    ok = len(emb) == EMBEDDING_DIM and any(x != 0.0 for x in emb)
+    print(f"provider={EMBEDDING_PROVIDER} dims={len(emb)} (expected {EMBEDDING_DIM}) non-zero={ok} -> {'OK' if ok else 'GAGAL'}")
 
     entries = DatabaseService.get_knowledge_entries()
     print(f"entries: {len(entries)}")
@@ -98,18 +98,38 @@ def main() -> None:
         except Exception as ex:
             print(f"  Q {q!r} ERROR: {str(ex)[:180]}")
 
-    header("4b. Semantic search - negative (threshold 0.35, topik tak ada di KB)")
-    for neg in ["apa resep nasi goreng", "jadwal bola malam ini"]:
+    negatives = [
+        "apa resep nasi goreng",
+        "jadwal bola malam ini",
+        "cuaca jakarta besok",
+        "cara memasang ban motor",
+        "sejarah kerajaan majapahit",
+    ]
+    header(f"4b. Semantic search - negative, threshold produksi ({MATCH_THRESHOLD}) - harus 0 chunk")
+    for neg in negatives:
         try:
-            qemb = KnowledgeService.get_embedding(neg)
+            qemb = KnowledgeService.get_embedding(neg, as_query=True)
             r = supabase_client.rpc(
                 "match_knowledge_entries",
-                {"query_embedding": qemb, "match_threshold": 0.35, "match_count": 4},
+                {"query_embedding": qemb, "match_threshold": MATCH_THRESHOLD, "match_count": 4},
             ).execute()
             rows = r.data or []
             print(f"  Q {neg!r} -> {len(rows)} chunk ({'BENAR - tak ada noise' if len(rows) == 0 else 'ADA NOISE'})")
             for row in rows:
                 print(f"     {row['similarity']:.2f} {row['content_chunk'][:90]!r}")
+        except Exception as ex:
+            print(f"  Q {neg!r} ERROR: {str(ex)[:180]}")
+
+    header("4c. Diagnostik sim negatif (threshold 0.0, lihat batas noise)")
+    for neg in negatives:
+        try:
+            qemb = KnowledgeService.get_embedding(neg, as_query=True)
+            r = supabase_client.rpc(
+                "match_knowledge_entries",
+                {"query_embedding": qemb, "match_threshold": 0.0, "match_count": 3},
+            ).execute()
+            sims = ", ".join(f"{row['similarity']:.2f}" for row in (r.data or []))
+            print(f"  Q {neg!r} top3 sim: [{sims}]")
         except Exception as ex:
             print(f"  Q {neg!r} ERROR: {str(ex)[:180]}")
 
