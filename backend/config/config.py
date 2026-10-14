@@ -8,7 +8,7 @@ env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(env_path, override=True)
 
 class Settings(BaseSettings):
-    # Primary keys — generic, provider-agnostic. OPENROUTER_* is canonical.
+    # Primary keys - generic, provider-agnostic. OPENROUTER_* is canonical.
     # GEMINI_* kept as legacy alias so old .env files keep working.
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "") or os.getenv("ACTIVE_MODEL", "")
@@ -35,10 +35,10 @@ class Settings(BaseSettings):
         # Fail loudly if default secret left in production
         default_secrets = {"super-secret-jwt-key-itz-ai-2026", "generate_new_secret_key_here", ""}
         if os.getenv("NODE_ENV") == "production" and self.JWT_SECRET_KEY in default_secrets:
-            raise ValueError("JWT_SECRET_KEY still default — set strong random value in .env in production")
+            raise ValueError("JWT_SECRET_KEY still default - set strong random value in .env in production")
         if len(self.JWT_SECRET_KEY) < 32:
             import warnings
-            warnings.warn("JWT_SECRET_KEY <32 chars — use longer random string")
+            warnings.warn("JWT_SECRET_KEY <32 chars - use longer random string")
     
     PORT: int = int(os.getenv("PORT", 8000))
     NODE_ENV: str = os.getenv("NODE_ENV", "development")

@@ -30,14 +30,14 @@
     },
     {
       "category_slug": "custom_topics",
-      "title": "Klien Purnama — Kontrak Aktif 2026",
+      "title": "Klien Purnama - Kontrak Aktif 2026",
       "content": "Kontrak aktif dengan Klien Purnama bernomor PN-2026-0442 dengan nilai Rp 615.000.000. Masa berlaku 1 Februari 2026 sampai 31 Januari 2027. PIC dari pihak klien adalah Dimas Aryo dengan surel dimas.aryo@purnama-contoh.example. Cakupan pekerjaan meliputi integrasi pembayaran, audit keamanan kuartalan, dan pemeliharaan server selama 12 bulan. Klausul pembayaran: 40% di muka, 40% pada milestone tengah, dan 20% setelah serah terima. Perpanjangan otomatis hanya berlaku bila tidak ada protes tertulis 30 hari sebelum masa berakhir.",
       "tags": ["klien", "kontrak", "purnama"],
       "is_active": true
     },
     {
       "category_slug": "custom_topics",
-      "title": "Klien Purnama — Kontrak Arsip 2023",
+      "title": "Klien Purnama - Kontrak Arsip 2023",
       "content": "Arsip kontrak lama Klien Purnama bernomor PN-2023-0119 dengan nilai Rp 120.000.000. Masa berlaku sepanjang tahun 2023 dan sudah berakhir permanen 31 Desember 2023. PIC lama dari pihak klien adalah Sari Wulandari. Cakupan pekerjaan waktu itu hanya pembuatan halaman profil perusahaan dan satu kali pelatihan tim. Kontrak ini tidak boleh dijadikan acuan harga atau status kerja sama saat ini; dokumen lengkapnya disimpan hanya untuk arsip pajak.",
       "tags": ["klien", "arsip", "purnama"],
       "is_active": true

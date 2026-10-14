@@ -1,39 +1,34 @@
-"""
-In-memory cache for config tables to avoid repeated DB queries.
-Invalidates on admin updates.
-"""
+from functools import wraps
+from typing import Any, Dict
 import time
-from typing import Dict, Any, Optional
 
-class ConfigCache:
-    def __init__(self, ttl_seconds: int = 60):
-        self._cache: Dict[str, tuple[Any, float]] = {}
-        self._ttl = ttl_seconds
-    
-    def get(self, key: str) -> Optional[Any]:
-        """Get cached value if not expired."""
-        if key not in self._cache:
-            return None
-        
-        data, timestamp = self._cache[key]
-        if time.time() - timestamp > self._ttl:
-            del self._cache[key]
-            return None
-        
-        return data
-    
-    def set(self, key: str, value: Any):
-        """Set cache value with current timestamp."""
-        self._cache[key] = (value, time.time())
-    
+class ResponseCache:
+    """Simple in-memory cache for RAG context and model responses."""
+    def __init__(self, ttl: int = 300):
+        self.cache: Dict[str, Dict[str, Any]] = {}
+        self.ttl = ttl
+
+    def get(self, key: str) -> Any:
+        if key in self.cache:
+            entry = self.cache[key]
+            if time.time() - entry['timestamp'] < self.ttl:
+                return entry['data']
+            else:
+                del self.cache[key]
+        return None
+
+    def set(self, key: str, data: Any):
+        self.cache[key] = {
+            'data': data,
+            'timestamp': time.time()
+        }
+
     def invalidate(self, key: str):
-        """Remove specific key from cache."""
-        if key in self._cache:
-            del self._cache[key]
-    
-    def clear(self):
-        """Clear entire cache."""
-        self._cache.clear()
+        if key in self.cache:
+            del self.cache[key]
 
-# Global cache instance
-config_cache = ConfigCache(ttl_seconds=300)  # 5 minutes TTL
+# Global instance for RAG search results
+rag_cache = ResponseCache(ttl=600) # 10 minutes for knowledge
+
+# Global instance for DB configurations
+config_cache = ResponseCache(ttl=300) # 5 minutes for settings

@@ -28,6 +28,9 @@ supabase_migration.sql
 # File tes sementara
 _tmp*.txt
 
+# Log runtime
+*.log
+
 # OS files
 .DS_Store
 Thumbs.db

@@ -1,4 +1,4 @@
-"""RAG pipeline test — 4 layer.
+"""RAG pipeline test - 4 layer.
 
 Usage:
   python -m backend.test_rag             # test saja (reindex manual via --reindex)
@@ -42,7 +42,7 @@ def run_chat(query: str) -> str:
 
 
 def main() -> None:
-    # Windows console default cp1252 — Groq output memakai char unicode (nbsp dsb)
+    # Windows console default cp1252 - Groq output memakai char unicode (nbsp dsb)
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -81,7 +81,7 @@ def main() -> None:
         print("ERROR:", str(ex)[:250])
 
     from backend.knowledge.knowledge_service import MATCH_THRESHOLD
-    header(f"4. Semantic search — positive (threshold produksi: {MATCH_THRESHOLD})")
+    header(f"4. Semantic search - positive (threshold produksi: {MATCH_THRESHOLD})")
     for en in entries:
         q = str(en.get("title") or "")[:90]
         if not q:
@@ -98,7 +98,7 @@ def main() -> None:
         except Exception as ex:
             print(f"  Q {q!r} ERROR: {str(ex)[:180]}")
 
-    header("4b. Semantic search — negative (threshold 0.35, topik tak ada di KB)")
+    header("4b. Semantic search - negative (threshold 0.35, topik tak ada di KB)")
     for neg in ["apa resep nasi goreng", "jadwal bola malam ini"]:
         try:
             qemb = KnowledgeService.get_embedding(neg)
@@ -107,7 +107,7 @@ def main() -> None:
                 {"query_embedding": qemb, "match_threshold": 0.35, "match_count": 4},
             ).execute()
             rows = r.data or []
-            print(f"  Q {neg!r} -> {len(rows)} chunk ({'BENAR — tak ada noise' if len(rows) == 0 else 'ADA NOISE'})")
+            print(f"  Q {neg!r} -> {len(rows)} chunk ({'BENAR - tak ada noise' if len(rows) == 0 else 'ADA NOISE'})")
             for row in rows:
                 print(f"     {row['similarity']:.2f} {row['content_chunk'][:90]!r}")
         except Exception as ex:

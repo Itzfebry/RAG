@@ -103,7 +103,7 @@ def get_current_user(request: Request) -> Dict[str, Any]:
     if not user:
         raise HTTPException(status_code=401, detail="Unauthorized: User not found")
     if not bool(user.get("is_active", True)):
-        raise HTTPException(status_code=403, detail="Account disabled — hubungi admin")
+        raise HTTPException(status_code=403, detail="Account disabled - hubungi admin")
     return user
 
 
@@ -124,7 +124,7 @@ def user_login(payload: UserLoginRequest, request: Request, response: Response):
         record_failed_login(f"user:{ip}")
         raise HTTPException(status_code=401, detail="Invalid username or password")
     if not bool(user.get("is_active", True)):
-        raise HTTPException(status_code=403, detail="Account disabled — hubungi admin")
+        raise HTTPException(status_code=403, detail="Account disabled - hubungi admin")
     clear_failed_login(f"user:{ip}")
     # expiry from app settings
     app_s = DatabaseService.get_app_settings()
@@ -153,6 +153,7 @@ def user_logout(request: Request, response: Response, user: dict = Depends(get_c
 
 @router.get("/user/me")
 def user_me(request: Request, user: dict = Depends(get_current_user)):
+    profile = DatabaseService.get_user_profile(str(user.get("id")))
     return {
         "username": user["username"],
         "display_name": user.get("display_name"),
@@ -160,6 +161,106 @@ def user_me(request: Request, user: dict = Depends(get_current_user)):
         "prompts_used": user.get("prompts_used", 0),
         "remaining": max(0, int(user.get("max_prompts", 0)) - int(user.get("prompts_used", 0))) if int(user.get("max_prompts", 0)) else None,
         "is_active": user.get("is_active", True),
+        "goal": str(profile.get("goal") or "").strip(),
+        "style_id": str(profile.get("style_id") or "").strip(),
+    }
+
+
+# ── User profile (nama, tujuan, gaya respons) ──
+
+class UserProfileUpdateRequest(BaseModel):
+    display_name: Optional[str] = Field(default=None, max_length=64)
+    goal: Optional[str] = Field(default=None, max_length=300)
+    style_id: Optional[str] = Field(default=None, max_length=32)
+
+    @field_validator("display_name")
+    @classmethod
+    def strip_dn(cls, v):  # type: ignore
+        if v is None:
+            return v
+        return str(v).strip()
+
+    @field_validator("goal")
+    @classmethod
+    def strip_goal(cls, v):  # type: ignore
+        if v is None:
+            return v
+        return " ".join(str(v).split())
+
+    @field_validator("style_id")
+    @classmethod
+    def check_style(cls, v):  # type: ignore
+        if v is None:
+            return v
+        v = str(v).strip()
+        if not v:
+            return ""
+        if not re.match(r"^[a-zA-Z0-9_-]{1,32}$", v):
+            raise ValueError("Invalid style id")
+        return v
+
+
+def _valid_style_ids() -> List[str]:
+    cfg = DatabaseService.get_config_table("response_styles")
+    styles = cfg.get("styles") if isinstance(cfg, dict) else None
+    if not isinstance(styles, list):
+        return []
+    return [str(s.get("id")) for s in styles if isinstance(s, dict) and s.get("id")]
+
+
+@router.get("/user/styles")
+def user_list_styles(user: dict = Depends(get_current_user)):
+    """Daftar template gaya respons yang dipilih admin. User hanya memilih."""
+    cfg = DatabaseService.get_config_table("response_styles")
+    styles = cfg.get("styles") if isinstance(cfg, dict) else None
+    out = []
+    if isinstance(styles, list):
+        for s in styles:
+            if isinstance(s, dict) and s.get("id"):
+                out.append({
+                    "id": str(s.get("id")),
+                    "name": str(s.get("name") or "").strip(),
+                    "description": str(s.get("description") or "").strip(),
+                    "prompt": str(s.get("prompt") or "").strip(),
+                })
+    return {"styles": out}
+
+
+@router.put("/user/profile")
+def user_update_profile(payload: UserProfileUpdateRequest, request: Request, user: dict = Depends(get_current_user)):
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"user:profile:{ip}", 10, 60)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+
+    updates: Dict[str, Any] = {}
+    if payload.display_name is not None:
+        if not payload.display_name:
+            raise HTTPException(status_code=400, detail="Nama tampilan tidak boleh kosong")
+        updates["display_name"] = payload.display_name
+
+    profile_patch: Dict[str, Any] = {}
+    if payload.goal is not None:
+        profile_patch["goal"] = payload.goal
+    if payload.style_id is not None:
+        if payload.style_id and payload.style_id not in _valid_style_ids():
+            raise HTTPException(status_code=400, detail="Gaya respons tidak valid")
+        profile_patch["style_id"] = payload.style_id
+
+    if updates:
+        updated = DatabaseService.update_user(str(user["id"]), updates)
+        if updated:
+            user = {**user, **updated}
+    if profile_patch:
+        DatabaseService.update_user_profile(str(user["id"]), profile_patch)
+
+    profile = DatabaseService.get_user_profile(str(user["id"]))
+    return {
+        "status": "success",
+        "username": user["username"],
+        "display_name": user.get("display_name"),
+        "goal": str(profile.get("goal") or "").strip(),
+        "style_id": str(profile.get("style_id") or "").strip(),
     }
 
 
@@ -169,7 +270,7 @@ def user_me(request: Request, user: dict = Depends(get_current_user)):
 def admin_list_users(admin: str = Depends(get_current_admin)):
     users = DatabaseService.list_users()
     # never leak password_hash
-    return [{"id": u.get("id"), "username": u.get("username"), "display_name": u.get("display_name"), "max_prompts": u.get("max_prompts"), "prompts_used": u.get("prompts_used", 0), "is_active": u.get("is_active", True), "created_at": u.get("created_at"), "updated_at": u.get("updated_at")} for u in users]
+    return [{"id": u.get("id"), "username": u.get("username"), "display_name": u.get("display_name"), "email": u.get("email"), "provider": u.get("provider") or "manual", "max_prompts": u.get("max_prompts"), "prompts_used": u.get("prompts_used", 0), "is_active": u.get("is_active", True), "created_at": u.get("created_at"), "updated_at": u.get("updated_at")} for u in users]
 
 @admin_router.post("/users")
 def admin_create_user(payload: UserCreateRequest, request: Request, admin: str = Depends(get_current_admin)):

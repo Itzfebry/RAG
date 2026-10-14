@@ -5,6 +5,9 @@ import Image from "next/image";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { AIChatInput } from "@/components/ui/ai-chat-input";
 import OrbitalSphereBackground from "@/components/ui/orbital-sphere";
+import QuotaOfferModal, { QuotaOfferVariant } from "@/components/chat/QuotaOfferModal";
+import QuotaNotice from "@/components/chat/QuotaNotice";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface Message {
   role: "user" | "assistant";
@@ -35,10 +38,37 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [userInfo, setUserInfo] = useState<{ username: string; display_name?: string | null; max_prompts: number; prompts_used: number; remaining: number | null } | null>(null);
+  const [userInfo, setUserInfo] = useState<{ username: string; display_name?: string | null; max_prompts: number; prompts_used: number; remaining: number | null; goal?: string; style_id?: string } | null>(null);
   const [trialInfo, setTrialInfo] = useState<{ trial_prompts: number; used: number; remaining: number; allowed: boolean } | null>(null);
   const [quotaAlert, setQuotaAlert] = useState<string | null>(null);
-  // Mulai kosong — diisi setelah mount saja. Math.random() di initializer
+  const [quotaOffer, setQuotaOffer] = useState<QuotaOfferVariant | null>(null);
+  // Notice inline bergaya GPT: aktif saat kuota habis, sampai user tutup.
+  const [quotaOut, setQuotaOut] = useState<QuotaOfferVariant | null>(null);
+  const [quotaNoticeHidden, setQuotaNoticeHidden] = useState(false);
+  const [welcomeName, setWelcomeName] = useState<string | null>(null);
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  // Modal profil user: ganti nama, tujuan pakai AI, pilih gaya respons (template admin)
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profileGoal, setProfileGoal] = useState("");
+  const [profileStyle, setProfileStyle] = useState("");
+  const [styleOptions, setStyleOptions] = useState<{ id: string; name: string; description: string; prompt: string }[]>([]);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMsg, setProfileMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (quotaOffer === "quota" || quotaOffer === "trial") {
+      setQuotaOut(quotaOffer);
+      setQuotaNoticeHidden(false);
+    }
+  }, [quotaOffer]);
+  // Modal penawaran kuota untuk pesan habis/trial/login; pesan lain tetap toast.
+  const openQuotaOffer = useCallback((msg: string) => {
+    if (msg.includes("Trial")) setQuotaOffer("trial");
+    else if (msg.includes("Batas prompt habis")) setQuotaOffer("quota");
+    else if (msg.includes("Login diperlukan")) setQuotaOffer("login");
+    else setQuotaAlert(msg);
+  }, []);
+  // Mulai kosong - diisi setelah mount saja. Math.random() di initializer
   // bikin hydration mismatch (server & client dapat set berbeda).
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [infoOpen, setInfoOpen] = useState(false);
@@ -85,7 +115,21 @@ export default function ChatPage() {
   useEffect(() => {
     fetch("/api/python/user/me")
       .then(async (r) => {
-        if (r.ok) { const j = await r.json(); setUserInfo(j); return; }
+        if (r.ok) {
+          const j = await r.json();
+          setUserInfo(j);
+          // sapaan selamat datang setelah login (flag dari /login atau ?welcome=1 dari OAuth Google)
+          try {
+            const flagged = sessionStorage.getItem("itz_welcome") === "1";
+            const qp = new URLSearchParams(window.location.search).has("welcome");
+            if (flagged || qp) {
+              sessionStorage.removeItem("itz_welcome");
+              if (qp) window.history.replaceState({}, "", window.location.pathname);
+              setWelcomeName(j.display_name || j.username);
+            }
+          } catch {}
+          return;
+        }
         // guest -> fetch trial info
         const t = await fetch("/api/python/trial").then((x) => x.json()).catch(() => null);
         if (t) setTrialInfo(t);
@@ -97,11 +141,62 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
+    if (!welcomeName) return;
+    const id = window.setTimeout(() => setWelcomeName(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [welcomeName]);
+
+  useEffect(() => {
     if (!isLoading) return;
     const id = window.setInterval(() => setNowTick(Date.now()), 120);
     return () => window.clearInterval(id);
   }, [isLoading]);
   const elapsedMs = isLoading && startedAtRef.current ? nowTick - startedAtRef.current : 0;
+
+  const doLogout = async () => {
+    setConfirmLogout(false);
+    try { await fetch("/api/python/user/logout", { method: "POST" }); } catch {}
+    window.location.href = "/login";
+  };
+
+  const openProfile = useCallback(() => {
+    if (!userInfo) return;
+    setProfileName(userInfo.display_name || userInfo.username);
+    setProfileGoal(userInfo.goal || "");
+    setProfileStyle(userInfo.style_id || "");
+    setProfileMsg(null);
+    setProfileOpen(true);
+    if (styleOptions.length === 0) {
+      fetch("/api/python/user/styles")
+        .then(async (r) => { if (r.ok) { const j = await r.json(); setStyleOptions(j.styles || []); } })
+        .catch(() => {});
+    }
+  }, [userInfo, styleOptions.length]);
+
+  const saveProfile = async () => {
+    if (profileSaving) return;
+    setProfileSaving(true);
+    setProfileMsg(null);
+    try {
+      const r = await fetch("/api/python/user/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: profileName, goal: profileGoal, style_id: profileStyle }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setProfileMsg(typeof j.detail === "string" ? j.detail : "Gagal menyimpan profil");
+        return;
+      }
+      setUserInfo((p) => (p ? { ...p, display_name: j.display_name, goal: j.goal, style_id: j.style_id } : p));
+      setProfileMsg("Tersimpan");
+      setTimeout(() => setProfileOpen(false), 700);
+    } catch {
+      setProfileMsg("Gagal menyimpan profil");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -138,13 +233,13 @@ export default function ChatPage() {
         let msg = `Server ${res.status}`;
         try { const j = await res.json(); msg = (j.detail || j.message || msg) as string; } catch {}
         if (msg.includes("Trial habis") || msg.includes("Trial")) {
-          setQuotaAlert(msg + " — ");
+          openQuotaOffer(msg);
           // refresh trial info
           fetch("/api/python/trial").then((x) => x.json()).then(setTrialInfo).catch(() => {});
           throw new Error(msg);
         }
-        if (res.status === 403 && msg.includes("Batas prompt habis")) { setQuotaAlert(msg); throw new Error(msg); }
-        if (res.status === 401 && msg.includes("Login diperlukan")) { setQuotaAlert(msg); throw new Error(msg); }
+        if (res.status === 403 && msg.includes("Batas prompt habis")) { openQuotaOffer(msg); throw new Error(msg); }
+        if (res.status === 401 && msg.includes("Login diperlukan")) { openQuotaOffer(msg); throw new Error(msg); }
         throw new Error(msg);
       }
       const reader = res.body?.getReader();
@@ -169,11 +264,15 @@ export default function ChatPage() {
                 return u;
               });
             }
-            if (p.error) { if (String(p.error).includes("Batas prompt")) setQuotaAlert(String(p.error)); setError(p.error); }
+            if (p.error) {
+              const em = String(p.error);
+              if (em.includes("Batas prompt") || em.includes("Trial")) openQuotaOffer(em);
+              else if (!em.includes("Login diperlukan")) setError(p.error);
+            }
           } catch {}
         }
       }
-      if (userInfo) fetch("/api/python/user/me").then(async (r) => { if (r.ok) { const j = await r.json(); setUserInfo(j); if (j.remaining === 0) setQuotaAlert("Batas prompt habis — hubungi admin untuk menambah kuota"); } }).catch(() => {});
+      if (userInfo) fetch("/api/python/user/me").then(async (r) => { if (r.ok) { const j = await r.json(); setUserInfo(j); if (j.remaining === 0) { setQuotaOut("quota"); setQuotaNoticeHidden(false); } } }).catch(() => {});
       else fetch("/api/python/trial").then((x) => x.json()).then(setTrialInfo).catch(() => {});
       const dur = Date.now() - started;
       setMessages((prev) => {
@@ -184,8 +283,8 @@ export default function ChatPage() {
       });
     } catch (e: any) {
       const m = e.message || "Gagal terhubung ke backend.";
-      if (m.includes("Batas prompt habis")) setQuotaAlert(m);
-      setError(m);
+      if (m.includes("Batas prompt habis") || m.includes("Trial habis") || m.includes("Login diperlukan")) openQuotaOffer(m);
+      else setError(m);
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setIsLoading(false);
@@ -210,7 +309,7 @@ export default function ChatPage() {
         />
       </div>
 
-      {/* aurora overlay — subtle gradient on top */}
+      {/* aurora overlay - subtle gradient on top */}
       <div
         aria-hidden
         className="pointer-events-none fixed inset-x-0 top-0 z-[1] h-[860px]"
@@ -225,7 +324,7 @@ export default function ChatPage() {
           WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 24%, rgba(0,0,0,0.8) 46%, rgba(0,0,0,0.95) 78%)",
         }}
       />
-      {/* particles — subtle accents */}
+      {/* particles - subtle accents */}
       <div aria-hidden className="itz-particles z-[1]">
         <span className="itz-dot" style={{ left: "14%", top: "10%", width: 4, height: 4, color: "rgba(56,189,248,0.7)", animationDelay: "0s", ["--dur" as any]: "5s" }} />
         <span className="itz-dot" style={{ left: "68%", top: "12%", width: 5, height: 5, color: "rgba(56,189,248,0.6)", animationDelay: "1.1s", ["--dur" as any]: "5.5s" }} />
@@ -301,14 +400,193 @@ export default function ChatPage() {
             <span className="hidden sm:inline">New Chat</span>
           </button>
           {userInfo ? (
-            <button onClick={async () => { try { await fetch("/api/python/user/logout", { method: "POST" }); } catch {} window.location.href = "/login"; }} title="Keluar" aria-label="Keluar" className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-            </button>
+            <>
+              <button onClick={openProfile} title="Pengaturan profil" aria-label="Pengaturan profil" className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </button>
+              <button onClick={() => setConfirmLogout(true)} title="Keluar" aria-label="Keluar" className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+              </button>
+            </>
           ) : (
             <a href="/login" className="ml-1 rounded-lg bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-black transition-colors hover:bg-zinc-200">Login</a>
           )}
         </div>
       </header>
+
+      {/* Selamat datang setelah login */}
+      <AnimatePresence>
+        {welcomeName && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ type: "spring", stiffness: 340, damping: 28 }}
+            className="fixed left-1/2 top-4 z-[90] w-[calc(100%-2rem)] max-w-[420px] -translate-x-1/2 rounded-2xl border border-white/[0.1] bg-[#16161c] px-5 py-3.5 shadow-[0_24px_60px_-16px_rgba(0,0,0,0.8)]"
+          >
+            <p className="text-[14.5px] font-semibold tracking-[-0.01em] text-white">
+              Selamat Datang, {welcomeName}
+            </p>
+            <p className="mt-0.5 text-[12.5px] text-zinc-500">Senang bertemu lagi. Tanyakan apa saja.</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Konfirmasi keluar */}
+      <AnimatePresence>
+        {confirmLogout && (
+          <motion.div
+            className="fixed inset-0 z-[95] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-[5px]" onClick={() => setConfirmLogout(false)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 14 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97, y: 8 }}
+              transition={{ type: "spring", stiffness: 340, damping: 28 }}
+              role="dialog"
+              aria-modal="true"
+              className="relative w-full max-w-[360px] rounded-2xl border border-white/[0.1] bg-[#0c0c10] p-6 shadow-[0_32px_100px_-24px_rgba(0,0,0,0.85)]"
+            >
+              <h3 className="text-[17px] font-semibold tracking-[-0.01em] text-white">Keluar dari akun?</h3>
+              <p className="mt-1.5 text-[13.5px] leading-relaxed text-zinc-500">
+                Sesi kamu akan berakhir dan kamu kembali ke halaman login.
+              </p>
+              <div className="mt-5 flex gap-2.5">
+                <button
+                  onClick={() => setConfirmLogout(false)}
+                  className="h-10 flex-1 rounded-xl border border-white/[0.1] text-[14px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05] hover:text-white"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={doLogout}
+                  className="h-10 flex-1 rounded-xl bg-white text-[14px] font-semibold text-black transition-colors hover:bg-zinc-200"
+                >
+                  Ya, keluar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Modal profil: nama, tujuan, gaya respons */}
+        {profileOpen && userInfo && (
+          <motion.div
+            className="fixed inset-0 z-[95] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-[5px]" onClick={() => setProfileOpen(false)} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 14 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.97, y: 8 }}
+              transition={{ type: "spring", stiffness: 340, damping: 28 }}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Pengaturan profil"
+              className="relative flex max-h-[86vh] w-full max-w-[440px] flex-col overflow-hidden rounded-2xl border border-white/[0.1] bg-[#0c0c10] shadow-[0_32px_100px_-24px_rgba(0,0,0,0.85)]"
+            >
+              <div className="flex items-center justify-between border-b border-white/[0.07] px-6 py-4">
+                <h3 className="text-[16px] font-semibold tracking-[-0.01em] text-white">Pengaturan Profil</h3>
+                <button onClick={() => setProfileOpen(false)} aria-label="Tutup" className="rounded-lg px-2 py-1 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+
+              <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+                <div className="space-y-1.5">
+                  <label htmlFor="pf-name" className="text-[12.5px] font-medium text-zinc-400">Nama tampilan</label>
+                  <input
+                    id="pf-name"
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    maxLength={64}
+                    className="h-10 w-full rounded-xl border border-white/[0.1] bg-zinc-900/70 px-3.5 text-[14px] text-white placeholder:text-zinc-600 outline-none transition-colors focus:border-white/25"
+                    placeholder="Nama kamu"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label htmlFor="pf-goal" className="text-[12.5px] font-medium text-zinc-400">Tujuan kamu pakai ITZ AI</label>
+                  <textarea
+                    id="pf-goal"
+                    value={profileGoal}
+                    onChange={(e) => setProfileGoal(e.target.value)}
+                    maxLength={300}
+                    rows={3}
+                    className="w-full resize-none rounded-xl border border-white/[0.1] bg-zinc-900/70 px-3.5 py-2.5 text-[14px] leading-relaxed text-white placeholder:text-zinc-600 outline-none transition-colors focus:border-white/25"
+                    placeholder="Contoh: bantu riset kuliah, brainstorm konten, belajar coding"
+                  />
+                  <p className="text-[11.5px] text-zinc-600">AI memakai tujuan ini agar jawaban lebih relevan.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-[12.5px] font-medium text-zinc-400">Gaya respons AI</span>
+                  <div className="space-y-2">
+                    {styleOptions.map((s) => {
+                      const active = profileStyle === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => setProfileStyle(active ? "" : s.id)}
+                          aria-pressed={active}
+                          className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
+                            active ? "border-white/60 bg-white/[0.07]" : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20 hover:bg-white/[0.03]"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className={`text-[14px] font-semibold ${active ? "text-white" : "text-zinc-300"}`}>{s.name}</span>
+                            <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${active ? "border-white bg-white" : "border-zinc-600"}`}>
+                              {active && <span className="h-1.5 w-1.5 rounded-full bg-black" />}
+                            </span>
+                          </div>
+                          {s.description && <p className="mt-0.5 text-[12.5px] leading-relaxed text-zinc-500">{s.description}</p>}
+                        </button>
+                      );
+                    })}
+                    {styleOptions.length === 0 && (
+                      <p className="rounded-xl border border-white/[0.06] bg-zinc-900/30 px-4 py-3 text-[12.5px] text-zinc-600">Memuat pilihan gaya...</p>
+                    )}
+                  </div>
+                  {profileStyle && (
+                    <p className="text-[11.5px] text-zinc-600">Klik lagi untuk kembali ke gaya default.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 border-t border-white/[0.07] px-6 py-4">
+                {profileMsg && (
+                  <span className={`text-[12.5px] ${profileMsg === "Tersimpan" ? "text-emerald-400" : "text-rose-400"}`}>{profileMsg}</span>
+                )}
+                <div className="ml-auto flex gap-2.5">
+                  <button
+                    onClick={() => setProfileOpen(false)}
+                    className="h-10 rounded-xl border border-white/[0.1] px-4 text-[14px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05] hover:text-white"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={saveProfile}
+                    disabled={profileSaving || !profileName.trim()}
+                    className="h-10 rounded-xl bg-white px-5 text-[14px] font-semibold text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {profileSaving ? "Menyimpan..." : "Simpan"}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {quotaAlert && (
         <div className="relative z-20 mx-auto w-full max-w-[720px] px-4 pt-3 sm:px-6">
@@ -318,6 +596,14 @@ export default function ChatPage() {
           </div>
         </div>
       )}
+
+      <QuotaOfferModal
+        open={quotaOffer !== null}
+        variant={quotaOffer ?? "quota"}
+        username={userInfo?.username ?? null}
+        onClose={() => setQuotaOffer(null)}
+      />
+
       <main className="relative z-10 flex flex-1 flex-col overflow-hidden">
         {isEmpty ? (
           <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-12 sm:py-20">
@@ -336,8 +622,13 @@ export default function ChatPage() {
                 Private intelligence for your knowledge
               </p>
 
-              <div className="mt-12 w-full">
-                <div className="mb-5 flex flex-wrap justify-center gap-2.5">
+                <div className="mt-12 w-full space-y-4">
+                  <QuotaNotice
+                    visible={quotaOut !== null && !quotaNoticeHidden}
+                    onOpenOffer={() => setQuotaOffer(quotaOut ?? "quota")}
+                    onDismiss={() => setQuotaNoticeHidden(true)}
+                  />
+                  <div className="mb-5 flex flex-wrap justify-center gap-2.5">
                   {suggestions.map((s) => (
                     <button
                       key={s}
@@ -378,6 +669,11 @@ export default function ChatPage() {
                       {error}
                     </div>
                   )}
+                  <QuotaNotice
+                    visible={quotaOut !== null && !quotaNoticeHidden}
+                    onOpenOffer={() => setQuotaOffer(quotaOut ?? "quota")}
+                    onDismiss={() => setQuotaNoticeHidden(true)}
+                  />
                   <div ref={endRef} className="h-1" />
                 </div>
               </div>

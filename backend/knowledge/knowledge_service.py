@@ -14,10 +14,10 @@ except ImportError:
 
 # ── Embedding configuration ───────────────────────────────────────────────
 # Provider switch:
-#   "hf"     (default) — HuggingFace Inference API, model runs server-side.
+#   "hf"     (default) - HuggingFace Inference API, model runs server-side.
 #                        Works on Vercel/serverless (no local ML deps).
-#   "local"  (optional, dev-only) — sentence-transformers on CPU.
-#   "gemini" (optional) — Google Gemini embedContent REST. Free tier:
+#   "local"  (optional, dev-only) - sentence-transformers on CPU.
+#   "gemini" (optional) - Google Gemini embedContent REST. Free tier:
 #                        input token gratis (rate-limited), tanpa model
 #                        lokal → cocok untuk Vercel. Butuh GEMINI_API_KEY.
 #                        Catatan free tier: data dipakai Google improve produk.
@@ -39,11 +39,11 @@ HF_API_URL = os.getenv(
 )
 HF_TOKEN = os.getenv("HF_TOKEN", "").strip()
 
-# Gemini embedding (provider "gemini"). Beda dengan GEMINI_MODEL di .env —
+# Gemini embedding (provider "gemini"). Beda dengan GEMINI_MODEL di .env -
 # variabel itu nama model LLM untuk agent, bukan embedding.
 GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2").strip()
 # Kunci khusus embedding; fallback ke GEMINI_API_KEY (var itu juga dibaca
-# agent LLM — aman selama GROQ_API_KEY/OPENROUTER_API_KEY terisi, karena
+# agent LLM - aman selama GROQ_API_KEY/OPENROUTER_API_KEY terisi, karena
 # urutan resolusi key agent memprioritaskan kunci provider aktif).
 GEMINI_API_KEY = (
     os.getenv("GEMINI_EMBEDDING_API_KEY", "").strip()
@@ -53,7 +53,7 @@ GEMINI_API_BASE = os.getenv(
     "GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta"
 ).rstrip("/")
 
-# Dimensi vektor — WAJIB sama dengan kolom pgvector di Supabase.
+# Dimensi vektor - WAJIB sama dengan kolom pgvector di Supabase.
 # Default 768: rekomendasi MRL Google untuk gemini-embedding-2 (MTEB 67.99,
 # mendekati 68.17@1536, storage hemat). Ganti nilai ini HANYA bersamaan dengan
 # migrasi kolom (supabase_migration_768.sql) + reindex penuh.
@@ -91,7 +91,7 @@ def _hf_embed(text: str) -> List[float]:
     """Call HuggingFace Inference API. Raises on failure."""
     if not HF_TOKEN:
         raise RuntimeError(
-            "HF_TOKEN not set — create a free read token at "
+            "HF_TOKEN not set - create a free read token at "
             "https://huggingface.co/settings/tokens and put it in .env"
         )
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {HF_TOKEN}"}
@@ -131,7 +131,7 @@ def _hf_embed(text: str) -> List[float]:
 def _gemini_embed(text: str, as_query: bool = False) -> List[float]:
     """Call Gemini embedContent REST. Raises on failure.
 
-    Prefix task mengikuti dokumentasi resmi — DUA format berbeda:
+    Prefix task mengikuti dokumentasi resmi - DUA format berbeda:
       - gemini-embedding-2  : taskType TIDAK boleh dikirim; petunjuk tugas
                               disisipkan ke teks input (prefix prompt).
       - gemini-embedding-001: pakai field taskType (RETRIEVAL_QUERY vs
@@ -141,11 +141,11 @@ def _gemini_embed(text: str, as_query: bool = False) -> List[float]:
 
     output_dimensionality=EMBEDDING_DIM supaya skema pgvector tidak berubah.
     Vektor non-default selalu di-L2-normalize manual (syarat MRL untuk 001;
-    v2 sudah auto-normalize — normalisasi ulang idempoten/boler).
+    v2 sudah auto-normalize - normalisasi ulang idempoten/boler).
     """
     if not GEMINI_API_KEY:
         raise RuntimeError(
-            "GEMINI_API_KEY not set — ambil kunci gratis di "
+            "GEMINI_API_KEY not set - ambil kunci gratis di "
             "https://aistudio.google.com/apikey lalu isi di .env"
         )
 
@@ -219,7 +219,7 @@ def _warmup_embedding_model():
 
     Tanpa ini, chat pertama setiap boot/reload bayar biaya load model
     (~9.6s ukuran L12) di dalam request. Dengan warmup, load terjadi
-    paralel — chat pertama cukup bayar RPC + Groq saja.
+    paralel - chat pertama cukup bayar RPC + Groq saja.
     """
     try:
         _get_embedding_model()
@@ -233,7 +233,7 @@ if EMBEDDING_PROVIDER == "local" and __name__ != "__main__":
     _warm_thread.start()
 
 
-# Common Indonesian + English stopwords — excluded from keyword matching so
+# Common Indonesian + English stopwords - excluded from keyword matching so
 # generic words ("yang", "cara", "how") don't match every entry.
 _STOPWORDS = {
     "yang", "dan", "di", "ke", "dari", "ini", "itu", "apa", "gimana", "bagaimana",
@@ -244,15 +244,15 @@ _STOPWORDS = {
 
 
 def _keyword_search(query: str, match_count: int) -> List[str]:
-    """Keyword fallback — returns ONLY chunks that actually match the query.
+    """Keyword fallback - returns ONLY chunks that actually match the query.
 
     Sengaja TIDAK punya fallback "entry pertama": konten tidak relevan yang
     disuntik ke system prompt bikin LLM mengarang jawaban. Empty list lebih
-    jujur — context_builder menangani empty dengan pesan "tidak ada knowledge
+    jujur - context_builder menangani empty dengan pesan "tidak ada knowledge
     relevan", dan Core Rules bilang fallback ke general knowledge.
 
     Term match pakai word boundary (\b): substring mentah bikin "nama"
-    match di dalam "purnama" — konten nyasar ikut nyuntik konteks LLM.
+    match di dalam "purnama" - konten nyasar ikut nyuntik konteks LLM.
     """
     import re as _re
     terms = [w for w in query.lower().split() if len(w) >= 3 and w not in _STOPWORDS]
@@ -275,7 +275,7 @@ class KnowledgeService:
         meaning of text. Provider via EMBEDDING_PROVIDER (.env):
         "hf" | "local" | "gemini" | "off".
         as_query=True hanya berpengaruh untuk provider gemini (prefix task
-        query vs dokumen) — dua mode punya cache key terpisah.
+        query vs dokumen) - dua mode punya cache key terpisah.
         Provider gagal → dummy zeros → semantic_search jatuh ke keyword
         fallback (sengaja: vektor model berbeda TIDAK boleh dicampur).
         """
@@ -334,38 +334,41 @@ class KnowledgeService:
 
     @staticmethod
     def semantic_search(query: str, match_count: int = 4) -> List[str]:
-        """Search knowledge entries by semantic similarity.
-
-        Uses cosine similarity on embeddings to find relevant chunks.
-        Falls back to keyword search if embeddings unavailable.
+        """Search knowledge entries using Hybrid Search + Query Expansion.
         """
+        # Simple Query Expansion: Clean and extract key terms
+        import re
+        clean_query = re.sub(r'[^\w\s]', '', query).lower()
+        
         query_embedding = KnowledgeService.get_embedding(query, as_query=True)
 
         if not supabase_client:
-            # No Supabase, use keyword fallback
             return _keyword_search(query, match_count)
 
-        # Check if embeddings are real (384 dims, not dummy zeros)
         is_dummy = len(query_embedding) != EMBEDDING_DIM or all(x == 0.0 for x in query_embedding[:20])
 
-        if is_dummy:
-            # Dummy embeddings, use keyword fallback only
-            return _keyword_search(query, match_count)
-
-        # Real embeddings - use Supabase semantic search
         try:
-            res = supabase_client.rpc(
-                "match_knowledge_entries",
-                {
-                    "query_embedding": query_embedding,
-                    "match_threshold": MATCH_THRESHOLD,
-                    "match_count": match_count
-                }
-            ).execute()
+            if is_dummy:
+                # Fallback to pure keyword if embedding fails
+                res = supabase_client.table("knowledge_embeddings")\
+                    .select("content_chunk")\
+                    .text_search("fts", query)\
+                    .limit(match_count)\
+                    .execute()
+            else:
+                # Optimized Hybrid Search via RPC
+                res = supabase_client.rpc(
+                    "hybrid_search",
+                    {
+                        "query_text": query,
+                        "query_embedding": query_embedding,
+                        "match_count": match_count
+                    }
+                ).execute()
+            
             if res.data:
                 return [row["content_chunk"] for row in res.data]
         except Exception as e:
-            print(f"Supabase RPC search error: {e}")
+            print(f"Search error: {e}")
 
-        # RPC failed, fallback to keyword search
         return _keyword_search(query, match_count)

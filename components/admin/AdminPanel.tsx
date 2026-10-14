@@ -26,6 +26,7 @@ import {
   Database,
   Zap,
   Clock,
+  Coins,
   BarChart3,
   Brain,
   Lightbulb,
@@ -62,6 +63,7 @@ import {
   Loader2,
   Lock,
   ArrowRight,
+  CalendarDays,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -75,10 +77,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
 
-type TabType = "dashboard" | "users" | "identity" | "personal" | "knowledge" | "personality" | "communication" | "instructions" | "models";
+type TabType = "dashboard" | "users" | "identity" | "personal" | "knowledge" | "personality" | "communication" | "instructions" | "models" | "styles";
 
 type RealStats = {
   totalRequests: number; totalUsers: number; activeUsers: number; disabledUsers: number;
@@ -94,6 +96,86 @@ type RealStats = {
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
+/* ---- format angka + tooltip chart (rapi, monospace, monokrom) ---- */
+const fmtNum = (n: number) => Number(n || 0).toLocaleString("id-ID");
+const fmtCompact = (n: number) => {
+  const v = Number(n || 0);
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(".", ",")}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1).replace(".", ",")}K`;
+  return String(v);
+};
+const fmtDay = (iso: string) => {
+  const d = new Date(`${iso}T00:00:00`);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short" });
+};
+const fmtDayFull = (iso: string) => {
+  const d = new Date(`${iso}T00:00:00`);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+};
+
+function ChartTooltip({ active, payload, label, unit }: any) {
+  if (!active || !payload || !payload.length) return null;
+  const rows = payload.filter((p: any) => p.value !== undefined && p.value !== null);
+  const total = rows.reduce((s: number, p: any) => s + (Number(p.value) || 0), 0);
+  return (
+    <div className="min-w-[160px] rounded-lg border border-white/10 bg-[#0c0c10]/95 px-3 py-2.5 shadow-[0_16px_40px_-12px_rgba(0,0,0,0.85)] backdrop-blur">
+      {label !== undefined && label !== null && (
+        <p className="mb-1.5 border-b border-white/[0.07] pb-1.5 font-mono text-[11px] uppercase tracking-wider text-zinc-500">{label}</p>
+      )}
+      {rows.map((p: any, i: number) => (
+        <div key={i} className="flex items-center justify-between gap-5 py-0.5 text-[12.5px]">
+          <span className="flex items-center gap-1.5 text-zinc-400">
+            <span className="h-2 w-2 shrink-0 rounded-[3px]" style={{ background: p.color || p.stroke || p.fill || "#a1a1aa" }} />
+            {p.name || p.dataKey}
+          </span>
+          <span className="font-mono tabular-nums text-zinc-100">{fmtNum(p.value)}{unit || ""}</span>
+        </div>
+      ))}
+      {rows.length > 1 && (
+        <div className="mt-1.5 flex items-center justify-between gap-5 border-t border-white/[0.07] pt-1.5 text-[12.5px]">
+          <span className="text-zinc-500">Total</span>
+          <span className="font-mono font-semibold tabular-nums text-white">{fmtNum(total)}{unit || ""}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeltaChip({ v, vs }: { v: number | null; vs?: string }) {
+  if (v === null || !Number.isFinite(v)) {
+    return <span className="inline-flex items-center rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[12.5px] text-zinc-500">-</span>;
+  }
+  const up = v >= 0;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12.5px] font-medium tabular-nums ${up ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>
+      <span aria-hidden>{up ? "▲" : "▼"}</span>
+      {up ? "+" : ""}{v}%
+      {vs && <span className="font-normal text-zinc-500">{vs}</span>}
+    </span>
+  );
+}
+
+function BudgetGauge({ pct }: { pct: number }) {
+  const p = Math.max(0, Math.min(100, pct));
+  const r = 68;
+  const c = Math.PI * r;
+  const color = p >= 90 ? "#fb7185" : p >= 70 ? "#fbbf24" : "#34d399";
+  return (
+    <div className="relative mx-auto w-full max-w-[230px]">
+      <svg viewBox="0 0 180 104" className="w-full" role="img" aria-label={`${Math.round(p)} persen terpakai`}>
+        <path d="M 22 92 A 68 68 0 0 1 158 92" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="12" strokeLinecap="round" />
+        <path d="M 22 92 A 68 68 0 0 1 158 92" fill="none" stroke={color} strokeWidth="12" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - p / 100)} style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(0.16,1,0.3,1)" }} />
+      </svg>
+      <div className="absolute inset-x-0 bottom-1 text-center">
+        <p className="font-mono text-[26px] font-semibold leading-none tabular-nums text-white">{Math.round(p)}%</p>
+        <p className="mt-1 text-[12.5px] text-zinc-500">terpakai</p>
+      </div>
+    </div>
+  );
+}
+
 type ToastKind = "success" | "error" | "info";
 type Toast = { id: string; kind: ToastKind; title: string; desc?: string };
 
@@ -104,7 +186,7 @@ const cardContentCls = "p-5 pt-0";
 const cardFooterCls = "p-5 pt-0";
 const rowCls = "px-5 py-4";
 
-/* typography scale — enlarged +4px vs original, hierarchy preserved */
+/* typography scale - enlarged +4px vs original, hierarchy preserved */
 const tPage = "text-[26px] font-semibold tracking-tight text-white leading-none";
 const tSub = "text-[18px] font-semibold tracking-tight text-zinc-100";
 const tCard = "text-[15px] font-semibold tracking-[0.08em] uppercase text-zinc-300";
@@ -131,6 +213,13 @@ const inputCls = "h-9 border-white/10 bg-zinc-900 text-white placeholder:text-zi
 const textareaCls = "border-white/10 bg-zinc-900 text-white placeholder:text-zinc-500 text-[16px] leading-relaxed";
 const sectionHeaderWrap = "border-b border-white/[0.06] pb-4";
 const sectionDescCls = "mt-1.5 text-[16px] leading-relaxed text-zinc-500";
+
+function fmtDateTime(iso?: string | null): string {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "-";
+  return `${d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}, ${d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`;
+}
 
 function SectionHeader({ title, desc }: { title: string; desc: string }) {
   return (
@@ -173,6 +262,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const [personalityData, setPersonalityData] = useState({ personality: "", tone: "", attitude: "", reasoning_style: "", criticism_style: "", response_behavior: "", prohibited_behavior: "" });
   const [commData, setCommData] = useState({ primary_language: "", tone: "", response_length: "", formatting_preference: "", technical_depth: "", explanation_style: "" });
   const [sysData, setSysData] = useState({ behavioral_rules: "", response_rules: "", safety_rules: "", knowledge_priority: "", reasoning_constraints: "", formatting_rules: "" });
+  const [stylesData, setStylesData] = useState<{ styles: { id: string; name: string; description: string; prompt: string }[] }>({ styles: [] });
 
   const [modelConfig, setModelConfig] = useState({
     active_model: "",
@@ -181,6 +271,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     api_base_url: "https://openrouter.ai/api/v1",
     temperature: 0.4,
     reasoning_enabled: false,
+    max_tokens: 8192,
   });
   const [availableModels, setAvailableModels] = useState<any[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -211,8 +302,11 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const jsonFileRef = React.useRef<HTMLInputElement>(null);
 
   const [realStats, setRealStats] = useState<RealStats | null>(null);
+  const [tokenStats, setTokenStats] = useState<any>(null);
+  const [budgetInput, setBudgetInput] = useState("0");
   const [statsLoading, setStatsLoading] = useState(false);
   const [chartPeriod, setChartPeriod] = useState<"day" | "week" | "month" | "year">("day");
+  const [tokenDays, setTokenDays] = useState<number>(14);
   const fetchStats = React.useCallback(async (period?: string) => {
     if (!isAuthenticated) return;
     setStatsLoading(true);
@@ -229,14 +323,72 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         }
       }
     } catch {}
+    // agregasi token: harian, sisa budget, per user
+    try {
+      const tr = await fetch(`/api/python/admin/token-usage?days=${tokenDays}`);
+      if (tr.ok) {
+        const tj = await tr.json();
+        setTokenStats(tj);
+      }
+    } catch {}
     setStatsLoading(false);
-  }, [isAuthenticated, chartPeriod]);
+  }, [isAuthenticated, chartPeriod, tokenDays]);
+  useEffect(() => {
+    if (tokenStats && typeof tokenStats.budget === "number") {
+      setBudgetInput(String(tokenStats.budget));
+    }
+  }, [tokenStats?.budget]);
   useEffect(() => {
     if (!isAuthenticated) return;
     fetchStats();
     const t = setInterval(fetchStats, 15000);
     return () => clearInterval(t);
   }, [isAuthenticated, fetchStats]);
+
+  const saveTokenBudget = async () => {
+    const v = Math.max(0, parseInt(budgetInput || "0", 10) || 0);
+    try {
+      const res = await fetch("/api/python/admin/token-budget", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ daily_token_budget: v }),
+      });
+      if (res.ok) {
+        const j = await res.json();
+        setTokenStats((t: any) => (t ? { ...t, budget: j.budget, remaining: j.budget > 0 ? j.budget - (t.today?.total || 0) : null } : t));
+        pushToast("success", "Budget token disimpan", v > 0 ? `${v.toLocaleString()} token/hari` : "Tanpa batas harian");
+      } else {
+        pushToast("error", "Gagal simpan budget", "Coba lagi.");
+      }
+    } catch {
+      pushToast("error", "Gagal simpan budget", "Server tidak merespons.");
+    }
+  };
+
+  const tokDelta = tokenStats && Number(tokenStats.yesterday?.total || 0) > 0
+    ? Math.round((100 * (Number(tokenStats.today?.total || 0) - Number(tokenStats.yesterday?.total || 0))) / Number(tokenStats.yesterday?.total || 1))
+    : null;
+  const tokAvg14 = tokenStats && Array.isArray(tokenStats.daily) && tokenStats.daily.length
+    ? Math.round(tokenStats.daily.reduce((s: number, d: any) => s + Number(d.total || 0), 0) / tokenStats.daily.length)
+    : 0;
+  // rincian periode grafik token (ikut tab 7/14/30 hari)
+  const tokPeriod = tokenStats && Array.isArray(tokenStats.daily) && tokenStats.daily.length
+    ? tokenStats.daily.reduce((a: any, d: any) => ({
+        prompt: a.prompt + Number(d.prompt || 0),
+        completion: a.completion + Number(d.completion || 0),
+        total: a.total + Number(d.total || 0),
+        peak: Math.max(a.peak, Number(d.total || 0)),
+      }), { prompt: 0, completion: 0, total: 0, peak: 0 })
+    : { prompt: 0, completion: 0, total: 0, peak: 0 };
+  // delta requests: hari terakhir vs hari sebelumnya pada deret dailyRequests
+  const reqDelta = realStats && Array.isArray(realStats.dailyRequests) && realStats.dailyRequests.length >= 2
+    ? (() => {
+        const d = realStats.dailyRequests;
+        const cur = Number(d[d.length - 1]?.count || 0);
+        const prev = Number(d[d.length - 2]?.count || 0);
+        return prev > 0 ? Math.round((100 * (cur - prev)) / prev) : null;
+      })()
+    : null;
 
   useEffect(() => {
     checkAuth();
@@ -323,7 +475,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
   const loadAllData = async () => {
     try {
-      const [idRes, perRes, persRes, commRes, sysRes, catRes, entRes, modelRes] = await Promise.all([
+      const [idRes, perRes, persRes, commRes, sysRes, catRes, entRes, modelRes, stRes] = await Promise.all([
         fetch("/api/python/admin/config/ai_identity"),
         fetch("/api/python/admin/config/personal_information"),
         fetch("/api/python/admin/config/ai_personality"),
@@ -332,6 +484,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         fetch("/api/python/admin/knowledge/categories"),
         fetch("/api/python/admin/knowledge/entries"),
         fetch("/api/python/admin/models"),
+        fetch("/api/python/admin/config/response_styles"),
       ]);
 
       if (idRes.ok) setIdentityData(await idRes.json());
@@ -339,6 +492,10 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       if (persRes.ok) setPersonalityData(await persRes.json());
       if (commRes.ok) setCommData(await commRes.json());
       if (sysRes.ok) setSysData(await sysRes.json());
+      if (stRes.ok) {
+        const st = await stRes.json();
+        if (Array.isArray(st?.styles)) setStylesData({ styles: st.styles });
+      }
       if (catRes.ok) {
         const cats = await catRes.json();
         setKnowledgeCategories(cats);
@@ -363,6 +520,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           api_base_url: cur.api_base_url || "https://openrouter.ai/api/v1",
           temperature: Number(cur.temperature ?? 0.4),
           reasoning_enabled: Boolean(cur.reasoning_enabled),
+          max_tokens: Number(cur.max_tokens) || 8192,
         });
         const cat = m.live_catalog?.data || m.live_catalog?.fallback?.data || [];
         if (Array.isArray(cat) && cat.length) setAvailableModels(cat);
@@ -458,6 +616,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           api_base_url: modelConfig.api_base_url,
           temperature: modelConfig.temperature,
           reasoning_enabled: modelConfig.reasoning_enabled,
+          max_tokens: modelConfig.max_tokens,
         }),
       });
       if (res.ok) {
@@ -493,12 +652,14 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     else if (section === "personality") payloadData = personalityData;
     else if (section === "communication") payloadData = commData;
     else if (section === "instructions") payloadData = sysData;
+    else if (section === "styles") payloadData = stylesData;
     const tableMap: Record<string, string> = {
       identity: "ai_identity",
       personal: "personal_information",
       personality: "ai_personality",
       communication: "communication_settings",
-      instructions: "system_instructions"
+      instructions: "system_instructions",
+      styles: "response_styles"
     };
     const labelMap: Record<string, string> = {
       identity: "Identitas",
@@ -506,6 +667,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       personality: "Kepribadian",
       communication: "Komunikasi",
       instructions: "Instruksi",
+      styles: "Gaya Respons",
     };
     try {
       const res = await fetch("/api/python/admin/config", {
@@ -696,8 +858,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         const j = await res.json().catch(() => ({}));
         if ((j as any).errors) {
           const errStr = JSON.stringify((j as any).errors, null, 2);
-          setJsonError(`Partial import — some sections failed:\n${errStr}`);
-          pushToast("info", "Import sebagian", "Beberapa section gagal — cek detail.");
+          setJsonError(`Partial import - some sections failed:\n${errStr}`);
+          pushToast("info", "Import sebagian", "Beberapa section gagal - cek detail.");
         } else {
           pushToast("success", "Import berhasil", `${((j as any).applied_sections || []).length} section + ${(j as any).knowledge_entries_applied || 0} knowledge diterapkan.`);
         }
@@ -843,6 +1005,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               { id: "dashboard", label: "Dashboard", icon: BarChart3 },
               { id: "users", label: "Users", icon: User },
               { id: "models", label: "AI Models", icon: Sparkles },
+              { id: "styles", label: "Gaya Respons", icon: Palette },
               { id: "identity", label: "Identity", icon: Fingerprint },
               { id: "personal", label: "Personal Info", icon: User },
               { id: "knowledge", label: "Knowledge Base", icon: BookOpen },
@@ -900,7 +1063,20 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h2 className={tPage}>Dashboard</h2>
-                    <p className={sectionDescCls}>Data real dari Supabase / storage lokal · refresh 15s</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-mono text-[13px] tracking-wide text-zinc-400">
+                        <CalendarDays className="h-3.5 w-3.5 text-zinc-500" />
+                        {tokenStats && Array.isArray(tokenStats.daily) && tokenStats.daily.length
+                          ? `${fmtDay(String(tokenStats.daily[0].day))} - ${fmtDay(String(tokenStats.daily[tokenStats.daily.length - 1].day))}`
+                          : "memuat tanggal..."}
+                        <span className="text-zinc-600">|</span> {tokenDays} hari terakhir
+                      </span>
+                      {realStats && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-mono text-[13px] tracking-wide text-zinc-400">
+                          <Activity className="h-3.5 w-3.5 text-emerald-400" /> {realStats.uptime}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[13px] font-medium tracking-[0.06em] text-emerald-300">
@@ -923,24 +1099,28 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                 </div>
               ) : (
                 <>
+                  {/* KPI row ala referensi: icon kanan-atas, delta chip, sub "vs ..." */}
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     {[
-                      { label: "Total Requests", value: realStats.totalRequests.toLocaleString(), sub: `${realStats.totalPromptsUsed} user + ${realStats.trialTotalUsed} trial`, icon: TrendingUp, iconBg: "bg-emerald-500/10 border-emerald-500/15", iconColor: "text-emerald-400" },
-                      { label: "Users", value: `${realStats.activeUsers}/${realStats.totalUsers}`, sub: `${realStats.disabledUsers} nonaktif · ${realStats.exhausted} quota habis`, icon: User, iconBg: "bg-sky-500/10 border-sky-500/15", iconColor: "text-sky-400" },
-                      { label: "Avg Prompts / User", value: String(realStats.avgPrompts), sub: `${realStats.unlimitedUsers} unlimited`, icon: Zap, iconBg: "bg-amber-500/10 border-amber-500/15", iconColor: "text-amber-400" },
-                      { label: "Knowledge", value: String(realStats.knowledgeEntries), sub: `${realStats.knowledgeByCategory.length} kategori`, icon: Database, iconBg: "bg-violet-500/10 border-violet-500/15", iconColor: "text-violet-400" },
+                      { label: "Total Requests", value: fmtNum(realStats.totalRequests), delta: reqDelta, vs: "vs kemarin", sub: `${realStats.totalPromptsUsed} user + ${realStats.trialTotalUsed} trial`, icon: TrendingUp, iconBg: "bg-emerald-500/10 border-emerald-500/15", iconColor: "text-emerald-400" },
+                      { label: "Users", value: `${realStats.activeUsers}/${realStats.totalUsers}`, delta: null, vs: "", sub: `${realStats.disabledUsers} nonaktif · ${realStats.exhausted} quota habis · ${realStats.unlimitedUsers} ∞`, icon: User, iconBg: "bg-sky-500/10 border-sky-500/15", iconColor: "text-sky-400" },
+                      { label: "Token Hari Ini", value: tokenStats ? fmtNum(tokenStats.today?.total) : "-", delta: tokDelta, vs: "vs kemarin", sub: tokenStats ? `${fmtNum(tokenStats.today?.prompt)} prompt · ${fmtNum(tokenStats.today?.completion)} completion` : "memuat...", icon: Coins, iconBg: "bg-violet-500/10 border-violet-500/15", iconColor: "text-violet-400" },
+                      { label: "Total Token", value: tokenStats ? fmtNum(tokenStats.total?.total) : "-", delta: null, vs: "", sub: tokenStats ? `rata2 ${fmtNum(tokAvg14)}/hari · ${fmtNum(tokenStats.total?.prompt)} prompt` : "sejak awal", icon: Zap, iconBg: "bg-amber-500/10 border-amber-500/15", iconColor: "text-amber-400" },
                     ].map((stat, idx) => {
                       const Icon = stat.icon;
                       return (
                         <motion.div key={stat.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }}>
-                          <Card className={cardBase}>
-                            <CardContent className="flex items-center justify-between gap-3 p-5">
-                              <div className="min-w-0">
+                          <Card className={`${cardBase} hover:border-white/[0.12] transition-colors`}>
+                            <CardContent className="p-5">
+                              <div className="flex items-start justify-between gap-3">
                                 <p className={tLabel}>{stat.label}</p>
-                                <p className={tStat}>{stat.value}</p>
-                                <p className="mt-1 text-[13px] leading-none text-zinc-500 truncate">{stat.sub}</p>
+                                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${stat.iconBg}`} aria-hidden><Icon className={`h-4 w-4 ${stat.iconColor}`} /></span>
                               </div>
-                              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${stat.iconBg}`} aria-hidden><Icon className={`h-4 w-4 ${stat.iconColor}`} /></span>
+                              <p className="mt-3 text-[30px] font-semibold leading-none tracking-tight text-white tabular-nums">{stat.value}</p>
+                              <div className="mt-2.5 flex items-center gap-2">
+                                {stat.delta !== null && <DeltaChip v={stat.delta} vs={stat.vs} />}
+                                <p className="text-[13px] leading-none text-zinc-500 truncate">{stat.sub}</p>
+                              </div>
                             </CardContent>
                           </Card>
                         </motion.div>
@@ -948,28 +1128,237 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                     })}
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-4">
-                    {[
-                      { k: "Uptime", v: realStats.uptime },
-                      { k: "Trial Used", v: String(realStats.trialTotalUsed) },
-                      { k: "Quota Habis", v: String(realStats.exhausted) },
-                      { k: "Unlimited", v: String(realStats.unlimitedUsers) },
-                    ].map((m) => (
-                      <Card key={m.k} className={cardBase}>
-                        <CardContent className="flex items-baseline justify-between gap-2 px-5 py-4">
-                          <span className={tLabel}>{m.k}</span>
-                          <span className={tValue}>{m.v}</span>
+                  <div className="grid gap-4 lg:grid-cols-3">
+                    {/* HERO: grafik token + delta + tab periode + 3 mini stat (alà Total Profit) */}
+                    <Card className={`${cardBase} lg:col-span-2`}>
+                      <CardHeader className="px-5 pt-5 pb-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className={tLabel}>Penggunaan Token</p>
+                            <div className="mt-2 flex items-baseline gap-3">
+                              <p className="text-[34px] font-semibold leading-none tracking-tight text-white tabular-nums">
+                                {tokenStats ? fmtNum(tokenStats.today?.total) : "-"}
+                              </p>
+                              <DeltaChip v={tokDelta} vs="vs kemarin" />
+                            </div>
+                            <p className="mt-2 text-[13px] text-zinc-500">hari ini · {tokenStats ? fmtNum(tokenStats.today?.prompt) : "-"} prompt + {tokenStats ? fmtNum(tokenStats.today?.completion) : "-"} completion</p>
+                          </div>
+                          <div className="flex items-center gap-1 rounded-full border border-white/10 bg-black/30 p-1">
+                            {[7, 14, 30].map((n) => (
+                              <button
+                                key={n}
+                                onClick={() => setTokenDays(n)}
+                                className={`rounded-full px-3 py-1 text-[13px] font-medium transition-colors ${tokenDays === n ? "bg-white text-black" : "text-zinc-400 hover:text-zinc-200"}`}
+                              >
+                                {n}H
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className={cardContentCls}>
+                        {!tokenStats || !Array.isArray(tokenStats.daily) || tokenStats.daily.every((d: any) => !d.total) ? (
+                          <div className="py-16 text-center text-[16px] text-zinc-500">Belum ada token terpakai - chat dulu untuk isi data.</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height={260}>
+                            <AreaChart data={tokenStats.daily.map((d: any) => ({ day: fmtDay(String(d.day)), prompt: d.prompt, completion: d.completion, total: d.total, full: fmtDayFull(String(d.day)) }))} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                              <defs>
+                                <linearGradient id="gradPrompt" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.55} />
+                                  <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.02} />
+                                </linearGradient>
+                                <linearGradient id="gradCompletion" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.55} />
+                                  <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.35} vertical={false} />
+                              <XAxis dataKey="day" stroke="#52525b" fontSize={11} fontFamily="monospace" interval={0} tickLine={false} axisLine={{ stroke: "#27272a" }} />
+                              <YAxis stroke="#52525b" fontSize={11} fontFamily="monospace" allowDecimals={false} tickFormatter={fmtCompact} width={44} axisLine={false} tickLine={false} />
+                              <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#3f3f46", strokeWidth: 1 }} labelFormatter={(_: any, payload: any) => payload?.[0]?.payload?.full || _} />
+                              <ReferenceLine y={tokAvg14} stroke="#71717a" strokeDasharray="4 4" label={{ value: `rata2 ${fmtCompact(tokAvg14)}`, position: "insideTopRight", fill: "#71717a", fontSize: 11, fontFamily: "monospace" }} />
+                              <Area type="monotone" dataKey="prompt" name="Prompt" stackId="tok" stroke="#8b5cf6" strokeWidth={2} fill="url(#gradPrompt)" />
+                              <Area type="monotone" dataKey="completion" name="Completion" stackId="tok" stroke="#38bdf8" strokeWidth={2} fill="url(#gradCompletion)" />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        )}
+
+                        {/* 3 mini stat alà Active/Inactive/Churned */}
+                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                          {[
+                            { k: "Prompt (input)", v: tokenStats ? fmtNum(tokenStats.today?.prompt) : "-", c: "bg-violet-500", iconBg: "bg-violet-500/10", iconColor: "text-violet-400", icon: MessageSquare },
+                            { k: "Completion (output)", v: tokenStats ? fmtNum(tokenStats.today?.completion) : "-", c: "bg-sky-400", iconBg: "bg-sky-500/10", iconColor: "text-sky-400", icon: Sparkles },
+                            { k: `Puncak ${tokenDays} hari`, v: tokenStats ? fmtNum(tokPeriod.peak) : "-", c: "bg-amber-400", iconBg: "bg-amber-500/10", iconColor: "text-amber-400", icon: Target },
+                          ].map((m) => {
+                            const I = m.icon;
+                            return (
+                              <div key={m.k} className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] p-3.5">
+                                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${m.iconBg}`} aria-hidden><I className={`h-4 w-4 ${m.iconColor}`} /></span>
+                                <div className="min-w-0">
+                                  <p className="text-[13px] text-zinc-500">{m.k}</p>
+                                  <p className="mt-0.5 font-mono text-[17px] font-semibold leading-none text-zinc-100 tabular-nums">{m.v}</p>
+                                </div>
+                                <span className={`ml-auto h-8 w-1 shrink-0 rounded-full ${m.c}`} aria-hidden />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Right column: gauge budget + hari terpadat + model (alà Repeat Rate / Most Active / AI Assistant) */}
+                    <div className="space-y-4">
+                      <Card className={cardBase}>
+                        <CardHeader className={cardHeaderCls}>
+                          <CardTitle className={`${tCard} flex items-center gap-2`}><Coins className="h-3.5 w-3.5 text-amber-400" /> Budget Harian</CardTitle>
+                        </CardHeader>
+                        <CardContent className={cardContentCls}>
+                          {tokenStats && tokenStats.budget > 0 ? (
+                            <BudgetGauge pct={(100 * Number(tokenStats.today?.total || 0)) / Math.max(1, Number(tokenStats.budget))} />
+                          ) : (
+                            <div className="py-6 text-center">
+                              <p className="font-mono text-[30px] leading-none text-white">∞</p>
+                              <p className="mt-2 text-[13px] text-zinc-500">tanpa batas harian</p>
+                            </div>
+                          )}
+                          {tokenStats && tokenStats.budget > 0 && (
+                            <p className="mt-1 text-center text-[13px] text-zinc-500">
+                              <span className="font-mono tabular-nums text-zinc-300">{fmtNum(tokenStats.today?.total)}</span> / <span className="font-mono tabular-nums text-zinc-300">{fmtNum(tokenStats.budget)}</span> token
+                            </p>
+                          )}
+                          <div className="mt-4 flex items-center gap-2 border-t border-white/[0.06] pt-4">
+                            <input
+                              type="number"
+                              min={0}
+                              value={budgetInput}
+                              onChange={(e) => setBudgetInput(e.target.value)}
+                              className="h-9 w-full rounded-lg border border-white/10 bg-black/30 px-3 font-mono text-[14px] tabular-nums text-zinc-100 outline-none focus:border-white/25"
+                              aria-label="Budget token harian"
+                            />
+                            <button onClick={saveTokenBudget} className="h-9 shrink-0 rounded-lg bg-white px-4 text-[14px] font-semibold text-black transition-colors hover:bg-zinc-200">Simpan</button>
+                          </div>
+                          <p className="mt-2 text-[13px] text-zinc-500">0 = tanpa batas.</p>
                         </CardContent>
                       </Card>
-                    ))}
+
+                      <Card className={cardBase}>
+                        <CardHeader className={cardHeaderCls}>
+                          <CardTitle className={`${tCard} flex items-center gap-2`}><Target className="h-3.5 w-3.5 text-sky-400" /> Hari Terpadat</CardTitle>
+                        </CardHeader>
+                        <CardContent className={cardContentCls}>
+                          {tokenStats && Array.isArray(tokenStats.daily) && tokenStats.daily.some((d: any) => d.total > 0) ? (
+                            (() => {
+                              const sorted = [...tokenStats.daily].sort((a: any, b: any) => Number(b.total || 0) - Number(a.total || 0)).slice(0, 3);
+                              return (
+                                <div className="space-y-3">
+                                  {sorted.map((d: any, i: number) => {
+                                    const pct = Number(sorted[0]?.total) > 0 ? Math.round((100 * Number(d.total || 0)) / Number(sorted[0].total)) : 0;
+                                    return (
+                                      <div key={d.day}>
+                                        <div className="mb-1 flex items-center justify-between text-[13px]">
+                                          <span className="text-zinc-400"><span className="mr-1.5 font-mono text-zinc-600">#{i + 1}</span>{fmtDayFull(String(d.day))}</span>
+                                          <span className="font-mono tabular-nums text-zinc-200">{fmtNum(d.total)}</span>
+                                        </div>
+                                        <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                                          <div className="h-full rounded-full bg-sky-400/80 transition-all" style={{ width: `${pct}%` }} />
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()
+                          ) : (
+                            <div className="py-6 text-center text-[14px] text-zinc-500">Belum ada data.</div>
+                          )}
+                        </CardContent>
+                      </Card>
+
+                      <Card className={cardBase}>
+                        <CardHeader className={cardHeaderCls}>
+                          <CardTitle className={`${tCard} flex items-center gap-2`}><Cpu className="h-3.5 w-3.5 text-emerald-400" /> Model AI</CardTitle>
+                        </CardHeader>
+                        <CardContent className={`${cardContentCls} space-y-2.5`}>
+                          <div className="flex items-center justify-between gap-3 text-[14px]">
+                            <span className="text-zinc-500">Aktif</span>
+                            <span className="truncate font-mono text-zinc-200" title={modelConfig.active_model}>{modelConfig.active_model || "-"}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 text-[14px]">
+                            <span className="text-zinc-500">Fallback</span>
+                            <span className="font-mono tabular-nums text-zinc-200">{modelConfig.fallback_models.length} model</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 text-[14px]">
+                            <span className="text-zinc-500">Katalog siap</span>
+                            <span className="font-mono tabular-nums text-zinc-200">{availableModels.length} model</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 text-[14px]">
+                            <span className="text-zinc-500">Knowledge</span>
+                            <span className="font-mono tabular-nums text-zinc-200">{realStats.knowledgeEntries} entri</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
                   </div>
+
+                  {/* Token per user (kumulatif + hari ini) */}
+                  <Card className={cardBase}>
+                    <CardHeader className={cardHeaderCls}><CardTitle className={`${tCard} flex items-center gap-2`}><BarChart3 className="h-3.5 w-3.5 text-emerald-400" /> Token per User</CardTitle></CardHeader>
+                    <CardContent className={cardContentCls}>
+                      {!tokenStats || !Array.isArray(tokenStats.by_user) || tokenStats.by_user.length === 0 ? (
+                        <div className="py-10 text-center text-[16px] text-zinc-500">Belum ada token tercatat.</div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-[14px]">
+                            <thead>
+                              <tr className="border-b border-white/[0.08] text-left text-[13px] text-zinc-500">
+                                <th className="px-3 py-2 font-medium">User</th>
+                                <th className="px-3 py-2 text-right font-medium">Hari Ini</th>
+                                <th className="px-3 py-2 text-right font-medium">Prompt</th>
+                                <th className="px-3 py-2 text-right font-medium">Completion</th>
+                                <th className="px-3 py-2 text-right font-medium">Total</th>
+                                <th className="px-3 py-2 text-right font-medium">Kontribusi</th>
+                                <th className="px-3 py-2 text-right font-medium">Kuota Prompt</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tokenStats.by_user.map((r: any) => (
+                                <tr key={r.owner} className="border-b border-white/[0.04] text-zinc-300">
+                                  <td className="max-w-[220px] truncate px-3 py-2.5">
+                                    {r.label}
+                                    {r.kind === "trial" && (
+                                      <span className="ml-2 rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[12px] text-zinc-400">trial</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtNum(r.today)}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtNum(r.prompt)}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtNum(r.completion)}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono font-medium tabular-nums text-zinc-100">{fmtNum(r.total)}</td>
+                                  <td className="px-3 py-2.5">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <div className="h-1.5 w-14 overflow-hidden rounded-full bg-white/[0.06]">
+                                        <div className="h-full rounded-full bg-violet-400/80" style={{ width: `${Math.min(100, Number(r.share || 0))}%` }} />
+                                      </div>
+                                      <span className="w-12 text-right font-mono tabular-nums text-zinc-500">{Number(r.share || 0).toLocaleString("id-ID", { maximumFractionDigits: 1 })}%</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">
+                                    {r.kind === "user" ? (Number(r.max_prompts) > 0 ? `${r.prompts_used}/${r.max_prompts}` : `${r.prompts_used} ∞`) : "-"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <Card className={cardBase}>
                       <CardHeader className={cardHeaderCls}>
                         <CardTitle className={tCard}>
                           <span className="flex items-center justify-between gap-2 w-full">
-                            <span className="flex items-center gap-2"><Cpu className="h-3.5 w-3.5 text-emerald-400" /> Ready — Katalog</span>
+                            <span className="flex items-center gap-2"><Cpu className="h-3.5 w-3.5 text-emerald-400" /> Ready - Katalog</span>
                             <Badge variant="outline" className="border-white/10 bg-white/[0.06] text-zinc-300 font-mono text-[13px] tabular-nums">{availableModels.length} model</Badge>
                           </span>
                         </CardTitle>
@@ -980,7 +1369,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                         ) : (
                           <div className="flex flex-wrap gap-1.5 max-h-[88px] overflow-auto pr-1">
                             {availableModels.slice(0, 24).map((m: any) => (
-                              <span key={m.id} className="inline-flex max-w-[220px] truncate rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[13px] font-medium text-zinc-300" title={m.id}>{m.name ? `${m.name} — ${m.id}` : m.id}</span>
+                              <span key={m.id} className="inline-flex max-w-[220px] truncate rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[13px] font-medium text-zinc-300" title={m.id}>{m.name ? `${m.name} - ${m.id}` : m.id}</span>
                             ))}
                             {availableModels.length > 24 && <span className="text-[13px] text-zinc-500">+{availableModels.length - 24} lagi</span>}
                           </div>
@@ -1009,7 +1398,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                             })}
                           </div>
                         )}
-                        <p className="mt-3 text-[13px] text-zinc-500">Aktif: <span className="font-mono text-zinc-300">{modelConfig.active_model || "—"}</span></p>
+                        <p className="mt-3 text-[13px] text-zinc-500">Aktif: <span className="font-mono text-zinc-300">{modelConfig.active_model || "-"}</span></p>
                       </CardContent>
                     </Card>
                   </div>
@@ -1041,11 +1430,11 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                         ) : (
                           <ResponsiveContainer width="100%" height={280}>
                             <BarChart data={realStats.topPrompts} layout="vertical" margin={{ left: 12, right: 16 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.08} />
-                              <XAxis type="number" stroke="#71717a" fontSize={11} fontFamily="monospace" />
-                              <YAxis type="category" dataKey="username" stroke="#a1a1aa" fontSize={11} width={90} />
-                              <Tooltip contentStyle={{ backgroundColor: '#09090b', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#fff', fontSize: '12px' }} />
-                              <Bar dataKey="prompts_used" fill="#34d399" radius={[0, 8, 8, 0]} />
+                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.35} horizontal={false} />
+                              <XAxis type="number" stroke="#52525b" fontSize={11} fontFamily="monospace" tickFormatter={fmtCompact} axisLine={false} tickLine={false} allowDecimals={false} />
+                              <YAxis type="category" dataKey="username" stroke="#a1a1aa" fontSize={11} fontFamily="monospace" width={90} axisLine={false} tickLine={false} />
+                              <Tooltip content={<ChartTooltip unit=" prompt" />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
+                              <Bar dataKey="prompts_used" name="Prompt terpakai" fill="#34d399" radius={[0, 4, 4, 0]} barSize={14} />
                             </BarChart>
                           </ResponsiveContainer>
                         )}
@@ -1072,14 +1461,14 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                           <ResponsiveContainer width="100%" height={280}>
                             <BarChart data={realStats.dailyRequests.map((d: any) => {
                               const lab = String(d.day);
-                              const short = chartPeriod === "month" ? lab : chartPeriod === "year" ? lab : lab.slice(5);
-                              return { day: short, count: d.count, full: lab };
-                            })}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.08} />
-                              <XAxis dataKey="day" stroke="#71717a" fontSize={11} fontFamily="monospace" interval={0} />
-                              <YAxis stroke="#71717a" fontSize={11} fontFamily="monospace" allowDecimals={false} />
-                              <Tooltip contentStyle={{ backgroundColor: '#09090b', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#fff', fontSize: '12px' }} labelFormatter={(_: any, payload: any) => payload?.[0]?.payload?.full || _} />
-                              <Bar dataKey="count" fill="#38bdf8" radius={[6,6,0,0]} />
+                              const short = chartPeriod === "day" ? fmtDay(lab) : lab;
+                              return { day: short, count: d.count, full: chartPeriod === "day" ? fmtDayFull(lab) : lab };
+                            })} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.35} vertical={false} />
+                              <XAxis dataKey="day" stroke="#52525b" fontSize={11} fontFamily="monospace" interval={0} tickLine={false} axisLine={{ stroke: "#27272a" }} />
+                              <YAxis stroke="#52525b" fontSize={11} fontFamily="monospace" allowDecimals={false} tickFormatter={fmtCompact} width={44} axisLine={false} tickLine={false} />
+                              <Tooltip content={<ChartTooltip unit=" req" />} cursor={{ fill: "rgba(255,255,255,0.03)" }} labelFormatter={(_: any, payload: any) => payload?.[0]?.payload?.full || _} />
+                              <Bar dataKey="count" name="Requests" fill="#38bdf8" radius={[4,4,0,0]} />
                             </BarChart>
                           </ResponsiveContainer>
                         )}
@@ -1089,19 +1478,19 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                       <CardHeader className={cardHeaderCls}><CardTitle className={`${tCard} flex items-center gap-2`}><Clock className="h-3.5 w-3.5 text-amber-400" /> Response Time Rata2 Models (ms)</CardTitle></CardHeader>
                       <CardContent className={cardContentCls}>
                         {!realStats.dailyLatency || realStats.dailyLatency.every((d: any) => d.avg_ms == null) ? (
-                          <div className="py-16 text-center text-[16px] text-zinc-500">Belum ada latency — chat dulu untuk isi data.</div>
+                          <div className="py-16 text-center text-[16px] text-zinc-500">Belum ada latency - chat dulu untuk isi data.</div>
                         ) : (
                           <ResponsiveContainer width="100%" height={280}>
                             <LineChart data={realStats.dailyLatency.map((d: any) => {
                               const lab = String(d.day);
-                              const short = chartPeriod === "month" ? lab : chartPeriod === "year" ? lab : lab.slice(5);
-                              return { day: short, avg_ms: d.avg_ms, full: lab };
-                            })}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.08} />
-                              <XAxis dataKey="day" stroke="#71717a" fontSize={11} fontFamily="monospace" interval={0} />
-                              <YAxis stroke="#71717a" fontSize={11} fontFamily="monospace" />
-                              <Tooltip contentStyle={{ backgroundColor: '#09090b', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#fff', fontSize: '12px' }} formatter={(v: any) => [`${v} ms`, 'avg']} labelFormatter={(_: any, payload: any) => payload?.[0]?.payload?.full || _} />
-                              <Line type="monotone" dataKey="avg_ms" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
+                              const short = chartPeriod === "day" ? fmtDay(lab) : lab;
+                              return { day: short, avg_ms: d.avg_ms, full: chartPeriod === "day" ? fmtDayFull(lab) : lab };
+                            })} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.35} vertical={false} />
+                              <XAxis dataKey="day" stroke="#52525b" fontSize={11} fontFamily="monospace" interval={0} tickLine={false} axisLine={{ stroke: "#27272a" }} />
+                              <YAxis stroke="#52525b" fontSize={11} fontFamily="monospace" tickFormatter={fmtCompact} width={44} axisLine={false} tickLine={false} />
+                              <Tooltip content={<ChartTooltip unit=" ms" />} cursor={{ stroke: "#3f3f46", strokeWidth: 1 }} labelFormatter={(_: any, payload: any) => payload?.[0]?.payload?.full || _} />
+                              <Line type="monotone" dataKey="avg_ms" name="Rata-rata" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2.5, fill: "#0c0c10", stroke: "#f59e0b", strokeWidth: 2 }} activeDot={{ r: 4.5, fill: "#f59e0b", stroke: "#0c0c10", strokeWidth: 2 }} connectNulls />
                             </LineChart>
                           </ResponsiveContainer>
                         )}
@@ -1143,7 +1532,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                           <span className={tLabel}>API</span><span className="text-[16px] font-medium tracking-tight text-zinc-200">READY · LIVE</span>
                         </div>
                         <div className="flex items-center justify-between gap-2 rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3">
-                          <span className={tLabel}>Model</span><span className="text-[16px] font-medium text-zinc-200 truncate max-w-[160px] tabular-nums">{modelConfig.active_model.split('/')[1]?.slice(0, 22) || '—'}</span>
+                          <span className={tLabel}>Model</span><span className="text-[16px] font-medium text-zinc-200 truncate max-w-[160px] tabular-nums">{modelConfig.active_model.split('/')[1]?.slice(0, 22) || '-'}</span>
                         </div>
                       </div>
                     </CardContent>
@@ -1181,30 +1570,98 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
               <Card className={`${cardBase} overflow-hidden`}>
                 <CardContent className="p-0">
-                  {usersLoading ? <div className="p-6 text-[16px] text-zinc-500 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Memuat…</div> : users.length === 0 ? <div className="p-6 text-[16px] text-zinc-500">Belum ada user.</div> : (
-                    <div className="divide-y divide-white/[0.06]">
-                      {users.map((u: any) => {
-                        const remaining = Number(u.max_prompts) === 0 ? Infinity : Math.max(0, Number(u.max_prompts) - Number(u.prompts_used || 0));
-                        const exhausted = Number(u.max_prompts) > 0 && Number(u.prompts_used || 0) >= Number(u.max_prompts);
-                        return (
-                          <div key={u.id} className="flex flex-wrap items-center gap-3 px-5 py-4">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className={`text-[16px] font-medium ${cUser}`}>{u.username}</span>
-                                {u.display_name && <span className="text-[16px] text-zinc-500">— {u.display_name}</span>}
-                                {!u.is_active && <span className="rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-red-300">NONAKTIF</span>}
-                                {exhausted && <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium tracking-wide text-amber-300">HABIS — hubungi admin</span>}
-                              </div>
-                              <div className="mt-1 text-[13px] text-zinc-500 tabular-nums">Dipakai {u.prompts_used || 0} / {Number(u.max_prompts) === 0 ? "∞" : u.max_prompts} {remaining !== Infinity && `· sisa ${remaining}`}</div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <Button variant="outline" size="sm" onClick={() => handleResetUsage(u.id)} className="h-8 border-white/10 text-[14px]">Reset</Button>
-                              <Button variant="outline" size="sm" onClick={() => { setEditingUserId(u.id); setUserForm({ username: u.username, password: "", display_name: u.display_name || "", max_prompts: Number(u.max_prompts), is_active: Boolean(u.is_active) }); setUserModalOpen(true); }} className="h-8 border-white/10 text-[14px]">Edit</Button>
-                              <Button variant="ghost" size="sm" onClick={() => handleDeleteUser(u.id)} className="h-8 text-red-400 hover:bg-red-500/10 hover:text-red-300"><Trash2 className="h-3.5 w-3.5" /></Button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                  {usersLoading ? (
+                    <div className="p-6 text-[16px] text-zinc-500 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Memuat…</div>
+                  ) : users.length === 0 ? (
+                    <div className="p-6 text-[16px] text-zinc-500">Belum ada user.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[900px] border-collapse text-left">
+                        <thead>
+                          <tr className="border-b border-white/[0.08] bg-white/[0.02]">
+                            <th className="px-5 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">User</th>
+                            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Metode</th>
+                            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Status</th>
+                            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Kuota Prompt</th>
+                            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Dibuat</th>
+                            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Diperbarui</th>
+                            <th className="px-5 py-3 text-right text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/[0.06]">
+                          {users.map((u: any) => {
+                            const isUnlimited = Number(u.max_prompts) === 0;
+                            const exhausted = !isUnlimited && Number(u.prompts_used || 0) >= Number(u.max_prompts);
+                            const remaining = isUnlimited ? Infinity : Math.max(0, Number(u.max_prompts) - Number(u.prompts_used || 0));
+                            const isGoogle = (u.provider || "").toLowerCase() === "google";
+                            return (
+                              <tr key={u.id} className="transition-colors hover:bg-white/[0.02]">
+                                <td className="px-5 py-3.5">
+                                  <div className="flex items-center gap-2.5">
+                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-zinc-900 text-[12px] font-semibold uppercase text-zinc-400">
+                                      {(u.display_name || u.username || "?").slice(0, 2)}
+                                    </span>
+                                    <div className="min-w-0">
+                                      <div className={`text-[15px] font-medium ${cUser}`}>{u.username}</div>
+                                      <div className="truncate text-[13px] text-zinc-500">{u.display_name || "-"}{u.email ? ` · ${u.email}` : ""}</div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3.5">
+                                  {isGoogle ? (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-300">
+                                      <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                                      Google
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-400">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" /> Password
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3.5">
+                                  {!u.is_active ? (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-red-300">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-red-400" /> NONAKTIF
+                                    </span>
+                                  ) : exhausted ? (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-amber-300">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> KUOTA HABIS
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-300">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> AKTIF
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3.5">
+                                  <div className="text-[14px] font-medium tabular-nums text-zinc-200">
+                                    {u.prompts_used || 0} / {isUnlimited ? "∞" : u.max_prompts}
+                                    {!isUnlimited && <span className="ml-1.5 text-zinc-500">(sisa {remaining})</span>}
+                                  </div>
+                                  {!isUnlimited && (
+                                    <div className="mt-1.5 h-1 w-28 overflow-hidden rounded-full bg-white/[0.06]">
+                                      <div
+                                        className={`h-full rounded-full ${exhausted ? "bg-amber-500" : "bg-emerald-500"}`}
+                                        style={{ width: `${Math.min(100, Math.round((Number(u.prompts_used || 0) / Number(u.max_prompts)) * 100))}%` }}
+                                      />
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3.5 text-[13px] tabular-nums text-zinc-400">{fmtDateTime(u.created_at)}</td>
+                                <td className="px-4 py-3.5 text-[13px] tabular-nums text-zinc-500">{fmtDateTime(u.updated_at)}</td>
+                                <td className="px-5 py-3.5">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <Button variant="outline" size="sm" onClick={() => handleResetUsage(u.id)} className="h-8 border-white/10 text-[13px]" title="Reset usage prompt">Reset</Button>
+                                    <Button variant="outline" size="sm" onClick={() => { setEditingUserId(u.id); setUserForm({ username: u.username, password: "", display_name: u.display_name || "", max_prompts: Number(u.max_prompts), is_active: Boolean(u.is_active) }); setUserModalOpen(true); }} className="h-8 border-white/10 text-[13px]">Edit</Button>
+                                    <Button variant="ghost" size="sm" onClick={() => handleDeleteUser(u.id)} className="h-8 text-red-400 hover:bg-red-500/10 hover:text-red-300" title="Hapus user"><Trash2 className="h-3.5 w-3.5" /></Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </CardContent>
@@ -1263,12 +1720,12 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                   <CardTitle className={`${tCard} flex items-center gap-2`}><Sparkles className="h-3.5 w-3.5 text-violet-400" />Model yang sedang dipakai</CardTitle>
                 </CardHeader>
                 <CardContent className={`${cardContentCls} space-y-2`}>
-                  <p className={`break-all text-[16px] font-medium leading-relaxed ${cModel}`}>{modelConfig.active_model || "— belum dimuat —"}</p>
+                  <p className={`break-all text-[16px] font-medium leading-relaxed ${cModel}`}>{modelConfig.active_model || "- belum dimuat -"}</p>
                   <p className="text-[16px] leading-relaxed text-zinc-500">
                     provider: <span className="text-zinc-300">{modelConfig.provider}</span> · base: <span className="break-all text-zinc-300">{modelConfig.api_base_url}</span>
                   </p>
                   <p className="text-[13px] leading-relaxed text-zinc-500">
-                    Fallback: {modelConfig.fallback_models.length ? modelConfig.fallback_models.join(", ") : "— tidak ada —"} · temp: {modelConfig.temperature} · reasoning: {modelConfig.reasoning_enabled ? "aktif" : "nonaktif"}
+                    Fallback: {modelConfig.fallback_models.length ? modelConfig.fallback_models.join(", ") : "- tidak ada -"} · temp: {modelConfig.temperature} · reasoning: {modelConfig.reasoning_enabled ? "aktif" : "nonaktif"}
                   </p>
                 </CardContent>
               </Card>
@@ -1330,10 +1787,14 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div className="space-y-2">
                       <Label className={tLabel}><span className="flex items-center gap-1.5"><Gauge className="h-3.5 w-3.5 text-zinc-500" />Temperature (0–2)</span></Label>
                       <Input type="number" min={0} max={2} step={0.1} value={modelConfig.temperature} onChange={(e) => setModelConfig({ ...modelConfig, temperature: Number(e.target.value) || 0 })} className={inputCls} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className={tLabel}><span className="flex items-center gap-1.5"><Box className="h-3.5 w-3.5 text-zinc-500" />Max tokens</span></Label>
+                      <Input type="number" min={256} max={131072} step={256} value={modelConfig.max_tokens} onChange={(e) => setModelConfig({ ...modelConfig, max_tokens: Number(e.target.value) || 8192 })} className={inputCls} title="Budget total token output. Model reasoning pakai sebagian ini untuk berpikir, sisa baru jadi jawaban." />
                     </div>
                     <Label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.03] p-3 text-[16px] font-normal text-zinc-300">
                       <Checkbox checked={modelConfig.reasoning_enabled} onCheckedChange={(checked) => setModelConfig({ ...modelConfig, reasoning_enabled: Boolean(checked) })} />
@@ -1453,6 +1914,43 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                   </div>
                 </CardContent>
               </Card>
+            </motion.div>
+          )}
+
+          {/* STYLES (Gaya Respons) */}
+          {activeTab === "styles" && (
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              <SectionHeader title="Gaya Respons" desc="Tentukan template gaya jawaban AI. User hanya bisa memilih, tidak bisa custom." />
+              {stylesData.styles.map((s, idx) => (
+                <Card key={s.id || idx} className={cardBase}>
+                  <CardHeader className={cardHeaderCls}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <CardTitle className={tCard}>{s.name || `Gaya ${idx + 1}`}</CardTitle>
+                      <span className="rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 font-mono text-[13px] text-zinc-500">id: {s.id}</span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className={`${cardContentCls} grid gap-4`}>
+                    <div className="space-y-2">
+                      <Label className={tLabel}>Nama Gaya</Label>
+                      <Input value={s.name} onChange={(e) => setStylesData((p) => ({ styles: p.styles.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)) }))} className={inputCls} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className={tLabel}>Deskripsi (untuk user)</Label>
+                      <Textarea rows={2} value={s.description} onChange={(e) => setStylesData((p) => ({ styles: p.styles.map((x, i) => (i === idx ? { ...x, description: e.target.value } : x)) }))} className={textareaCls} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className={tLabel}>Instruksi Prompt (dikirim ke model)</Label>
+                      <Textarea rows={5} value={s.prompt} onChange={(e) => setStylesData((p) => ({ styles: p.styles.map((x, i) => (i === idx ? { ...x, prompt: e.target.value } : x)) }))} className={textareaCls} />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              <div className="flex justify-end">
+                <Button onClick={() => handleSaveConfig("styles")} disabled={saving} className="h-10 bg-white px-6 text-[15px] font-semibold text-black hover:bg-zinc-200">
+                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Simpan Gaya Respons
+                </Button>
+              </div>
             </motion.div>
           )}
 

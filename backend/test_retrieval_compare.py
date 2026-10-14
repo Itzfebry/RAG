@@ -1,6 +1,6 @@
 """Perbandingan retrieval: embedding lokal vs keyword fallback (off).
 
-Read-only — tidak mengubah data, tidak reindex.
+Read-only - tidak mengubah data, tidak reindex.
 
 Usage:
   python -m backend.test_retrieval_compare                     # query bawaan
@@ -39,7 +39,7 @@ def main() -> None:
     from backend.database.db import supabase_client
 
     if not supabase_client:
-        print("Supabase client tidak tersedia — cek .env")
+        print("Supabase client tidak tersedia - cek .env")
         return
 
     header("Warmup model embedding lokal")
@@ -47,7 +47,7 @@ def main() -> None:
     model = ks._get_embedding_model()
     print(f"model loaded: {model is not None} ({time.perf_counter() - t0:.1f}s)")
     if model is None:
-        print("Model lokal gagal load — perbandingan tidak mungkin. Cek sentence-transformers.")
+        print("Model lokal gagal load - perbandingan tidak mungkin. Cek sentence-transformers.")
         return
 
     for q in queries:

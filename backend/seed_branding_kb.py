@@ -1,4 +1,4 @@
-"""Seed ulang knowledge base — reset total ke fokus branding ITZ AI.
+"""Seed ulang knowledge base - reset total ke fokus branding ITZ AI.
 
 - Hapus SEMUA entry lama (mock: Akmal, BXJ, Purnama, ...) + embeddings-nya.
 - Buat 2 kategori baru: Branding ITZ AI, Harga & Langganan.
@@ -129,7 +129,7 @@ def main() -> int:
     old_ent = supabase_client.table("knowledge_entries").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
     print(f"Dihapus: {len(old_emb.data or [])} embeddings, {len(old_ent.data or [])} entry lama")
 
-    # 2) Kategori baru (idempoten — slug dipakai untuk cek).
+    # 2) Kategori baru (idempoten - slug dipakai untuk cek).
     cats = supabase_client.table("knowledge_categories").select("id, slug").execute().data or []
     cat_id = {c["slug"]: c["id"] for c in cats}
     for c in CATEGORIES:
@@ -152,7 +152,7 @@ def main() -> int:
         KnowledgeService.index_entry(saved["id"], saved["content"])
         print(f"  + {title}")
 
-    print(f"Selesai — {len(ENTRIES)} entry branding, provider {EMBEDDING_PROVIDER} {EMBEDDING_DIM}d.")
+    print(f"Selesai - {len(ENTRIES)} entry branding, provider {EMBEDDING_PROVIDER} {EMBEDDING_DIM}d.")
     return 0
 
 

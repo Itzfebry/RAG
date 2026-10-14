@@ -124,11 +124,12 @@ class AgentOrchestrator:
         self,
         query: str,
         session_history: List[Dict[str, str]],
-        model_override: Optional[str] = None
+        model_override: Optional[str] = None,
+        user_profile: Optional[Dict[str, Any]] = None
     ) -> AsyncGenerator[str, None]:
         start = time.perf_counter()
         ttft_ms: Optional[int] = None
-        system_prompt = build_system_prompt(query, session_history)
+        system_prompt = build_system_prompt(query, session_history, user_profile=user_profile)
 
         openai_messages = [{"role": "system", "content": system_prompt}]
         for msg in session_history[-10:]:
@@ -245,7 +246,7 @@ class AgentOrchestrator:
                             langchain_messages.append({"role": msg["role"], "content": msg["content"]})
                     
                     response = self.client.invoke(langchain_messages)
-                    
+
                     # Extract content from LangChain response
                     if hasattr(response, 'content'):
                         content_text = response.content
@@ -253,6 +254,16 @@ class AgentOrchestrator:
                         content_text = response['content']
                     else:
                         content_text = str(response)
+
+                    # Token usage (usage_metadata) untuk analitik admin
+                    _usage = None
+                    _um = getattr(response, "usage_metadata", None)
+                    if isinstance(_um, dict):
+                        _usage = {
+                            "prompt_tokens": int(_um.get("input_tokens", 0) or 0),
+                            "completion_tokens": int(_um.get("output_tokens", 0) or 0),
+                            "total_tokens": int(_um.get("total_tokens", 0) or 0),
+                        }
                     
                     # Stream content in chunks - 12 chars smooth, tanpa sleep
                     content_text = _clean_chunk(content_text)
@@ -269,7 +280,10 @@ class AgentOrchestrator:
                     # Flush remaining
                     if buffer:
                         yield f"data: {json.dumps({'content': buffer})}\n\n"
-                    
+
+                    if _usage:
+                        yield f"data: {json.dumps({'usage': _usage})}\n\n"
+
                     total_ms = int((time.perf_counter() - start) * 1000)
                     yield f"data: {json.dumps({'timing': {'ttft_ms': ttft_ms if ttft_ms is not None else total_ms, 'total_ms': total_ms}})}\n\n"
                     yield "data: [DONE]\n\n"
@@ -282,21 +296,42 @@ class AgentOrchestrator:
                     if reasoning_enabled and provider.lower() != "groq":
                         extra_body_params["reasoning"] = {"enabled": True}
 
+                    # Reasoning models (gpt-oss dkk) bakal token utk berpikir dari budget ini,
+                    # jadi 800 kekecilan -> jawaban kepotong di tengah (finish_reason=length).
+                    try:
+                        max_tokens = int(model_config.get("max_tokens") or 8192)
+                    except (TypeError, ValueError):
+                        max_tokens = 8192
+                    if max_tokens < 1024:
+                        max_tokens = 1024
+
                     response = self.client.chat.completions.create(
                         model=current_model,
                         messages=openai_messages,
                         temperature=temperature,
-                        max_tokens=800,  # Consistent response length constraint
+                        max_tokens=max_tokens,
                         stream=True,
+                        stream_options={"include_usage": True},
                         extra_body=extra_body_params if extra_body_params else None
                     )
 
                     # Buffer 12 chars = 2-3 kata per flush, smooth tanpa flicker. Tanpa sleep.
                     buffer = ""
                     buffer_size = 12
+                    _finish_reason = None
+                    _usage = None
 
                     for chunk in response:
+                        _u = getattr(chunk, "usage", None)
+                        if _u is not None:
+                            _usage = {
+                                "prompt_tokens": int(getattr(_u, "prompt_tokens", 0) or 0),
+                                "completion_tokens": int(getattr(_u, "completion_tokens", 0) or 0),
+                                "total_tokens": int(getattr(_u, "total_tokens", 0) or 0),
+                            }
                         if chunk.choices and chunk.choices[0].delta:
+                            if getattr(chunk.choices[0], "finish_reason", None):
+                                _finish_reason = chunk.choices[0].finish_reason
                             delta = chunk.choices[0].delta
                             # Abaikan reasoning trace agar tidak bocor ke UI
                             if getattr(delta, "reasoning", None):
@@ -315,6 +350,12 @@ class AgentOrchestrator:
                     # Flush remaining buffer
                     if buffer:
                         yield f"data: {json.dumps({'content': buffer})}\n\n"
+
+                    if _finish_reason == "length":
+                        print(f"Warning: jawaban terpotong (finish_reason=length, max_tokens={max_tokens}, model={current_model})")
+
+                    if _usage:
+                        yield f"data: {json.dumps({'usage': _usage})}\n\n"
 
                     total_ms = int((time.perf_counter() - start) * 1000)
                     yield f"data: {json.dumps({'timing': {'ttft_ms': ttft_ms if ttft_ms is not None else total_ms, 'total_ms': total_ms}})}\n\n"

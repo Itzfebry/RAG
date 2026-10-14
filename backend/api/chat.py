@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Query, HTTPException, Depends
+from fastapi import APIRouter, Request, Query, HTTPException, Depends, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from typing import List, Dict, Optional
@@ -6,6 +6,8 @@ import json
 import os
 import re
 import random
+import shutil
+import tempfile
 
 try:
     from backend.security.rate_limiter import get_client_ip, check_rate_limit
@@ -52,9 +54,9 @@ def get_current_chat_user_optional(request: Request) -> Optional[Dict]:
     if not user:
         return None
     if not bool(user.get("is_active", True)):
-        raise HTTPException(status_code=403, detail="Akun dinonaktifkan — hubungi admin")
+        raise HTTPException(status_code=403, detail="Akun dinonaktifkan - hubungi admin")
     if DatabaseService.is_prompt_quota_exhausted(user):
-        raise HTTPException(status_code=403, detail="Batas prompt habis — hubungi admin untuk menambah kuota")
+        raise HTTPException(status_code=403, detail="Batas prompt habis - hubungi admin untuk menambah kuota")
     return user
 
 
@@ -83,7 +85,7 @@ def list_models():
 def list_available_models(limit: int = Query(default=100, ge=1, le=200), include_free_only: bool = Query(default=False)):
     """
     Live discovery against the configured provider's /models endpoint.
-    Sans hardcode. Returns whatever the provider lists — different providers,
+    Sans hardcode. Returns whatever the provider lists - different providers,
     different IDs. Frontend filters + search client-side.
     """
     api_key = _resolve_api_key()
@@ -183,30 +185,55 @@ async def stream_chat(payload: ChatRequest, request: Request):
             raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
         fresh = DatabaseService.get_user_by_id(str(user.get("id")))
         if fresh and DatabaseService.is_prompt_quota_exhausted(fresh):
-            raise HTTPException(status_code=403, detail="Batas prompt habis — hubungi admin untuk menambah kuota")
+            raise HTTPException(status_code=403, detail="Batas prompt habis - hubungi admin untuk menambah kuota")
         DatabaseService.increment_prompt_usage(str(user.get("id")))
     else:
-        # trial gate — soft setting trial_prompts (0 = trial disabled => require login)
+        # trial gate - soft setting trial_prompts (0 = trial disabled => require login)
         allowed, retry = check_rate_limit(f"chat:trial:{ip}", 30, 60)
         if not allowed:
             raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
         s = DatabaseService.get_app_settings()
         limit = max(0, int(s.get("trial_prompts", 3)))
         if limit == 0:
-            raise HTTPException(status_code=401, detail="Login diperlukan — hubungi admin untuk akses")
+            raise HTTPException(status_code=401, detail="Login diperlukan - hubungi admin untuk akses")
         used = DatabaseService.get_trial_used(ip)
         if used >= limit:
-            raise HTTPException(status_code=403, detail="Trial habis — login atau hubungi admin untuk akses")
+            raise HTTPException(status_code=403, detail="Trial habis - login atau hubungi admin untuk akses")
         DatabaseService.increment_trial(ip)
 
     history_dicts = [m.model_dump() for m in payload.history] if payload.history else []
-    # capture model/resolved latency for analytics — non-blocking
+    # Profil user untuk system prompt (nama, tujuan, gaya respons, sapaan chat pertama)
+    user_profile = None
+    if user is not None:
+        prof = DatabaseService.get_user_profile(str(user.get("id")))
+        user_profile = {
+            "display_name": str(user.get("display_name") or user.get("username") or "").strip(),
+            "goal": str(prof.get("goal") or "").strip(),
+            "style_id": str(prof.get("style_id") or "").strip(),
+            "first_chat": len(history_dicts) == 0,
+        }
+    # capture model/resolved latency for analytics - non-blocking
     import time as _t
     t0 = _t.perf_counter()
 
+    usage_owner = str(user.get("id")) if user is not None else f"trial:{ip}"
+
     async def generate():
         last_model = None
-        async for chunk in agent_orchestrator.stream_chat_response(payload.message, history_dicts, model_override=payload.model):
+        async for chunk in agent_orchestrator.stream_chat_response(payload.message, history_dicts, model_override=payload.model, user_profile=user_profile):
+            # event token usage dari agent -> catat, jangan diteruskan ke client
+            if chunk.startswith("data: ") and '"usage"' in chunk:
+                try:
+                    import json as _json
+                    u = _json.loads(chunk[6:].strip()).get("usage") or {}
+                    DatabaseService.record_token_usage(
+                        usage_owner,
+                        int(u.get("prompt_tokens", 0) or 0),
+                        int(u.get("completion_tokens", 0) or 0),
+                    )
+                except Exception:
+                    pass
+                continue
             # try to sniff timing json chunk for model/latency? fallback to active_model
             yield chunk
         try:
@@ -253,9 +280,9 @@ _DEFAULT_SUGGESTIONS = [
 @router.get("/suggestions")
 def get_suggestions(limit: int = 3):
     """Chat suggestion untuk empty state. Sumber prioritas:
-    1. system_instructions.chat_suggestions — override manual admin
-       (field teks, dipisah ";" atau baris baru — bisa diisi via panel admin)
-    2. judul knowledge entries aktif — suggestion hidup mengikuti isi KB
+    1. system_instructions.chat_suggestions - override manual admin
+       (field teks, dipisah ";" atau baris baru - bisa diisi via panel admin)
+    2. judul knowledge entries aktif - suggestion hidup mengikuti isi KB
     3. pool default
     """
     limit = max(1, min(6, limit))
@@ -290,6 +317,47 @@ def get_suggestions(limit: int = 3):
     return {"suggestions": items[:limit], "source": "default"}
 
 
-@router.get("/health")
-def health_check():
-    return {"status": "ok", "service": "ITZ AI Python Backend"}
+@router.post("/admin/knowledge/upload")
+async def upload_knowledge_file(
+    file: UploadFile = File(...),
+    category_id: str = Query(...),
+    request: Request = None
+):
+    """Ingest knowledge from PDF/Text files."""
+    # Basic security check for admin
+    # (Auth middleware should be applied here)
+    
+    suffix = os.path.splitext(file.filename)[1].lower()
+    if suffix not in [".txt", ".pdf", ".md"]:
+        raise HTTPException(status_code=400, detail="Format file tidak didukung (hanya .txt, .pdf, .md)")
+
+    content = ""
+    try:
+        if suffix == ".pdf":
+            # Requires pypdf
+            import pypdf
+            reader = pypdf.PdfReader(file.file)
+            content = "\n".join([page.extract_text() for page in reader.pages])
+        else:
+            # Text / Markdown
+            content = (await file.read()).decode("utf-8")
+        
+        if not content.strip():
+            raise HTTPException(status_code=400, detail="File kosong")
+
+        # Save to DB as new entry
+        entry_data = {
+            "category_id": category_id,
+            "title": file.filename,
+            "content": content,
+            "is_active": True
+        }
+        entry = DatabaseService.create_or_update_knowledge_entry(entry_data)
+        
+        # Trigger indexing
+        KnowledgeService.index_entry(entry["id"], content)
+        
+        return {"status": "success", "entry_id": entry["id"], "chars": len(content)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal memproses file: {str(e)}")
+

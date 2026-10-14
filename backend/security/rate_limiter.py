@@ -1,6 +1,6 @@
 """
 In-memory sliding-window rate limiter.
-No external deps. Process-local — ok for single instance.
+No external deps. Process-local - ok for single instance.
 For multi-instance, replace with Redis.
 """
 import time
@@ -66,7 +66,7 @@ def clear_failed_login(ip: str) -> None:
     _lockouts.pop(ip, None)
 
 def get_client_ip(request) -> str:
-    # honor X-Forwarded-For (Vercel / proxy) — take first
+    # honor X-Forwarded-For (Vercel / proxy) - take first
     xff = request.headers.get("x-forwarded-for")
     if xff:
         return xff.split(",")[0].strip()

@@ -8,8 +8,16 @@ try:
     from backend.config.config import settings
     from backend.database.cache import config_cache
 except ImportError:
-    from config.config import settings
-    from database.cache import config_cache
+    try:
+        from config.config import settings
+        from database.cache import config_cache
+    except ImportError:
+        # Final fallback for unusual execution contexts
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from config.config import settings
+        from database.cache import config_cache
 
 # Attempt to initialize Supabase client if configured
 supabase_client = None
@@ -25,7 +33,7 @@ if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY:
 
 # Local JSON store fallback directory.
 # On Vercel/serverless the root FS is read-only (only /tmp is writable) and
-# ephemeral — route writes to /tmp so imports never crash. Config that must
+# ephemeral - route writes to /tmp so imports never crash. Config that must
 # survive cold starts lives in Supabase; local JSON is best-effort fallback.
 _ON_VERCEL = bool(os.getenv("VERCEL"))
 if _ON_VERCEL:
@@ -54,7 +62,7 @@ def _write_local_json(file_name: str, data: Any):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except OSError as e:
-        # Serverless read-only FS — Supabase remains the source of truth
+        # Serverless read-only FS - Supabase remains the source of truth
         print(f"Warning: cannot write local json {path}: {e}")
 
 class DatabaseService:
@@ -124,8 +132,31 @@ class DatabaseService:
                 "provider": (getattr(settings, "MODEL_PROVIDER", "") or "openrouter").strip(),
                 "temperature": 0.4,
                 "reasoning_enabled": False,
+                "max_tokens": 8192,
                 "fallback_models": [],
                 "api_base_url": (getattr(settings, "API_BASE_URL", "") or "https://openrouter.ai/api/v1").strip()
+            },
+            "response_styles": {
+                "styles": [
+                    {
+                        "id": "ringkas",
+                        "name": "Sangat Ringkas",
+                        "description": "Jawaban super singkat langsung ke inti. Bullet rapat, tanpa basa-basi.",
+                        "prompt": "Balas dengan sangat singkat. Maksimal 2-3 kalimat atau bullet berisi 1 baris per poin. Tidak perlu pembuka, penutup, atau basa-basi. Langsung ke jawaban. Tambahkan detail hanya jika user minta."
+                    },
+                    {
+                        "id": "edukatif",
+                        "name": "Guru Penjelas",
+                        "description": "Penjelasan panjang, sabar, bertahap dengan analogi dan contoh.",
+                        "prompt": "Gaya mengajar yang sabar dan detail. Jelaskan konsep dari dasar, gunakan analogi dan contoh nyata, pecah jadi langkah-langkah bernomor, dan ulangi poin penting dengan kalimat berbeda bila perlu. Tidak apa-apa panjang asalkan mudah dipahami pemula."
+                    },
+                    {
+                        "id": "santai",
+                        "name": "Santai & Asik",
+                        "description": "Ngobrol santai seperti dengan teman, humor ringan, gaya kasual.",
+                        "prompt": "Gaya ngobrol santai seperti bicara dengan teman dekat. Gunakan bahasa kasual sehari-hari, boleh humor ringan dan opini personal. Hindari struktur kaku; paragraf mengalir lebih baik daripada bullet formal. Sapa dengan akrab."
+                    }
+                ]
             }
         }.get(table_name, {})
         result = _read_local_json(f"{table_name}.json", default_data)
@@ -137,6 +168,14 @@ class DatabaseService:
         payload["updated_at"] = datetime.now().isoformat()
         if supabase_client:
             try:
+                # Upsert needs the row id; without it upsert inserts a DUPLICATE row
+                if "id" not in payload:
+                    try:
+                        existing = supabase_client.table(table_name).select("id").limit(1).execute()
+                        if existing.data:
+                            payload["id"] = existing.data[0]["id"]
+                    except Exception:
+                        pass
                 # Use upsert with unique constraint to avoid race conditions
                 res = supabase_client.table(table_name).upsert(payload, on_conflict="id").execute()
                 if res.data:
@@ -296,7 +335,7 @@ class DatabaseService:
             "updated_at": merged.get("updated_at"),
         }
 
-    # trial usage per IP — local JSON + supabase optional
+    # trial usage per IP - local JSON + supabase optional
     @staticmethod
     def _trial_file() -> str:
         return "trial_usage.json"
@@ -445,6 +484,28 @@ class DatabaseService:
         used = int(user.get("prompts_used", 0) or 0)
         return used >= max_p
 
+    # ── User profile (display name override, tujuan, gaya respons) ──
+    # Disimpan lokal (bukan kolom Supabase) agar tanpa migrasi schema.
+    @staticmethod
+    def _profiles_file() -> str:
+        return "user_profiles.json"
+
+    @staticmethod
+    def get_user_profile(user_id: str) -> Dict[str, Any]:
+        data = _read_local_json(DatabaseService._profiles_file(), {})
+        p = data.get(str(user_id))
+        return p if isinstance(p, dict) else {}
+
+    @staticmethod
+    def update_user_profile(user_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
+        data = _read_local_json(DatabaseService._profiles_file(), {})
+        current = data.get(str(user_id)) if isinstance(data.get(str(user_id)), dict) else {}
+        current.update(patch)
+        current["updated_at"] = datetime.now().isoformat()
+        data[str(user_id)] = current
+        _write_local_json(DatabaseService._profiles_file(), data)
+        return current
+
     # ── Analytics: daily requests + model latency ──
     @staticmethod
     def _events_file() -> str:
@@ -453,6 +514,99 @@ class DatabaseService:
     @staticmethod
     def _latency_file() -> str:
         return "model_latency.json"
+
+    @staticmethod
+    def _token_file() -> str:
+        return "token_usage.json"
+
+    @staticmethod
+    def record_token_usage(owner: str, prompt_tokens: int, completion_tokens: int):
+        """Agregasi token per hari + per user di token_usage.json."""
+        try:
+            p = max(0, int(prompt_tokens or 0))
+            c = max(0, int(completion_tokens or 0))
+            if p == 0 and c == 0:
+                return
+            from datetime import timedelta
+            day = datetime.now().date().isoformat()
+            data = _read_local_json(DatabaseService._token_file(), {})
+            data.setdefault("budget", 0)
+            # harian global
+            daily = data.setdefault("daily", {})
+            cur = daily.get(day) or {"prompt": 0, "completion": 0}
+            np_ = int(cur.get("prompt", 0)) + p
+            nc_ = int(cur.get("completion", 0)) + c
+            daily[day] = {"prompt": np_, "completion": nc_, "total": np_ + nc_}
+            if len(daily) > 120:
+                for k in sorted(daily.keys())[:-120]:
+                    daily.pop(k, None)
+            # per user (owner = user_id atau "trial:<ip>")
+            bu = data.setdefault("by_user", {})
+            u = bu.setdefault(owner, {"prompt": 0, "completion": 0, "total": 0, "daily": {}})
+            u["prompt"] = int(u.get("prompt", 0)) + p
+            u["completion"] = int(u.get("completion", 0)) + c
+            u["total"] = int(u.get("total", 0)) + p + c
+            ud = u.setdefault("daily", {})
+            ucur = ud.get(day) or {"prompt": 0, "completion": 0}
+            unp = int(ucur.get("prompt", 0)) + p
+            unc = int(ucur.get("completion", 0)) + c
+            ud[day] = {"prompt": unp, "completion": unc, "total": unp + unc}
+            if len(ud) > 120:
+                for k in sorted(ud.keys())[:-120]:
+                    ud.pop(k, None)
+            _write_local_json(DatabaseService._token_file(), data)
+        except Exception:
+            pass
+
+    @staticmethod
+    def get_token_stats(days: int = 14) -> Dict[str, Any]:
+        from datetime import timedelta
+        days = max(1, min(120, int(days)))
+        data = _read_local_json(DatabaseService._token_file(), {})
+        daily: Dict[str, Any] = data.get("daily") or {}
+        by_user: Dict[str, Any] = data.get("by_user") or {}
+        today = datetime.now().date()
+        daily_out: List[Dict[str, Any]] = []
+        for i in range(days - 1, -1, -1):
+            d = (today - timedelta(days=i)).isoformat()
+            row = daily.get(d) or {"prompt": 0, "completion": 0}
+            pr = int(row.get("prompt", 0) or 0)
+            co = int(row.get("completion", 0) or 0)
+            daily_out.append({"day": d, "prompt": pr, "completion": co, "total": pr + co})
+        t = daily.get(today.isoformat()) or {}
+        y = daily.get((today - timedelta(days=1)).isoformat()) or {}
+        total_p = sum(int(v.get("prompt", 0) or 0) for v in daily.values())
+        total_c = sum(int(v.get("completion", 0) or 0) for v in daily.values())
+        by_out: List[Dict[str, Any]] = []
+        for owner, u in by_user.items():
+            ud = (u.get("daily") or {}).get(today.isoformat()) or {}
+            by_out.append({
+                "owner": owner,
+                "prompt": int(u.get("prompt", 0) or 0),
+                "completion": int(u.get("completion", 0) or 0),
+                "total": int(u.get("total", 0) or 0),
+                "today": int(ud.get("total", 0) or 0),
+            })
+        by_out.sort(key=lambda x: x["total"], reverse=True)
+        budget = int(data.get("budget", 0) or 0)
+        today_total = int(t.get("total", 0) or 0) or (int(t.get("prompt", 0) or 0) + int(t.get("completion", 0) or 0))
+        y_total = int(y.get("total", 0) or 0) or (int(y.get("prompt", 0) or 0) + int(y.get("completion", 0) or 0))
+        return {
+            "daily": daily_out,
+            "today": {"prompt": int(t.get("prompt", 0) or 0), "completion": int(t.get("completion", 0) or 0), "total": today_total},
+            "yesterday": {"prompt": int(y.get("prompt", 0) or 0), "completion": int(y.get("completion", 0) or 0), "total": y_total},
+            "total": {"prompt": total_p, "completion": total_c, "total": total_p + total_c},
+            "budget": budget,
+            "remaining": (budget - today_total) if budget > 0 else None,
+            "by_user": by_out,
+        }
+
+    @staticmethod
+    def set_token_budget(budget: int) -> int:
+        data = _read_local_json(DatabaseService._token_file(), {})
+        data["budget"] = max(0, int(budget or 0))
+        _write_local_json(DatabaseService._token_file(), data)
+        return data["budget"]
 
     @staticmethod
     def record_request_event(model: Optional[str] = None, latency_ms: Optional[int] = None):
@@ -543,7 +697,7 @@ class DatabaseService:
     @staticmethod
     def get_aggregated_latency(period: str = "day", limit: int = 14) -> List[Dict[str, Any]]:
         """Aggregate per-day latency buckets into week/month/year."""
-        daily = DatabaseService.get_model_latency(days=365)  # internal raw would recurse — use model_latency directly via daily path
+        daily = DatabaseService.get_model_latency(days=365)  # internal raw would recurse - use model_latency directly via daily path
         # Re-aggregate from raw model_latency
         lats_raw: Dict[str, Dict[str, Any]] = {}
         if supabase_client:

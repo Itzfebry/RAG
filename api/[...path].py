@@ -1,4 +1,4 @@
-"""Vercel Python function — catch-all for /api/*.
+"""Vercel Python function - catch-all for /api/*.
 
 File-based Python functions (api/*.py) are Vercel's documented way to run a
 Python backend alongside Next.js in one project. Every /api/* request that is

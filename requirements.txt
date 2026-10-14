@@ -11,3 +11,5 @@ openai>=1.0.0
 python-dotenv>=1.0.0
 langchain_nvidia_ai_endpoints>=0.0.6
 httpx>=0.27.0
+pypdf>=4.0.0
+

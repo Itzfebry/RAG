@@ -111,32 +111,58 @@ CREATE TABLE IF NOT EXISTS system_instructions (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Vector Match Function for Semantic Retrieval
-CREATE OR REPLACE FUNCTION match_knowledge_entries (
+-- Add Full Text Search support to knowledge_embeddings
+ALTER TABLE knowledge_embeddings ADD COLUMN IF NOT EXISTS fts tsvector GENERATED ALWAYS AS (to_tsvector('indonesian', content_chunk)) STORED;
+CREATE INDEX IF NOT EXISTS knowledge_embeddings_fts_idx ON knowledge_embeddings USING GIN (fts);
+
+-- Hybrid Search Function (Combining Semantic + Keyword)
+CREATE OR REPLACE FUNCTION hybrid_search (
+  query_text TEXT,
   query_embedding vector(768),
-  match_threshold float DEFAULT 0.2,
-  match_count int DEFAULT 5
+  match_count INT DEFAULT 5,
+  semantic_weight FLOAT DEFAULT 0.5,
+  keyword_weight FLOAT DEFAULT 0.5
 )
 RETURNS TABLE (
-  id UUID,
   entry_id UUID,
   content_chunk TEXT,
-  similarity float
+  score FLOAT
 )
 LANGUAGE plpgsql
 AS $$
 BEGIN
   RETURN QUERY
+  WITH semantic_results AS (
+    SELECT 
+      ke.entry_id, 
+      ke.content_chunk, 
+      (1 - (ke.embedding <=> query_embedding)) as similarity,
+      ROW_NUMBER() OVER (ORDER BY ke.embedding <=> query_embedding) as rank
+    FROM knowledge_embeddings ke
+    JOIN knowledge_entries k ON k.id = ke.entry_id
+    WHERE k.is_active = TRUE
+    ORDER BY ke.embedding <=> query_embedding
+    LIMIT 20
+  ),
+  keyword_results AS (
+    SELECT 
+      ke.entry_id, 
+      ke.content_chunk, 
+      ts_rank(ke.fts, plainto_tsquery('indonesian', query_text)) as rank_score,
+      ROW_NUMBER() OVER (ORDER BY ts_rank(ke.fts, plainto_tsquery('indonesian', query_text)) DESC) as rank
+    FROM knowledge_embeddings ke
+    JOIN knowledge_entries k ON k.id = ke.entry_id
+    WHERE k.is_active = TRUE AND ke.fts @@ plainto_tsquery('indonesian', query_text)
+    ORDER BY rank_score DESC
+    LIMIT 20
+  )
   SELECT
-    ke.id,
-    ke.entry_id,
-    ke.content_chunk,
-    1 - (ke.embedding <=> query_embedding) AS similarity
-  FROM knowledge_embeddings ke
-  JOIN knowledge_entries k ON k.id = ke.entry_id
-  WHERE k.is_active = TRUE
-    AND 1 - (ke.embedding <=> query_embedding) > match_threshold
-  ORDER BY ke.embedding <=> query_embedding
+    COALESCE(s.entry_id, k.entry_id) as entry_id,
+    COALESCE(s.content_chunk, k.content_chunk) as content_chunk,
+    (COALESCE(semantic_weight / (s.rank + 60), 0) + COALESCE(keyword_weight / (k.rank + 60), 0)) as score
+  FROM semantic_results s
+  FULL OUTER JOIN keyword_results k ON s.content_chunk = k.content_chunk
+  ORDER BY score DESC
   LIMIT match_count;
 END;
 $$;
@@ -146,4 +172,28 @@ INSERT INTO ai_identity (id) VALUES ('00000000-0000-0000-0000-000000000001') ON 
 INSERT INTO personal_information (id) VALUES ('00000000-0000-0000-0000-000000000002') ON CONFLICT DO NOTHING;
 INSERT INTO ai_personality (id) VALUES ('00000000-0000-0000-0000-000000000003') ON CONFLICT DO NOTHING;
 INSERT INTO communication_settings (id) VALUES ('00000000-0000-0000-0000-000000000004') ON CONFLICT DO NOTHING;
-INSERT INTO system_instructions (id) VALUES ('00000000-0000-0000-0000-000000000005') ON CONFLICT DO NOTHING;
+-- 9. INSTRUCTION HISTORY (Versioning)
+CREATE TABLE IF NOT EXISTS instruction_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    instruction_id UUID REFERENCES system_instructions(id),
+    behavioral_rules TEXT,
+    response_rules TEXT,
+    changed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    changed_by VARCHAR(100)
+);
+
+-- Trigger to auto-version instructions
+CREATE OR REPLACE FUNCTION version_instructions()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO instruction_history (instruction_id, behavioral_rules, response_rules)
+  VALUES (OLD.id, OLD.behavioral_rules, OLD.response_rules);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_version_instructions
+BEFORE UPDATE ON system_instructions
+FOR EACH ROW
+EXECUTE FUNCTION version_instructions();
+

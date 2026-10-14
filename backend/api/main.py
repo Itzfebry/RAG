@@ -8,6 +8,7 @@ try:
     from backend.api.admin import router as admin_router
     from backend.api.chat import router as chat_router, v1_router
     from backend.api.users import router as user_router, admin_router as admin_users_router
+    from backend.api.auth import router as auth_router
     from backend.config.config import settings
     from backend.security.middleware import SecurityHeadersMiddleware, BodySizeLimitMiddleware
 except ImportError:
@@ -19,7 +20,7 @@ except ImportError:
 
 app = FastAPI(
     title="ITZ AI Backend API",
-    description="Python API for ITZ AI Agent — LangChain, Vector Knowledge, and Admin Controls",
+    description="Python API for ITZ AI Agent - LangChain, Vector Knowledge, and Admin Controls",
     version="1.0.0",
     docs_url="/docs" if os.getenv("NODE_ENV") != "production" else None,
     redoc_url=None if os.getenv("NODE_ENV") == "production" else "/redoc",
@@ -33,15 +34,15 @@ app.add_middleware(BodySizeLimitMiddleware)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Balas 422 dengan pesan bersih — jangan bocorkan struktur schema Pydantic
+    """Balas 422 dengan pesan bersih - jangan bocorkan struktur schema Pydantic
     (loc/msg/ctx) ke client. Detail tetap di-log ke console untuk debugging."""
     print(f"[validation] {request.url.path}: {exc.errors()}")
     return JSONResponse(
         status_code=422,
-        content={"detail": "Format data tidak valid — periksa field yang dikirim."},
+        content={"detail": "Format data tidak valid - periksa field yang dikirim."},
     )
 
-# CORS — explicit, no wildcard when credentials involved. Rewrites are same-origin.
+# CORS - explicit, no wildcard when credentials involved. Rewrites are same-origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -59,6 +60,7 @@ app.include_router(v1_router, prefix="/api")  # alias: /api/v1/* so the OpenAI-c
 app.include_router(user_router)
 app.include_router(admin_router)
 app.include_router(admin_users_router)
+app.include_router(auth_router)
 
 @app.get("/")
 def root():
@@ -90,7 +92,7 @@ def cron_warmup():
 
 if __name__ == "__main__":
     import uvicorn
-    # UVICORN_RELOAD=0 kalau ingin server stabil (tanpa auto-reload — cocok
+    # UVICORN_RELOAD=0 kalau ingin server stabil (tanpa auto-reload - cocok
     # saat sedang dipakai chat; reload bikin server mati beberapa detik)
     _reload = os.getenv("UVICORN_RELOAD", "1") == "1"
     uvicorn.run("backend.api.main:app", host="0.0.0.0", port=settings.PORT, reload=_reload)

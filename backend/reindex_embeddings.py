@@ -1,6 +1,6 @@
 """Reindex seluruh knowledge entries ke provider embedding aktif (.env).
 
-Pakai setelah ganti EMBEDDING_PROVIDER — vektor dari model BERBEDA tidak
+Pakai setelah ganti EMBEDDING_PROVIDER - vektor dari model BERBEDA tidak
 comparable, jadi semua chunk harus di-embed ulang dengan model baru.
 
 Aman untuk dijalankan berkali-kali: seluruh entry di-embed + divalidasi
@@ -30,7 +30,7 @@ def _is_dummy(v) -> bool:
 def main() -> int:
     print(f"Provider aktif: {EMBEDDING_PROVIDER} | dim: {EMBEDDING_DIM}")
     if EMBEDDING_PROVIDER == "off":
-        print("ABORT: EMBEDDING_PROVIDER=off — matikan dulu switch test itu.")
+        print("ABORT: EMBEDDING_PROVIDER=off - matikan dulu switch test itu.")
         return 1
     if not supabase_client:
         print("ABORT: Supabase client tidak terkonfigurasi.")
@@ -44,7 +44,7 @@ def main() -> int:
     # Splitter HARUS sama dengan KnowledgeService.index_entry (500/50).
     splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
 
-    # 1) Embed SEMUA dulu — validasi sebelum menyentuh database.
+    # 1) Embed SEMUA dulu - validasi sebelum menyentuh database.
     plan = []
     for e in entries:
         chunks = splitter.split_text(e.get("content", "") or "")
@@ -54,7 +54,7 @@ def main() -> int:
             if _is_dummy(v):
                 print(
                     f"ABORT: embed gagal untuk entry {e.get('title')!r} "
-                    f"chunk {i} — database TIDAK diubah."
+                    f"chunk {i} - database TIDAK diubah."
                 )
                 return 1
             vectors.append(v)
@@ -75,7 +75,7 @@ def main() -> int:
         print(f"  reindexed: {title} ({len(chunks)} chunks)")
 
     total = sum(len(v) for *_, v in plan)
-    print(f"Selesai — {len(plan)} entry, {total} chunk, provider {EMBEDDING_PROVIDER}.")
+    print(f"Selesai - {len(plan)} entry, {total} chunk, provider {EMBEDDING_PROVIDER}.")
     return 0
 
 

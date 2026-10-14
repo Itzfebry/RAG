@@ -84,13 +84,14 @@ class ConfigUpdateRequest(BaseModel):
 
 
 class ModelConfigUpdateRequest(BaseModel):
-    """Validated model switch — accepts ANY model ID string, any OpenAI-compatible provider."""
+    """Validated model switch - accepts ANY model ID string, any OpenAI-compatible provider."""
     active_model: str = Field(min_length=1, max_length=256)
     fallback_models: Optional[List[str]] = None
     provider: Optional[str] = Field(default=None, max_length=64)
     api_base_url: Optional[str] = Field(default=None, max_length=512)
     temperature: Optional[float] = Field(default=None, ge=0, le=2)
     reasoning_enabled: Optional[bool] = None
+    max_tokens: Optional[int] = Field(default=None, ge=256, le=131072)
 
 
 class ModelTestRequest(BaseModel):
@@ -166,7 +167,7 @@ def admin_login(payload: LoginRequest, request: Request, response: Response):
     allowed, retry = check_rate_limit(f"admin:login:{ip}", 10, 60)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Too many login attempts. Retry after {retry}s", headers={"Retry-After": str(retry)})
-    # constant-time username check — still verify dummy hash to avoid timing leak
+    # constant-time username check - still verify dummy hash to avoid timing leak
     if payload.username != settings.ADMIN_USERNAME:
         # burn same time as verify_password
         verify_password(payload.password, settings.ADMIN_PASSWORD_HASH)
@@ -200,14 +201,14 @@ def verify_admin_session(request: Request, admin: str = Depends(get_current_admi
 
 @router.get("/config/{section}")
 def get_config(section: str, admin: str = Depends(get_current_admin)):
-    valid_sections = ["ai_identity", "personal_information", "ai_personality", "communication_settings", "system_instructions", "ai_model_config"]
+    valid_sections = ["ai_identity", "personal_information", "ai_personality", "communication_settings", "system_instructions", "ai_model_config", "response_styles"]
     if section not in valid_sections:
         raise HTTPException(status_code=400, detail="Invalid configuration section")
     return DatabaseService.get_config_table(section)
 
 @router.put("/config")
 def update_config(payload: ConfigUpdateRequest, request: Request, admin: str = Depends(get_current_admin)):
-    valid_sections = ["ai_identity", "personal_information", "ai_personality", "communication_settings", "system_instructions", "ai_model_config"]
+    valid_sections = ["ai_identity", "personal_information", "ai_personality", "communication_settings", "system_instructions", "ai_model_config", "response_styles"]
     if payload.section not in valid_sections:
         raise HTTPException(status_code=400, detail="Invalid configuration section")
     # rate-limit config writes: 20/min per IP
@@ -215,6 +216,22 @@ def update_config(payload: ConfigUpdateRequest, request: Request, admin: str = D
     allowed, retry = check_rate_limit(f"admin:config:{ip}", 20, 60)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+
+    # Strict Schema Validation
+    schemas = {
+        "communication_settings": ["primary_language", "tone"],
+        "ai_identity": ["name", "role", "purpose"],
+        "ai_personality": ["personality", "tone"],
+        "system_instructions": [], # Optional fields
+        "ai_model_config": ["active_model", "provider"],
+        "response_styles": ["styles"]
+    }
+    
+    if payload.section in schemas:
+        for field in schemas[payload.section]:
+            if field not in payload.data or not str(payload.data[field]).strip():
+                raise HTTPException(status_code=400, detail=f"Field '{field}' is required for {payload.section}")
+
     try:
         data = _validate_config_data(payload.data)
     except ValueError as e:
@@ -314,6 +331,7 @@ def admin_list_models(
             "api_base_url": base_url,
             "temperature": cfg.get("temperature", 0.4),
             "reasoning_enabled": cfg.get("reasoning_enabled", False),
+            "max_tokens": cfg.get("max_tokens", 8192),
         },
         "live_catalog": live,
     }
@@ -321,7 +339,7 @@ def admin_list_models(
 
 @router.post("/models/catalog")
 def admin_catalog_preview(payload: CatalogPreviewRequest, request: Request, admin: str = Depends(get_current_admin)):
-    """Preview catalog with supplied credentials via POST body — avoids leaking key in URL/logs.
+    """Preview catalog with supplied credentials via POST body - avoids leaking key in URL/logs.
     Body: {api_key, base_url, include_free_only, limit}. preview-only, not saved."""
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:catalog:{ip}", 20, 60)
@@ -371,7 +389,7 @@ def admin_catalog_preview(payload: CatalogPreviewRequest, request: Request, admi
 
 @router.put("/models")
 def admin_update_models(payload: ModelConfigUpdateRequest, request: Request, admin: str = Depends(get_current_admin)):
-    """Switch active model + fallbacks. Any model ID accepted — no whitelist, no Gemini hardcoding."""
+    """Switch active model + fallbacks. Any model ID accepted - no whitelist, no Gemini hardcoding."""
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:models_write:{ip}", 15, 60)
     if not allowed:
@@ -394,12 +412,18 @@ def admin_update_models(payload: ModelConfigUpdateRequest, request: Request, adm
         "api_base_url": (payload.api_base_url.strip().rstrip("/") if isinstance(payload.api_base_url, str) and payload.api_base_url.strip() else current.get("api_base_url", "https://openrouter.ai/api/v1")),
         "temperature": float(payload.temperature) if payload.temperature is not None else float(current.get("temperature", 0.4)),
         "reasoning_enabled": bool(payload.reasoning_enabled) if payload.reasoning_enabled is not None else bool(current.get("reasoning_enabled", False)),
+        "max_tokens": int(payload.max_tokens) if payload.max_tokens is not None else int(current.get("max_tokens", 8192) or 8192),
     }
     # clamp temperature to valid range
     if updated_cfg["temperature"] < 0:
         updated_cfg["temperature"] = 0
     if updated_cfg["temperature"] > 2:
         updated_cfg["temperature"] = 2
+    # clamp max_tokens: reasoning model butuh headroom, jangan turun di bawah 256
+    if updated_cfg["max_tokens"] < 256:
+        updated_cfg["max_tokens"] = 256
+    if updated_cfg["max_tokens"] > 131072:
+        updated_cfg["max_tokens"] = 131072
 
     saved = DatabaseService.update_config_table("ai_model_config", updated_cfg)
     return {"status": "success", "data": saved}
@@ -407,7 +431,7 @@ def admin_update_models(payload: ModelConfigUpdateRequest, request: Request, adm
 
 @router.post("/models/test")
 def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = Depends(get_current_admin)):
-    """Lightweight probe — does chat/completions accept this model with current (or override) creds?"""
+    """Lightweight probe - does chat/completions accept this model with current (or override) creds?"""
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:models_test:{ip}", 12, 60)
     if not allowed:
@@ -490,12 +514,12 @@ def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = D
     has_groq = bool((_os.getenv("GROQ_API_KEY") or "").strip())
     print(f"[models/test] provider={provider} base_url={base_url} key={_mask(api_key)} src={src} has_env_key={has_env_key} has_openrouter={has_openrouter} has_groq={has_groq} model={model}")
     if api_key.startswith("gsk_") and "openrouter" in low_url:
-        print(f"[models/test] WARNING gsk_ key dikirim ke openrouter — pasti 401. Ganti provider=groq + base_url=https://api.groq.com/openai/v1 atau pakai sk-or- key")
+        print(f"[models/test] WARNING gsk_ key dikirim ke openrouter - pasti 401. Ganti provider=groq + base_url=https://api.groq.com/openai/v1 atau pakai sk-or- key")
     if api_key.startswith("sk-or-") and "groq" in low_url:
-        print(f"[models/test] WARNING sk-or- key dikirim ke groq — pasti 401")
+        print(f"[models/test] WARNING sk-or- key dikirim ke groq - pasti 401")
     if not api_key:
-        raise HTTPException(status_code=400, detail="No API key available — isi API KEY KATALOG atau set OPENROUTER_API_KEY/GROQ_API_KEY di .env dan restart backend")
-    # Probe via OpenAI SDK (stream=False, tiny tokens) — with explicit header fallback via urllib if 401
+        raise HTTPException(status_code=400, detail="No API key available - isi API KEY KATALOG atau set OPENROUTER_API_KEY/GROQ_API_KEY di .env dan restart backend")
+    # Probe via OpenAI SDK (stream=False, tiny tokens) - with explicit header fallback via urllib if 401
     import time as _time
     t0 = _time.perf_counter()
     try:
@@ -527,14 +551,14 @@ def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = D
         # Include hint for common misconfig
         hint = ""
         if "401" in msg or "Missing Authentication" in msg:
-            hint = " — cek .env OPENROUTER_API_KEY/GROQ_API_KEY tanpa kutip, tanpa spasi, restart backend (python -m backend.api.main), cek provider vs base_url (openrouter→https://openrouter.ai/api/v1, groq→https://api.groq.com/openai/v1)"
+            hint = " - cek .env OPENROUTER_API_KEY/GROQ_API_KEY tanpa kutip, tanpa spasi, restart backend (python -m backend.api.main), cek provider vs base_url (openrouter→https://openrouter.ai/api/v1, groq→https://api.groq.com/openai/v1)"
         print(f"[models/test] FAIL {msg} hint={hint}")
         raise HTTPException(status_code=502, detail={"model": model, "latency_ms": latency_ms, "error": msg + hint, "base_url": base_url, "provider": provider, "key_mask": _mask(api_key)})
 
 
 @router.get("/stats")
 def admin_stats(admin: str = Depends(get_current_admin)):
-    """Real dashboard stats — no mocks. Derived from app_users, knowledge, trial_usage, uptime."""
+    """Real dashboard stats - no mocks. Derived from app_users, knowledge, trial_usage, uptime."""
     try:
         users = DatabaseService.list_users()
     except Exception:
@@ -547,7 +571,7 @@ def admin_stats(admin: str = Depends(get_current_admin)):
         cats = DatabaseService.get_knowledge_categories()
     except Exception:
         cats = []
-    # trial total — local file + supabase best-effort
+    # trial total - local file + supabase best-effort
     trial_total_used = 0
     try:
         # try supabase count
@@ -596,7 +620,7 @@ def admin_stats(admin: str = Depends(get_current_admin)):
             uptime_str = f"{m}m {s}s"
     except Exception:
         uptime_secs = 0
-        uptime_str = "—"
+        uptime_str = "-"
 
     # knowledge breakdown by category name
     cat_id_to_name = {c.get("id"): c.get("name", c.get("slug", "")) for c in cats}
@@ -611,7 +635,7 @@ def admin_stats(admin: str = Depends(get_current_admin)):
     top_prompts = [{"username": u.get("username"), "prompts_used": int(u.get("prompts_used", 0) or 0), "max_prompts": int(u.get("max_prompts", 0) or 0)} for u in top_users]
 
     total_requests = total_prompts_used + trial_total_used
-    # aggregated views by period (day/week/month/year) — default 14 day buckets
+    # aggregated views by period (day/week/month/year) - default 14 day buckets
     q_period = "day"
     q_limit = 14
     try:
@@ -660,6 +684,54 @@ def admin_stats(admin: str = Depends(get_current_admin)):
     }
 
 
+class TokenBudgetRequest(BaseModel):
+    daily_token_budget: int = Field(default=0, ge=0, le=10_000_000_000)
+
+
+@router.get("/token-usage")
+def admin_token_usage(days: int = 14, admin: str = Depends(get_current_admin)):
+    """Agregasi token harian, sisa budget, dan konsumsi token per user."""
+    try:
+        stats = DatabaseService.get_token_stats(days)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Token stats error: {e}")
+
+    users_by_id = {}
+    try:
+        users_by_id = {str(u.get("id")): u for u in DatabaseService.list_users()}
+    except Exception:
+        pass
+
+    for row in stats.get("by_user", []):
+        owner = row.get("owner", "")
+        if owner in users_by_id:
+            u = users_by_id[owner]
+            row["label"] = u.get("display_name") or u.get("username") or owner
+            row["kind"] = "user"
+            row["prompts_used"] = int(u.get("prompts_used", 0) or 0)
+            row["max_prompts"] = int(u.get("max_prompts", 0) or 0)
+            row["status"] = u.get("status", "active")
+        elif str(owner).startswith("trial:"):
+            row["label"] = f"Trial {str(owner).split(':', 1)[1]}"
+            row["kind"] = "trial"
+        else:
+            row["label"] = owner
+            row["kind"] = "unknown"
+        total_all = stats.get("total", {}).get("total", 0) or 1
+        row["share"] = round(100.0 * int(row.get("total", 0) or 0) / total_all, 1)
+    return stats
+
+
+@router.put("/token-budget")
+def admin_token_budget(payload: TokenBudgetRequest, admin: str = Depends(get_current_admin)):
+    """Budget token harian global (0 = tanpa batas)."""
+    try:
+        budget = DatabaseService.set_token_budget(payload.daily_token_budget)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Budget update error: {e}")
+    return {"budget": budget}
+
+
 @router.get("/knowledge/categories")
 def get_knowledge_categories(admin: str = Depends(get_current_admin)):
     return DatabaseService.get_knowledge_categories()
@@ -676,7 +748,7 @@ def save_knowledge_entry(payload: KnowledgeEntryRequest, request: Request, admin
         raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
     data = payload.model_dump()
     saved = DatabaseService.create_or_update_knowledge_entry(data)
-    # Index synchronously — serverless runtimes (Vercel) kill background tasks
+    # Index synchronously - serverless runtimes (Vercel) kill background tasks
     # after the response is sent. Entries are small; embedding takes ~1 chunk call.
     try:
         KnowledgeService.index_entry(saved["id"], saved["content"])
@@ -754,7 +826,7 @@ def _validate_bulk_section(section: str, data: Dict[str, Any]) -> Optional[str]:
 def admin_import_bulk(payload: BulkImportRequest, request: Request, admin: str = Depends(get_current_admin)):
     """
     Apply a JSON blob to populate ai_identity → system_instructions + knowledge.
-    ai_model_config is not bulk-importable — models are managed on the AI Models tab.
+    ai_model_config is not bulk-importable - models are managed on the AI Models tab.
     Any subset of keys accepted. Unknown keys at top level are ignored.
     """
     ip = get_client_ip(request)
@@ -770,7 +842,7 @@ def admin_import_bulk(payload: BulkImportRequest, request: Request, admin: str =
         raise HTTPException(status_code=400, detail="Too many knowledge_entries (max 200)")
     raw = raw_check
     if not raw:
-        raise HTTPException(status_code=400, detail="Empty import — no recognized keys found. Expected one of: ai_identity, personal_information, ai_personality, communication_settings, system_instructions, knowledge_entries")
+        raise HTTPException(status_code=400, detail="Empty import - no recognized keys found. Expected one of: ai_identity, personal_information, ai_personality, communication_settings, system_instructions, knowledge_entries")
 
     applied: Dict[str, Any] = {}
     errors: Dict[str, str] = {}
@@ -852,7 +924,7 @@ def admin_import_bulk(payload: BulkImportRequest, request: Request, admin: str =
 
 @router.post("/import/file")
 async def admin_import_file(request: Request, admin: str = Depends(get_current_admin)):
-    """Multipart JSON file upload variant of /import — POST a form field 'file' or raw JSON body."""
+    """Multipart JSON file upload variant of /import - POST a form field 'file' or raw JSON body."""
     try:
         ctype = (request.headers.get("content-type") or "").lower()
         data: Dict[str, Any] = {}
