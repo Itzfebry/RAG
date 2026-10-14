@@ -297,7 +297,7 @@ def admin_list_models(
             for u in candidates:
                 try:
                     req = _ureq.Request(u, headers={"Authorization": f"Bearer {api_key}"})
-                    ctx = _ssl._create_unverified_context()
+                    ctx = _ssl.create_default_context()
                     with _ureq.urlopen(req, timeout=10, context=ctx) as resp:
                         if getattr(resp, "status", 200) != 200:
                             continue
@@ -365,7 +365,7 @@ def admin_catalog_preview(payload: CatalogPreviewRequest, request: Request, admi
     for u in candidates:
         try:
             req = _ureq.Request(u, headers={"Authorization": f"Bearer {api_key}"})
-            ctx = _ssl._create_unverified_context()
+            ctx = _ssl.create_default_context()
             with _ureq.urlopen(req, timeout=10, context=ctx) as resp:
                 if getattr(resp, "status", 200) != 200:
                     last_err = f"{u} -> {getattr(resp,'status',0)}"

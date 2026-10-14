@@ -13,10 +13,14 @@ try:
     from backend.security.rate_limiter import get_client_ip, check_rate_limit
     from backend.security.auth import USER_COOKIE_NAME, verify_user_jwt
     from backend.database.db import DatabaseService
+    from backend.knowledge.knowledge_service import KnowledgeService
+    from backend.api.admin import get_current_admin
 except ImportError:
     from security.rate_limiter import get_client_ip, check_rate_limit  # type: ignore
     from security.auth import USER_COOKIE_NAME, verify_user_jwt  # type: ignore
     from database.db import DatabaseService  # type: ignore
+    from knowledge.knowledge_service import KnowledgeService  # type: ignore
+    from api.admin import get_current_admin  # type: ignore
 
 try:
     from backend.agent.agent import AgentOrchestrator, _resolve_base_url, _resolve_api_key, _resolve_default_model
@@ -96,10 +100,10 @@ def list_available_models(limit: int = Query(default=100, ge=1, le=200), include
 
     def _try_urls(urls: list) -> Optional[list]:
         import urllib.request, ssl
+        ctx = ssl.create_default_context()
         for u in urls:
             try:
                 req = urllib.request.Request(u, headers={"Authorization": f"Bearer {api_key}"})
-                ctx = ssl._create_unverified_context()
                 with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
                     if getattr(resp, "status", 200) != 200:
                         continue
@@ -321,12 +325,10 @@ def get_suggestions(limit: int = 3):
 async def upload_knowledge_file(
     file: UploadFile = File(...),
     category_id: str = Query(...),
-    request: Request = None
+    request: Request = None,
+    admin: str = Depends(get_current_admin),
 ):
     """Ingest knowledge from PDF/Text files."""
-    # Basic security check for admin
-    # (Auth middleware should be applied here)
-    
     suffix = os.path.splitext(file.filename)[1].lower()
     if suffix not in [".txt", ".pdf", ".md"]:
         raise HTTPException(status_code=400, detail="Format file tidak didukung (hanya .txt, .pdf, .md)")
