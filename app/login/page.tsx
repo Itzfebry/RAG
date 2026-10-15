@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Eye, EyeOff, Loader2, AlertCircle, Zap, MessageSquare, Wallet } from "lucide-react";
+import Link from "next/link";
+import { AlertCircle, Loader2, Zap, MessageSquare, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
@@ -27,15 +28,22 @@ const VALUE_POINTS = [
 ];
 
 const EASE = [0.22, 1, 0.36, 1] as const;
+const REMEMBER_KEY = "itz_remember_username";
 
 export default function UserLoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [mode, setMode] = useState<"login" | "register" | "verify" | "forgot" | "reset">("login");
+  const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [infoMsg, setInfoMsg] = useState("");
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search).get("auth_error");
@@ -43,6 +51,13 @@ export default function UserLoginPage() {
       setAuthError(p);
       window.history.replaceState({}, "", window.location.pathname);
     }
+    try {
+      const saved = localStorage.getItem(REMEMBER_KEY);
+      if (saved) {
+        setUsername(saved);
+        setRememberMe(true);
+      }
+    } catch {}
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -55,19 +70,160 @@ export default function UserLoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim().toLowerCase(), password }),
       });
+      const data = await res.json().catch(() => ({} as any));
       if (res.ok) {
-        try { sessionStorage.setItem("itz_welcome", "1"); } catch {}
-        router.push("/");
+        try {
+          if (rememberMe) localStorage.setItem(REMEMBER_KEY, username.trim().toLowerCase());
+          else localStorage.removeItem(REMEMBER_KEY);
+          sessionStorage.setItem("itz_welcome", "1");
+        } catch {}
+        router.push("/chat");
         router.refresh();
       } else {
-        const data = await res.json().catch(() => ({} as any));
-        setAuthError(typeof data.detail === "string" ? data.detail : "Login gagal");
+        setAuthError(typeof data?.detail === "string" ? data.detail : "Login gagal");
       }
     } catch {
       setAuthError("Gagal terhubung ke server");
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    if (password !== confirmPassword) {
+      setAuthError("Konfirmasi kata sandi tidak sama");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/python/user/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: username.trim().toLowerCase(),
+          email: email.trim().toLowerCase(),
+          password,
+          display_name: displayName.trim() || null,
+        }),
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (res.ok) {
+        setOtpCode("");
+        setInfoMsg(`Kode verifikasi dikirim ke ${email.trim().toLowerCase()}.`);
+        setMode("verify");
+      } else {
+        const detail = data?.detail;
+        setAuthError(typeof detail === "string" ? detail : "Pendaftaran gagal");
+      }
+    } catch {
+      setAuthError("Gagal terhubung ke server");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const postJson = async (path: string, body: object) => {
+    const res = await fetch(`/api/python${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({} as any));
+    return { ok: res.ok, data };
+  };
+
+  const errMsg = (data: any, fallback: string) =>
+    typeof data?.detail === "string" ? data.detail : fallback;
+
+  const handleVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setAuthError("");
+    try {
+      const { ok, data } = await postJson("/user/verify-email", { email: email.trim().toLowerCase(), code: otpCode.trim() });
+      if (ok) {
+        try { sessionStorage.setItem("itz_welcome", "1"); } catch {}
+        router.push("/chat?welcome=1");
+        router.refresh();
+      } else {
+        setAuthError(errMsg(data, "Verifikasi gagal"));
+      }
+    } catch {
+      setAuthError("Gagal terhubung ke server");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResendVerify = async () => {
+    setAuthError("");
+    setInfoMsg("");
+    try {
+      const res = await fetch("/api/python/user/verify-email/send", { method: "POST" });
+      const data = await res.json().catch(() => ({} as any));
+      if (res.ok) setInfoMsg("Kode baru sudah dikirim.");
+      else setAuthError(errMsg(data, "Gagal mengirim ulang kode"));
+    } catch {
+      setAuthError("Gagal terhubung ke server");
+    }
+  };
+
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setAuthError("");
+    try {
+      const { ok, data } = await postJson("/user/password/forgot", { email: email.trim().toLowerCase() });
+      if (ok) {
+        setOtpCode("");
+        setInfoMsg(data?.message || "Jika email terdaftar, kode reset sudah dikirim.");
+        setMode("reset");
+      } else {
+        setAuthError(errMsg(data, "Gagal mengirim kode"));
+      }
+    } catch {
+      setAuthError("Gagal terhubung ke server");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    if (password !== confirmPassword) {
+      setAuthError("Konfirmasi kata sandi tidak sama");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const { ok, data } = await postJson("/user/password/reset", {
+        email: email.trim().toLowerCase(),
+        code: otpCode.trim(),
+        new_password: password,
+      });
+      if (ok) {
+        try { sessionStorage.setItem("itz_welcome", "1"); } catch {}
+        router.push("/chat");
+        router.refresh();
+      } else {
+        setAuthError(errMsg(data, "Reset kata sandi gagal"));
+      }
+    } catch {
+      setAuthError("Gagal terhubung ke server");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const switchMode = (next: "login" | "register" | "forgot" | "verify" | "reset") => {
+    setMode(next);
+    setAuthError("");
+    setInfoMsg("");
+    setPassword("");
+    setConfirmPassword("");
   };
 
   const handleGoogleLogin = async () => {
@@ -90,16 +246,13 @@ export default function UserLoginPage() {
 
   return (
     <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-[#101015] px-4 py-8 antialiased relative sm:py-12">
-      {/* cahaya lembut: loop CSS murni (kompositor), ringan, tanpa JS per frame */}
       <div
         aria-hidden
         className="itz-drift pointer-events-none fixed left-1/2 top-1/2 h-[420px] w-[420px] rounded-full bg-white/[0.05] blur-[110px]"
       />
 
       <div className="relative z-10 grid w-full max-w-[1000px] items-center gap-8 lg:grid-cols-[1fr_400px] lg:gap-20">
-        {/* BRANDING */}
         <div className="hidden lg:block">
-          {/* logo: muncul pelan */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -122,7 +275,6 @@ export default function UserLoginPage() {
             </div>
           </motion.div>
 
-          {/* headline: reveal seperti tiras naik */}
           <div className="mt-8 overflow-hidden pb-1">
             <motion.h1
               initial={{ y: "110%" }}
@@ -146,7 +298,6 @@ export default function UserLoginPage() {
             pertanyaan. Tanpa basa-basi, tanpa perlu pengaturan apa pun.
           </motion.p>
 
-          {/* nilai jual: muncul bersamaan, tanpa efek berlebih */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -167,7 +318,6 @@ export default function UserLoginPage() {
           </motion.div>
         </div>
 
-        {/* CARD LOGIN */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -184,19 +334,194 @@ export default function UserLoginPage() {
               <br />
               Dapat jawaban lugas.
             </p>
-            <p className="mt-2.5 max-w-[320px] text-[13.5px] leading-relaxed text-zinc-500">
-              Asisten AI siap menemani harimu. Tanpa basa-basi, tanpa pengaturan.
-            </p>
           </div>
 
           <div className="rounded-2xl border border-white/[0.08] bg-[#16161c] p-6 shadow-[0_20px_50px_rgba(0,0,0,0.5)] sm:p-8">
-            <h2 className="text-[20px] font-bold text-white mb-1">Masuk</h2>
-            <p className="text-[12px] text-zinc-500 mb-8">Pilih metode untuk melanjutkan</p>
+            <h2 className="text-[20px] font-bold text-white mb-1">
+              {{ login: "Masuk", register: "Daftar", verify: "Verifikasi Email", forgot: "Lupa Kata Sandi", reset: "Atur Ulang Kata Sandi" }[mode]}
+            </h2>
+            <p className="text-[12px] text-zinc-500 mb-8">
+              {{
+                login: "Masuk dengan nama pengguna dan kata sandi",
+                register: "Buat akun baru untuk mulai memakai ITZ AI",
+                verify: "Masukkan kode 6 digit yang kami kirim ke email Anda",
+                forgot: "Masukkan email akun Anda, kami kirim kode reset",
+                reset: "Masukkan kode dan kata sandi baru",
+              }[mode]}
+            </p>
 
-            <form onSubmit={handleLogin} className="space-y-4">
+            {infoMsg && (
+              <div className="mb-4 rounded-lg border border-emerald-500/10 bg-emerald-950/20 px-3 py-2 text-[12px] text-emerald-200">
+                {infoMsg}
+              </div>
+            )}
+
+            {mode === "verify" && (
+              <form onSubmit={handleVerify} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Kode OTP</label>
+                  <Input
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    className="h-12 border-white/[0.08] bg-[#0a0a0c] text-center text-[18px] tracking-[0.4em] text-zinc-100 rounded-xl"
+                    placeholder="000000"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
+                <AnimatePresence>
+                  {authError && (
+                    <motion.div className="flex items-center gap-2 rounded-lg bg-red-950/20 px-3 py-2 text-red-200 border border-red-500/10 overflow-hidden">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      <p className="text-[12px]">{authError}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <Button
+                  type="submit"
+                  className="h-12 w-full bg-zinc-100 text-[13px] font-bold text-black hover:bg-white rounded-xl"
+                  disabled={isLoading || otpCode.length !== 6}
+                >
+                  {isLoading ? <Loader2 className="animate-spin" size={16} /> : "Verifikasi"}
+                </Button>
+                <div className="flex justify-between text-[12px] text-zinc-500">
+                  <button type="button" onClick={handleResendVerify} className="hover:text-zinc-200 underline-offset-4 hover:underline">
+                    Kirim ulang kode
+                  </button>
+                  <button type="button" onClick={() => router.push("/chat")} className="hover:text-zinc-200 underline-offset-4 hover:underline">
+                    Lewati dulu
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {mode === "forgot" && (
+              <form onSubmit={handleForgot} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Email</label>
+                  <Input
+                    type="email"
+                    autoComplete="email"
+                    className="h-12 border-white/[0.08] bg-[#0a0a0c] text-[14px] text-zinc-100 rounded-xl"
+                    placeholder="nama@email.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                <AnimatePresence>
+                  {authError && (
+                    <motion.div className="flex items-center gap-2 rounded-lg bg-red-950/20 px-3 py-2 text-red-200 border border-red-500/10 overflow-hidden">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      <p className="text-[12px]">{authError}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <Button
+                  type="submit"
+                  className="h-12 w-full bg-zinc-100 text-[13px] font-bold text-black hover:bg-white rounded-xl"
+                  disabled={isLoading || !email.trim()}
+                >
+                  {isLoading ? <Loader2 className="animate-spin" size={16} /> : "Kirim kode"}
+                </Button>
+                <button type="button" onClick={() => switchMode("login")} className="w-full text-center text-[12px] text-zinc-500 hover:text-zinc-200">
+                  Kembali ke masuk
+                </button>
+              </form>
+            )}
+
+            {mode === "reset" && (
+              <form onSubmit={handleReset} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Kode OTP</label>
+                  <Input
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    className="h-12 border-white/[0.08] bg-[#0a0a0c] text-center text-[18px] tracking-[0.4em] text-zinc-100 rounded-xl"
+                    placeholder="000000"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Kata Sandi Baru</label>
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    className="h-12 border-white/[0.08] bg-[#0a0a0c] text-[14px] text-zinc-100 rounded-xl"
+                    placeholder="Minimal 8 karakter"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Ulangi Kata Sandi</label>
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    className="h-12 border-white/[0.08] bg-[#0a0a0c] text-[14px] text-zinc-100 rounded-xl"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                </div>
+                <AnimatePresence>
+                  {authError && (
+                    <motion.div className="flex items-center gap-2 rounded-lg bg-red-950/20 px-3 py-2 text-red-200 border border-red-500/10 overflow-hidden">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      <p className="text-[12px]">{authError}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <Button
+                  type="submit"
+                  className="h-12 w-full bg-zinc-100 text-[13px] font-bold text-black hover:bg-white rounded-xl"
+                  disabled={isLoading || otpCode.length !== 6 || password.length < 8 || !confirmPassword}
+                >
+                  {isLoading ? <Loader2 className="animate-spin" size={16} /> : "Atur kata sandi"}
+                </Button>
+                <button type="button" onClick={() => switchMode("login")} className="w-full text-center text-[12px] text-zinc-500 hover:text-zinc-200">
+                  Kembali ke masuk
+                </button>
+              </form>
+            )}
+
+            {(mode === "login" || mode === "register") && (
+            <form onSubmit={mode === "login" ? handleLogin : handleRegister} className="space-y-4">
+              {mode === "register" && (
+                <>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Email</label>
+                    <Input
+                      type="email"
+                      autoComplete="email"
+                      className="h-12 border-white/[0.08] bg-[#0a0a0c] text-[14px] text-zinc-100 placeholder:text-zinc-700 focus:border-zinc-500 focus:bg-black/40 transition-all duration-300 rounded-xl"
+                      placeholder="nama@email.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Nama Tampilan (opsional)</label>
+                    <Input
+                      autoComplete="nickname"
+                      maxLength={64}
+                      className="h-12 border-white/[0.08] bg-[#0a0a0c] text-[14px] text-zinc-100 placeholder:text-zinc-700 focus:border-zinc-500 focus:bg-black/40 transition-all duration-300 rounded-xl"
+                      placeholder="Nama kamu"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+
               <div className="space-y-1.5">
                 <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Nama Pengguna</label>
                 <Input
+                  autoComplete="username"
                   className="h-12 border-white/[0.08] bg-[#0a0a0c] text-[14px] text-zinc-100 placeholder:text-zinc-700 focus:border-zinc-500 focus:bg-black/40 transition-all duration-300 rounded-xl"
                   placeholder="Username"
                   value={username}
@@ -204,25 +529,45 @@ export default function UserLoginPage() {
                 />
               </div>
 
-              <div className="space-y-1.5 relative">
+              <div className="space-y-1.5">
                 <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Kata Sandi</label>
-                <div className="relative">
-                  <Input
-                    className="h-12 border-white/[0.08] bg-[#0a0a0c] text-[14px] text-zinc-100 placeholder:text-zinc-700 focus:border-zinc-500 focus:bg-black/40 pr-10 transition-all duration-300 rounded-xl"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3.5 text-zinc-600 hover:text-zinc-400 transition-colors"
-                  >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
+                <Input
+                  type="password"
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  minLength={mode === "register" ? 8 : undefined}
+                  className="h-12 border-white/[0.08] bg-[#0a0a0c] text-[14px] text-zinc-100 placeholder:text-zinc-700 focus:border-zinc-500 focus:bg-black/40 transition-all duration-300 rounded-xl"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
               </div>
+
+              {mode === "register" && (
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Ulangi Kata Sandi</label>
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    className="h-12 border-white/[0.08] bg-[#0a0a0c] text-[14px] text-zinc-100 placeholder:text-zinc-700 focus:border-zinc-500 focus:bg-black/40 transition-all duration-300 rounded-xl"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {mode === "login" && (
+                <label className="flex cursor-pointer items-center gap-2 text-[12px] text-zinc-400 select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-white"
+                  />
+                  Ingat akun ini
+                </label>
+              )}
 
               <AnimatePresence>
                 {authError && (
@@ -238,16 +583,43 @@ export default function UserLoginPage() {
                 )}
               </AnimatePresence>
 
-              <div className="itz-float mt-2">
-                <Button
-                  type="submit"
-                  className="itz-cta-pulse h-12 w-full bg-zinc-100 text-[13px] font-bold text-black hover:bg-white transition-all active:scale-[0.98] duration-200 rounded-xl"
-                  disabled={isLoading}
-                >
-                  {isLoading ? <Loader2 className="animate-spin" size={16} /> : "Masuk"}
-                </Button>
-              </div>
+              <Button
+                type="submit"
+                className="h-12 w-full bg-zinc-100 text-[13px] font-bold text-black hover:bg-white transition-all active:scale-[0.98] duration-200 rounded-xl"
+                disabled={
+                  isLoading ||
+                  !username.trim() ||
+                  !password ||
+                  (mode === "register" && (!email.trim() || password.length < 8 || !confirmPassword))
+                }
+              >
+                {isLoading ? <Loader2 className="animate-spin" size={16} /> : mode === "login" ? "Masuk" : "Daftar"}
+              </Button>
             </form>
+            )}
+
+            {mode === "login" && (
+              <button
+                type="button"
+                onClick={() => switchMode("forgot")}
+                className="mt-3 w-full text-center text-[12px] text-zinc-500 hover:text-zinc-200"
+              >
+                Lupa kata sandi?
+              </button>
+            )}
+
+            {(mode === "login" || mode === "register") && (
+              <p className="mt-5 text-center text-[12px] text-zinc-500">
+                {mode === "login" ? "Belum punya akun? " : "Sudah punya akun? "}
+                <button
+                  type="button"
+                  onClick={() => switchMode(mode === "login" ? "register" : "login")}
+                  className="font-medium text-zinc-200 underline-offset-4 hover:underline"
+                >
+                  {mode === "login" ? "Daftar" : "Masuk"}
+                </button>
+              </p>
+            )}
 
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
@@ -279,9 +651,8 @@ export default function UserLoginPage() {
             </Button>
           </div>
 
-          {/* jalur trial: langsung ke page chat tanpa login */}
           <a
-            href="/"
+            href="/chat"
             className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] bg-white/[0.03] text-[14px] font-medium text-zinc-300 transition-colors hover:border-white/[0.2] hover:bg-white/[0.06] hover:text-white"
           >
             Coba trial gratis
@@ -290,26 +661,6 @@ export default function UserLoginPage() {
           <p className="mt-2.5 text-center text-[11.5px] text-zinc-600">
             Tanpa daftar, langsung ngobrol dengan ITZ AI
           </p>
-
-          {/* nilai jual versi mobile */}
-          <div className="mt-6 lg:hidden">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-600">
-              Kenapa ITZ AI
-            </div>
-            <div className="mt-3 border-t border-white/[0.07]">
-              {VALUE_POINTS.map((v) => (
-                <div key={v.title} className="group flex gap-3 border-b border-white/[0.07] py-3 transition-colors hover:bg-white/[0.02]">
-                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] transition-colors group-hover:border-white/[0.16] group-hover:bg-white/[0.06]">
-                    <v.icon className="h-3.5 w-3.5 text-zinc-400 transition-colors group-hover:text-zinc-200" />
-                  </span>
-                  <div>
-                    <div className="text-[13px] font-medium text-zinc-200">{v.title}</div>
-                    <div className="mt-0.5 text-[12px] leading-relaxed text-zinc-500">{v.desc}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
         </motion.div>
       </div>
 

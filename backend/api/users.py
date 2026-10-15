@@ -1,5 +1,5 @@
+import hmac
 import re
-from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 try:
     from backend.config.config import settings
     from backend.database.db import DatabaseService
+    from backend.security import otp
     from backend.security.auth import (
         verify_password,
         hash_password,
@@ -21,6 +22,7 @@ try:
 except ImportError:
     from config.config import settings  # type: ignore
     from database.db import DatabaseService  # type: ignore
+    from security import otp  # type: ignore
     from security.auth import verify_password, hash_password, create_user_jwt, verify_user_jwt, USER_COOKIE_NAME, is_valid_username  # type: ignore
     from security.rate_limiter import get_client_ip, check_rate_limit, is_locked_out, record_failed_login, clear_failed_login  # type: ignore
     from api.admin import get_current_admin  # type: ignore
@@ -35,7 +37,7 @@ USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,32}$")
 
 class UserCreateRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
-    password: str = Field(min_length=6, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
     display_name: Optional[str] = Field(default=None, max_length=64)
     max_prompts: int = Field(default=50, ge=0, le=100000)
     is_active: bool = True
@@ -60,7 +62,7 @@ class UserUpdateRequest(BaseModel):
     display_name: Optional[str] = Field(default=None, max_length=64)
     max_prompts: Optional[int] = Field(default=None, ge=0, le=100000)
     is_active: Optional[bool] = None
-    password: Optional[str] = Field(default=None, min_length=6, max_length=128)
+    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
 
     @field_validator("display_name")
     @classmethod
@@ -81,6 +83,10 @@ class UserLoginRequest(BaseModel):
         if not USERNAME_RE.match(v):
             raise ValueError("Invalid username")
         return v
+
+class UserPasswordChangeRequest(BaseModel):
+    current_password: Optional[str] = Field(default=None, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 class AppSettingsUpdateRequest(BaseModel):
     user_token_expiry_hours: int = Field(ge=1, le=720)
@@ -109,6 +115,8 @@ def get_current_user(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=401, detail="Unauthorized: User not found")
     if not bool(user.get("is_active", True)):
         raise HTTPException(status_code=403, detail="Account disabled - hubungi admin")
+    if int(payload.get("sv") or 0) != int(user.get("session_version") or 0):
+        raise HTTPException(status_code=401, detail="Unauthorized: Session expired")
     return user
 
 
@@ -134,7 +142,7 @@ def user_login(payload: UserLoginRequest, request: Request, response: Response):
     # expiry from app settings
     app_s = DatabaseService.get_app_settings()
     hours = max(1, min(720, int(app_s.get("user_token_expiry_hours", 24))))
-    token = create_user_jwt(user["username"], expiry_hours=hours)
+    token = create_user_jwt(user["username"], expiry_hours=hours, session_version=int(user.get("session_version") or 0))
     response.set_cookie(
         key=USER_COOKIE_NAME,
         value=token,
@@ -146,6 +154,204 @@ def user_login(payload: UserLoginRequest, request: Request, response: Response):
     )
     return {"status": "success", "username": user["username"], "display_name": user.get("display_name"), "max_prompts": user.get("max_prompts"), "prompts_used": user.get("prompts_used", 0)}
 
+class UserRegisterRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=8, max_length=128)
+    display_name: Optional[str] = Field(default=None, max_length=64)
+
+    @field_validator("username")
+    @classmethod
+    def check_username(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not USERNAME_RE.match(v):
+            raise ValueError("Invalid username")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def check_email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not EMAIL_RE.match(v):
+            raise ValueError("Invalid email")
+        return v
+
+    @field_validator("display_name")
+    @classmethod
+    def strip_dn(cls, v):  # type: ignore
+        if v is None:
+            return v
+        v = str(v).strip()
+        return v or None
+
+
+EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$")
+
+
+def _issue_otp(email: str, purpose: str) -> None:
+    code = otp.generate_code()
+    DatabaseService.create_email_otp(email, purpose, otp.hash_code(email, purpose, code), otp.expires_at_iso())
+    try:
+        otp.send_otp_email(email, code, purpose)
+    except otp.MailError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+def _set_user_cookie(response: Response, user: Dict[str, Any]) -> None:
+    hours = max(1, min(720, int(DatabaseService.get_app_settings().get("user_token_expiry_hours", 24))))
+    token = create_user_jwt(user["username"], expiry_hours=hours, session_version=int(user.get("session_version") or 0))
+    response.set_cookie(
+        key=USER_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=settings.NODE_ENV == "production",
+        samesite="lax",
+        max_age=hours * 3600,
+        path="/",
+    )
+
+
+@router.post("/user/register", status_code=201)
+def user_register(payload: UserRegisterRequest, request: Request, response: Response):
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"user:register:{ip}", 5, 600)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Terlalu banyak pendaftaran. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
+    if DatabaseService.get_user_by_username(payload.username):
+        raise HTTPException(status_code=409, detail="Nama pengguna sudah dipakai")
+    if DatabaseService.get_user_by_email(payload.email):
+        raise HTTPException(status_code=409, detail="Email sudah terdaftar")
+    trial = max(0, int(DatabaseService.get_app_settings().get("trial_prompts", 3)))
+    user = DatabaseService.create_user({
+        "username": payload.username,
+        "password_hash": hash_password(payload.password),
+        "display_name": payload.display_name or payload.username,
+        "email": payload.email,
+        "email_verified": False,
+        "provider": "manual",
+        "max_prompts": trial,
+        "prompts_used": 0,
+        "is_active": True,
+    })
+    _issue_otp(payload.email, otp.PURPOSE_VERIFY)
+    _set_user_cookie(response, user)
+    return {
+        "status": "success",
+        "username": user["username"],
+        "display_name": user.get("display_name"),
+        "max_prompts": user.get("max_prompts"),
+        "prompts_used": 0,
+        "email_verified": False,
+    }
+
+
+class OtpVerifyRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+    @field_validator("email")
+    @classmethod
+    def norm_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+
+class EmailOnlyRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def norm_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+
+class PasswordResetRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=254)
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def norm_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+
+def _check_otp(email: str, purpose: str, code: str) -> None:
+    row = DatabaseService.get_latest_email_otp(email, purpose)
+    if not row:
+        raise HTTPException(status_code=400, detail="Kode tidak valid. Minta kode baru.")
+    if otp.is_expired(row.get("expires_at", "")):
+        raise HTTPException(status_code=400, detail="Kode sudah kedaluwarsa. Minta kode baru.")
+    attempts = int(row.get("attempts") or 0)
+    if attempts >= otp.OTP_MAX_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Terlalu banyak percobaan salah. Minta kode baru.")
+    expected = str(row.get("code_hash") or "")
+    if not hmac.compare_digest(expected, otp.hash_code(email, purpose, code)):
+        DatabaseService.update_email_otp_attempts(str(row["id"]), attempts + 1)
+        raise HTTPException(status_code=400, detail="Kode salah.")
+    DatabaseService.delete_email_otps(email, purpose)
+
+
+@router.post("/user/verify-email/send")
+def user_send_verify(request: Request, user: dict = Depends(get_current_user)):
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"user:otp_send:{ip}", 3, 600)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Terlalu sering meminta kode. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
+    if user.get("email_verified"):
+        return {"status": "already_verified"}
+    if not user.get("email"):
+        raise HTTPException(status_code=400, detail="Akun ini tidak memiliki email")
+    _issue_otp(str(user["email"]).lower(), otp.PURPOSE_VERIFY)
+    return {"status": "sent"}
+
+
+@router.post("/user/verify-email")
+def user_verify_email(payload: OtpVerifyRequest, request: Request, user: dict = Depends(get_current_user)):
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"user:otp_verify:{ip}", 10, 600)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
+    if not user.get("email") or str(user["email"]).lower() != payload.email:
+        raise HTTPException(status_code=400, detail="Email tidak cocok dengan akun")
+    _check_otp(payload.email, otp.PURPOSE_VERIFY, payload.code)
+    DatabaseService.update_user(str(user["id"]), {"email_verified": True})
+    return {"status": "verified"}
+
+
+@router.post("/user/password/forgot")
+def user_password_forgot(payload: EmailOnlyRequest, request: Request):
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"user:reset_send:{ip}", 3, 600)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Terlalu sering meminta kode. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
+    # Respons selalu sama agar tidak membocorkan email terdaftar atau tidak.
+    if DatabaseService.get_user_by_email(payload.email):
+        try:
+            _issue_otp(payload.email, otp.PURPOSE_RESET)
+        except HTTPException:
+            pass
+    return {"status": "sent", "message": "Jika email terdaftar, kode reset sudah dikirim."}
+
+
+@router.post("/user/password/reset")
+def user_password_reset(payload: PasswordResetRequest, request: Request, response: Response):
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"user:reset_verify:{ip}", 10, 600)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
+    user = DatabaseService.get_user_by_email(payload.email)
+    if not user or not user.get("is_active", True):
+        raise HTTPException(status_code=400, detail="Kode tidak valid. Minta kode baru.")
+    _check_otp(payload.email, otp.PURPOSE_RESET, payload.code)
+    new_version = int(user.get("session_version") or 0) + 1
+    updated = DatabaseService.update_user(str(user["id"]), {
+        "password_hash": hash_password(payload.new_password),
+        "session_version": new_version,
+        "email_verified": True,
+    }) or {**user, "session_version": new_version}
+    _set_user_cookie(response, updated)
+    return {"status": "success"}
+
 @router.get("/user/verify")
 def user_verify(request: Request, user: dict = Depends(get_current_user)):
     remaining = max(0, int(user.get("max_prompts", 0)) - int(user.get("prompts_used", 0))) if int(user.get("max_prompts", 0)) > 0 else None
@@ -153,6 +359,7 @@ def user_verify(request: Request, user: dict = Depends(get_current_user)):
 
 @router.post("/user/logout")
 def user_logout(request: Request, response: Response, user: dict = Depends(get_current_user)):
+    DatabaseService.update_user(str(user["id"]), {"session_version": int(user.get("session_version") or 0) + 1})
     response.delete_cookie(USER_COOKIE_NAME, path="/")
     return {"status": "success"}
 
@@ -166,6 +373,7 @@ def user_me(request: Request, user: dict = Depends(get_current_user)):
         "prompts_used": user.get("prompts_used", 0),
         "remaining": max(0, int(user.get("max_prompts", 0)) - int(user.get("prompts_used", 0))) if int(user.get("max_prompts", 0)) else None,
         "is_active": user.get("is_active", True),
+        "has_password": bool(user.get("password_hash")),
         "goal": str(profile.get("goal") or "").strip(),
         "style_id": str(profile.get("style_id") or "").strip(),
     }
@@ -240,6 +448,33 @@ def user_list_styles(user: dict = Depends(get_current_user)):
                     "prompt": str(s.get("prompt") or "").strip(),
                 })
     return {"styles": out}
+
+
+@router.put("/user/password")
+def user_change_password(payload: UserPasswordChangeRequest, request: Request, response: Response, user: dict = Depends(get_current_user)):
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"user:password:{ip}", 5, 300)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
+
+    current_hash = user.get("password_hash") or ""
+    if current_hash:
+        if not payload.current_password or not verify_password(payload.current_password, current_hash):
+            raise HTTPException(status_code=400, detail="Sandi lama salah")
+    new_version = int(user.get("session_version") or 0) + 1
+    DatabaseService.update_user(str(user["id"]), {"password_hash": hash_password(payload.new_password), "session_version": new_version})
+    hours = max(1, min(720, int(DatabaseService.get_app_settings().get("user_token_expiry_hours", 24))))
+    token = create_user_jwt(user["username"], expiry_hours=hours, session_version=new_version)
+    response.set_cookie(
+        key=USER_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=settings.NODE_ENV == "production",
+        samesite="lax",
+        max_age=hours * 3600,
+        path="/",
+    )
+    return {"status": "success", "has_password": True}
 
 
 @router.put("/user/profile")

@@ -3,12 +3,13 @@
 Flow:
   GET /api/auth/google-login  -> {"url": "https://accounts.google.com/..."}
   Browser -> Google consent -> redirect ke /api/auth/google-callback?code=...&state=...
-  Backend tukar code -> ambil profil -> sync user -> set cookie -> redirect ke /.
+  Backend tukar code -> ambil profil -> sync user -> set cookie -> redirect ke /chat.
 
 CSRF dilindungi lewat cookie `google_oauth_state` (dicek di callback).
 """
 import os
 import secrets
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -37,15 +38,16 @@ _SCOPES = "openid email profile"
 
 
 def _username_from_email(email: str) -> str:
-    """Email -> username valid (regex: ^[a-zA-Z0-9._-]{3,32}$).
-
-    '@' tidak diizinkan, jadi diganti '_'. Dipotong 32 char sesuai limit.
-    """
+    """Username awal dari email (regex: ^[a-zA-Z0-9._-]{3,32}$). Hanya saran, cek unik di pemanggil."""
     import re
-    uname = re.sub(r"[^a-zA-Z0-9._-]", "_", (email or "").strip().lower())[:32]
-    if len(uname) < 3:
-        uname = (uname + "_user")[:32]
-    return uname
+    base = re.sub(r"[^a-zA-Z0-9._-]", "_", (email or "").split("@")[0].strip().lower())[:24]
+    if len(base) < 3:
+        base = (base + "_user")[:24]
+    return f"{base}_{secrets.token_hex(3)}"
+
+
+def _new_username() -> str:
+    return f"u{secrets.token_hex(6)}"
 
 
 @router.get("/google-login")
@@ -57,15 +59,14 @@ async def google_login(response: Response):
         )
 
     state = secrets.token_urlsafe(32)
-    auth_url = (
-        "https://accounts.google.com/o/oauth2/v2/auth"
-        f"?client_id={GOOGLE_CLIENT_ID}"
-        f"&redirect_uri={GOOGLE_REDIRECT_URI}"
-        "&response_type=code"
-        f"&scope={_SCOPES}"
-        f"&state={state}"
-        "&prompt=select_account"
-    )
+    auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": _SCOPES,
+        "state": state,
+        "prompt": "select_account",
+    })
     response.set_cookie(
         key=STATE_COOKIE,
         value=state,
@@ -117,15 +118,17 @@ async def google_callback(request: Request, code: str = "", state: str = "", err
         return _redirect_with_error("Login Google gagal: koneksi ke Google error")
 
     email = str(profile.get("email") or "").strip().lower()
-    if not email or not profile.get("email_verified", True):
+    if not email or profile.get("verified_email") is False:
         return _redirect_with_error("Login Google gagal: email tidak terverifikasi")
 
-    username = _username_from_email(email)
-    display_name = str(profile.get("name") or username)[:100]
+    display_name = str(profile.get("name") or email.split("@")[0])[:100]
 
     try:
-        user = DatabaseService.get_user_by_username(username)
+        user = DatabaseService.get_user_by_email(email)
         if not user:
+            username = _username_from_email(email)
+            while DatabaseService.get_user_by_username(username):
+                username = _new_username()
             # Kuota awal = trial_prompts dari app_settings (bukan unlimited)
             app_s = DatabaseService.get_app_settings()
             trial = max(0, int(app_s.get("trial_prompts", 3)))
@@ -133,7 +136,9 @@ async def google_callback(request: Request, code: str = "", state: str = "", err
                 "username": username,
                 "display_name": display_name,
                 "email": email,
+                "email_verified": True,
                 "provider": "google",
+                "password_hash": "",
                 "max_prompts": trial,
                 "prompts_used": 0,
             })
@@ -143,8 +148,8 @@ async def google_callback(request: Request, code: str = "", state: str = "", err
         print(f"[google-oauth] db error: {e}")
         return _redirect_with_error("Login Google gagal: gagal menyimpan akun")
 
-    token = create_user_jwt(username)
-    redirect = RedirectResponse(url="/?welcome=1", status_code=302)
+    token = create_user_jwt(str(user["username"]), session_version=int(user.get("session_version") or 0))
+    redirect = RedirectResponse(url="/chat?welcome=1", status_code=302)
     redirect.set_cookie(
         key=USER_COOKIE_NAME,
         value=token,

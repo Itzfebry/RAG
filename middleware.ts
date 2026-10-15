@@ -69,15 +69,15 @@ export function middleware(req: NextRequest) {
     return res;
   }
 
-  // User wall: allow trial guests on / (chat); gate only if trial exhausted
+  // User wall: allow trial guests on /chat; gate only if trial exhausted
   // Trial enforcement is backend-side per-IP; middleware stays permissive for guests
-  if (pathname === "/" || pathname === "") {
+  if (pathname === "/" || pathname === "" || pathname.startsWith("/chat")) {
     return res;
   }
   if (pathname.startsWith("/login")) {
     if (userToken) {
       const url = req.nextUrl.clone();
-      url.pathname = "/";
+      url.pathname = "/chat";
       return NextResponse.redirect(url);
     }
     return res;
@@ -87,5 +87,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/login/:path*", "/", "/api/:path*"],
+  matcher: ["/admin/:path*", "/login/:path*", "/chat/:path*", "/", "/api/:path*"],
 };

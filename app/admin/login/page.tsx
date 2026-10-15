@@ -151,7 +151,7 @@ export default function AdminLoginPage() {
               </form>
             </CardContent>
             <CardFooter className="justify-center border-t border-white/[0.06] bg-white/[0.02] py-3">
-              <Button variant="ghost" nativeButton={false} render={<Link href="/" />} className="h-9 gap-1.5 text-[13px] font-normal text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200 cursor-pointer">
+              <Button variant="ghost" nativeButton={false} render={<Link href="/chat" />} className="h-9 gap-1.5 text-[13px] font-normal text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200 cursor-pointer">
                 <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Kembali
               </Button>
             </CardFooter>

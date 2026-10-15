@@ -445,6 +445,98 @@ class DatabaseService:
         return None
 
     @staticmethod
+    def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+        mail = str(email or "").strip().lower()
+        if not mail:
+            return None
+        if supabase_client:
+            try:
+                res = supabase_client.table("app_users").select("*").ilike("email", mail).execute()
+                for row in res.data or []:
+                    if str(row.get("email") or "").strip().lower() == mail:
+                        return row
+            except Exception:
+                pass
+        for u in _read_local_json(DatabaseService._users_file(), []):
+            if str(u.get("email") or "").strip().lower() == mail:
+                return u
+        return None
+
+    # ── Email OTP (verifikasi email & reset kata sandi). Tabel email_otps; fallback JSON lokal. ──
+    @staticmethod
+    def _otps_file() -> str:
+        return "email_otps.json"
+
+    @staticmethod
+    def delete_email_otps(email: str, purpose: str) -> None:
+        if supabase_client:
+            try:
+                supabase_client.table("email_otps").delete().eq("email", email).eq("purpose", purpose).execute()
+            except Exception as e:
+                print(f"Error deleting OTP in Supabase: {e}")
+        rows = _read_local_json(DatabaseService._otps_file(), [])
+        kept = [r for r in rows if not (r.get("email") == email and r.get("purpose") == purpose)]
+        if len(kept) != len(rows):
+            _write_local_json(DatabaseService._otps_file(), kept)
+
+    @staticmethod
+    def create_email_otp(email: str, purpose: str, code_hash: str, expires_at: str) -> Dict[str, Any]:
+        DatabaseService.delete_email_otps(email, purpose)
+        row = {
+            "id": str(uuid.uuid4()),
+            "email": email,
+            "purpose": purpose,
+            "code_hash": code_hash,
+            "attempts": 0,
+            "expires_at": expires_at,
+            "created_at": datetime.now().isoformat(),
+        }
+        if supabase_client:
+            try:
+                res = supabase_client.table("email_otps").insert(row).execute()
+                if res.data:
+                    return res.data[0]
+            except Exception as e:
+                print(f"Error creating OTP in Supabase: {e}")
+        rows = _read_local_json(DatabaseService._otps_file(), [])
+        rows.append(row)
+        _write_local_json(DatabaseService._otps_file(), rows)
+        return row
+
+    @staticmethod
+    def get_latest_email_otp(email: str, purpose: str) -> Optional[Dict[str, Any]]:
+        if supabase_client:
+            try:
+                res = (
+                    supabase_client.table("email_otps").select("*")
+                    .eq("email", email).eq("purpose", purpose)
+                    .order("created_at", desc=True).limit(1).execute()
+                )
+                if res.data:
+                    return res.data[0]
+            except Exception:
+                pass
+        rows = [r for r in _read_local_json(DatabaseService._otps_file(), []) if r.get("email") == email and r.get("purpose") == purpose]
+        if not rows:
+            return None
+        return max(rows, key=lambda r: str(r.get("created_at") or ""))
+
+    @staticmethod
+    def update_email_otp_attempts(otp_id: str, attempts: int) -> None:
+        if supabase_client:
+            try:
+                supabase_client.table("email_otps").update({"attempts": attempts}).eq("id", otp_id).execute()
+                return
+            except Exception as e:
+                print(f"Error updating OTP in Supabase: {e}")
+        rows = _read_local_json(DatabaseService._otps_file(), [])
+        for r in rows:
+            if str(r.get("id")) == str(otp_id):
+                r["attempts"] = attempts
+                _write_local_json(DatabaseService._otps_file(), rows)
+                break
+
+    @staticmethod
     def create_user(data: Dict[str, Any]) -> Dict[str, Any]:
         data = dict(data)
         data["id"] = data.get("id") or str(uuid.uuid4())

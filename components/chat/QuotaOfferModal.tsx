@@ -38,15 +38,21 @@ export default function QuotaOfferModal({
   open,
   variant,
   username,
+  used,
+  max,
   onClose,
 }: {
   open: boolean;
   variant: QuotaOfferVariant;
   username?: string | null;
+  used?: number | null;
+  max?: number | null;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const t = COPY[variant];
+  const hasCount = typeof used === "number" && typeof max === "number" && max > 0;
+  const pct = hasCount ? Math.min(100, Math.round((used! / max!) * 100)) : 100;
 
   useEffect(() => {
     if (!open) return;
@@ -145,13 +151,13 @@ export default function QuotaOfferModal({
                 <motion.div variants={item} className="mt-5 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
                   <div className="flex items-center justify-between text-[13px]">
                     <span className="text-zinc-400">Kuota terpakai</span>
-                    <span className="font-medium tabular-nums text-zinc-200">100%</span>
+                    <span className="font-medium tabular-nums text-zinc-200">{hasCount ? `${used} / ${max} prompt` : `${pct}%`}</span>
                   </div>
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
                     <motion.div
                       className="h-full rounded-full bg-white/70"
                       initial={{ width: 0 }}
-                      animate={{ width: "100%" }}
+                      animate={{ width: `${pct}%` }}
                       transition={{ duration: 0.9, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
                     />
                   </div>

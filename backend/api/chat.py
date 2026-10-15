@@ -59,6 +59,8 @@ def get_current_chat_user_optional(request: Request) -> Optional[Dict]:
         return None
     if not bool(user.get("is_active", True)):
         raise HTTPException(status_code=403, detail="Akun dinonaktifkan - hubungi admin")
+    if int(payload.get("sv") or 0) != int(user.get("session_version") or 0):
+        return None
     if DatabaseService.is_prompt_quota_exhausted(user):
         raise HTTPException(status_code=403, detail="Batas prompt habis - hubungi admin untuk menambah kuota")
     return user
@@ -190,6 +192,8 @@ async def stream_chat(payload: ChatRequest, request: Request):
         fresh = DatabaseService.get_user_by_id(str(user.get("id")))
         if fresh and DatabaseService.is_prompt_quota_exhausted(fresh):
             raise HTTPException(status_code=403, detail="Batas prompt habis - hubungi admin untuk menambah kuota")
+        if fresh and not str(fresh.get("display_name") or "").strip():
+            raise HTTPException(status_code=428, detail="Isi nama tampilan di profil sebelum chat")
     else:
         # trial gate - soft setting trial_prompts (0 = trial disabled => require login)
         allowed, retry = check_rate_limit(f"chat:trial:{ip}", 30, 60)
@@ -213,7 +217,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
     if user is not None:
         prof = DatabaseService.get_user_profile(str(user.get("id")))
         user_profile = {
-            "display_name": str(user.get("display_name") or user.get("username") or "").strip(),
+            "display_name": str(user.get("display_name") or "").strip(),
             "goal": str(prof.get("goal") or "").strip(),
             "style_id": str(prof.get("style_id") or "").strip(),
             "first_chat": len(history_dicts) == 0,

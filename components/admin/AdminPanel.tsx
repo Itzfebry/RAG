@@ -79,6 +79,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  cardBase, cardHeaderCls, cardContentCls,
+  tPage, tSub, tCard, tLabel, tBody, tSmall,
+  cUser, cModel, cSky, cViolet, cAmber, cEmerald, cRose, cZinc,
+  inputCls, textareaCls, sectionHeaderWrap,
+} from "./adminStyles";
+import { IdentityTab } from "./tabs/IdentityTab";
+import { PersonalTab } from "./tabs/PersonalTab";
+import { KnowledgeTab } from "./tabs/KnowledgeTab";
+import { PersonalityTab } from "./tabs/PersonalityTab";
+import { CommunicationTab } from "./tabs/CommunicationTab";
+import { InstructionsTab } from "./tabs/InstructionsTab";
+import { StylesTab } from "./tabs/StylesTab";
+import { SectionHeader } from "./SectionHeader";
 
 type TabType = "dashboard" | "users" | "identity" | "personal" | "knowledge" | "personality" | "communication" | "instructions" | "models" | "styles";
 
@@ -179,41 +193,6 @@ function BudgetGauge({ pct }: { pct: number }) {
 type ToastKind = "success" | "error" | "info";
 type Toast = { id: string; kind: ToastKind; title: string; desc?: string };
 
-/* ---- design tokens ---- */
-const cardBase = "rounded-xl border border-white/[0.07] bg-zinc-900/40 backdrop-blur";
-const cardHeaderCls = "px-5 pt-5 pb-3";
-const cardContentCls = "p-5 pt-0";
-const cardFooterCls = "p-5 pt-0";
-const rowCls = "px-5 py-4";
-
-/* typography scale - enlarged +4px vs original, hierarchy preserved */
-const tPage = "text-[26px] font-semibold tracking-tight text-white leading-none";
-const tSub = "text-[18px] font-semibold tracking-tight text-zinc-100";
-const tCard = "text-[15px] font-semibold tracking-[0.08em] uppercase text-zinc-300";
-const tLabel = "text-[14px] font-medium tracking-[0.06em] text-zinc-400 uppercase";
-const tBody = "text-[16px] leading-relaxed text-zinc-300";
-const tSmall = "text-[15px] leading-relaxed text-zinc-500";
-const tMono = "font-mono text-[15px]";
-const tStat = "mt-1.5 text-[28px] font-semibold tracking-tight text-white leading-none tabular-nums";
-const tValue = "text-[16px] font-semibold tabular-nums text-zinc-200";
-
-/* identity colors */
-const cUser = "text-sky-300";
-const cModel = "text-violet-300";
-const cName = "text-white";
-const cRole = "text-sky-400";
-const cSky = "text-sky-400";
-const cViolet = "text-violet-400";
-const cAmber = "text-amber-400";
-const cEmerald = "text-emerald-400";
-const cRose = "text-rose-400";
-const cZinc = "text-zinc-500";
-
-const inputCls = "h-9 border-white/10 bg-zinc-900 text-white placeholder:text-zinc-500 text-[16px]";
-const textareaCls = "border-white/10 bg-zinc-900 text-white placeholder:text-zinc-500 text-[16px] leading-relaxed";
-const sectionHeaderWrap = "border-b border-white/[0.06] pb-4";
-const sectionDescCls = "mt-1.5 text-[16px] leading-relaxed text-zinc-500";
-
 function fmtDateTime(iso?: string | null): string {
   if (!iso) return "-";
   const d = new Date(iso);
@@ -230,15 +209,6 @@ function parseAppSettings(s: any) {
     rag_match_count_long: Number(s.rag_match_count_long ?? 8),
     rag_match_threshold: threshold === null || threshold === undefined || threshold === "" ? null : Number(threshold),
   };
-}
-
-function SectionHeader({ title, desc }: { title: string; desc: string }) {
-  return (
-    <div className={sectionHeaderWrap}>
-      <h2 className={tPage}>{title}</h2>
-      <p className={sectionDescCls}>{desc}</p>
-    </div>
-  );
 }
 
 export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
@@ -1084,43 +1054,67 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
             </div>
           </motion.div>
 
-          <nav className="space-y-1" aria-label="Navigasi admin">
+          <nav className="space-y-5" aria-label="Navigasi admin">
             {[
-              { id: "dashboard", label: "Dashboard", icon: BarChart3 },
-              { id: "users", label: "Users", icon: User },
-              { id: "models", label: "AI Models", icon: Sparkles },
-              { id: "styles", label: "Gaya Respons", icon: Palette },
-              { id: "identity", label: "Identity", icon: Fingerprint },
-              { id: "personal", label: "Personal Info", icon: User },
-              { id: "knowledge", label: "Knowledge Base", icon: BookOpen },
-              { id: "personality", label: "Persona", icon: Brain },
-              { id: "communication", label: "Komunikasi", icon: MessageSquare },
-              { id: "instructions", label: "Aturan Sistem", icon: FileText },
-            ].map((item, idx) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: idx * 0.03 }}
-                >
-                  <Button
-                    variant={isActive ? "secondary" : "ghost"}
-                    onClick={() => switchTab(item.id as TabType)}
-                    className={`w-full justify-start gap-2.5 text-[16px] font-medium h-9 transition-colors cursor-pointer ${
-                      isActive
-                        ? "bg-white text-black shadow-sm border border-white"
-                        : "text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] border border-transparent"
-                    }`}
-                  >
-                    <Icon className="h-[15px] w-[15px] shrink-0" />
-                    <span>{item.label}</span>
-                  </Button>
-                </motion.div>
-              );
-            })}
+              {
+                group: "Ringkasan",
+                items: [
+                  { id: "dashboard", label: "Dashboard", icon: BarChart3 },
+                ],
+              },
+              {
+                group: "Pengguna",
+                items: [
+                  { id: "users", label: "Users", icon: User },
+                ],
+              },
+              {
+                group: "AI & Respons",
+                items: [
+                  { id: "models", label: "AI Models", icon: Sparkles },
+                  { id: "styles", label: "Gaya Respons", icon: Palette },
+                  { id: "communication", label: "Komunikasi", icon: MessageSquare },
+                  { id: "instructions", label: "Aturan Sistem", icon: FileText },
+                ],
+              },
+              {
+                group: "Konten & Persona",
+                items: [
+                  { id: "identity", label: "Identity", icon: Fingerprint },
+                  { id: "personal", label: "Personal Info", icon: User },
+                  { id: "personality", label: "Persona", icon: Brain },
+                  { id: "knowledge", label: "Knowledge Base", icon: BookOpen },
+                ],
+              },
+            ].map((group) => (
+              <div key={group.group}>
+                <p className="mb-1.5 px-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+                  {group.group}
+                </p>
+                <div className="space-y-0.5 border-l border-white/[0.06] pl-2">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeTab === item.id;
+                    return (
+                      <Button
+                        key={item.id}
+                        variant={isActive ? "secondary" : "ghost"}
+                        onClick={() => switchTab(item.id as TabType)}
+                        aria-current={isActive ? "page" : undefined}
+                        className={`w-full justify-start gap-2.5 text-[14px] font-medium h-9 transition-colors cursor-pointer ${
+                          isActive
+                            ? "bg-white/[0.08] text-white border border-white/[0.12]"
+                            : "text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04] border border-transparent"
+                        }`}
+                      >
+                        <Icon className="h-[15px] w-[15px] shrink-0" />
+                        <span>{item.label}</span>
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
         </div>
 
@@ -1144,7 +1138,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               );
             })()}
           </div>
-          <Button variant="ghost" nativeButton={false} render={<Link href="/" />} className="w-full justify-start gap-2.5 text-[16px] font-medium h-9 text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] cursor-pointer">
+          <Button variant="ghost" nativeButton={false} render={<Link href="/chat" />} className="w-full justify-start gap-2.5 text-[16px] font-medium h-9 text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] cursor-pointer">
             <ArrowLeft className="h-4 w-4 shrink-0" />
             <span>Back to Chat</span>
           </Button>
@@ -1175,91 +1169,6 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           {/* DASHBOARD */}
           {activeTab === "dashboard" && (
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Ringkasan kesehatan">
-                <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
-                  <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Backend</p>
-                  <p className={`mt-1 text-[18px] font-semibold ${health && !healthError ? "text-emerald-300" : healthError ? "text-red-300" : "text-zinc-500"}`}>
-                    {health && !healthError ? "Online" : healthError ? "Offline" : "Memuat..."}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
-                  <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Database</p>
-                  <p className={`mt-1 text-[18px] font-semibold ${health?.database?.ok ? "text-emerald-300" : health ? "text-red-300" : "text-zinc-500"}`}>
-                    {health ? (health.database?.ok ? "Supabase" : health.database?.mode || "Tidak terhubung") : "Memuat..."}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
-                  <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Provider</p>
-                  <p className="mt-1 text-[16px] font-semibold text-zinc-200">
-                    Chat: {health?.provider?.model || "-"}
-                  </p>
-                  <p className="text-[13px] text-zinc-500">Embedding: {health?.provider?.embedding || "-"}</p>
-                </div>
-                <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
-                  <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Token hari ini</p>
-                  {health?.token_budget ? (
-                    <>
-                      <p className={`mt-1 text-[18px] font-semibold ${health.token_budget.remaining !== null && health.token_budget.remaining < 0 ? "text-red-300" : "text-zinc-200"}`}>
-                        {fmtNum(health.token_budget.today)}
-                        {health.token_budget.budget > 0 && <span className="text-[13px] font-normal text-zinc-500"> / {fmtNum(health.token_budget.budget)}</span>}
-                      </p>
-                      <p className="text-[13px] text-zinc-500">
-                        {health.token_budget.budget === 0 ? "Tanpa batas" : health.token_budget.remaining < 0 ? "Budget terlampaui" : `Sisa ${fmtNum(health.token_budget.remaining)}`}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="mt-1 text-zinc-500">-</p>
-                  )}
-                </div>
-                <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 sm:col-span-2 xl:col-span-2">
-                  <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Error login terakhir</p>
-                  {health?.last_login_failure ? (
-                    <p className="mt-1 text-[14px] text-amber-300">
-                      {fmtDateTime(health.last_login_failure.created_at)} · {health.last_login_failure.actor} · {health.last_login_failure.detail}
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-[14px] text-zinc-500">Tidak ada kegagalan tercatat</p>
-                  )}
-                </div>
-                <div className="flex flex-col justify-between rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 sm:col-span-2 xl:col-span-2">
-                  <div>
-                    <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Knowledge base</p>
-                    <p className="mt-1 text-[14px] text-zinc-400">Embed ulang semua entry setelah ganti provider embedding.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={runReindex}
-                    disabled={reindexing}
-                    className="mt-3 inline-flex w-fit items-center gap-2 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2 text-[14px] text-zinc-200 hover:bg-white/[0.1] disabled:opacity-50"
-                  >
-                    {reindexing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Database className="h-4 w-4" aria-hidden />}
-                    {reindexing ? "Mengindeks ulang..." : "Reindex semua"}
-                  </button>
-                </div>
-              </section>
-
-              <section className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4" aria-label="Audit log">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-[12px] uppercase tracking-[0.14em] text-zinc-500">Audit log (20 terakhir)</p>
-                  <button type="button" onClick={loadAudit} className="text-[13px] text-zinc-400 hover:text-zinc-200">Muat ulang</button>
-                </div>
-                {auditRows.length === 0 ? (
-                  <p className="text-[14px] text-zinc-500">Belum ada aktivitas tercatat.</p>
-                ) : (
-                  <ul className="divide-y divide-white/[0.05] text-[13px]">
-                    {auditRows.map((r) => (
-                      <li key={`${r.created_at}-${r.action}-${r.actor}`} className="flex flex-wrap gap-x-3 gap-y-0.5 py-2">
-                        <span className="font-mono text-zinc-500">{fmtDateTime(r.created_at)}</span>
-                        <span className="text-zinc-300">{r.actor}</span>
-                        <span className="text-zinc-400">{r.action}</span>
-                        {r.target && <span className="font-mono text-zinc-500">{r.target}</span>}
-                        {r.detail && <span className="text-zinc-500">{r.detail}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
               <div className={sectionHeaderWrap}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -1292,6 +1201,83 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                 </div>
               </div>
 
+              <section className="overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.02]" aria-label="Status sistem">
+                <div className="grid gap-px bg-white/[0.06] sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="bg-[#0a0a0c] p-4">
+                    <div className="flex items-center justify-between">
+                      <p className={tLabel}>Backend</p>
+                      <Activity className={`h-4 w-4 ${health && !healthError ? "text-emerald-400" : healthError ? "text-red-400" : "text-zinc-600"}`} aria-hidden />
+                    </div>
+                    <p className="mt-2 flex items-center gap-2 text-[18px] font-semibold text-zinc-100">
+                      <span className={`h-2 w-2 rounded-full ${health && !healthError ? "bg-emerald-400" : healthError ? "bg-red-400" : "bg-zinc-600"}`} aria-hidden />
+                      {health && !healthError ? "Online" : healthError ? "Offline" : "Memuat..."}
+                    </p>
+                    <p className="mt-1 text-[13px] text-zinc-500">Cek otomatis tiap 30 detik</p>
+                  </div>
+                  <div className="bg-[#0a0a0c] p-4">
+                    <div className="flex items-center justify-between">
+                      <p className={tLabel}>Database</p>
+                      <Database className={`h-4 w-4 ${health?.database?.ok ? "text-emerald-400" : health ? "text-red-400" : "text-zinc-600"}`} aria-hidden />
+                    </div>
+                    <p className="mt-2 flex items-center gap-2 text-[18px] font-semibold text-zinc-100">
+                      <span className={`h-2 w-2 rounded-full ${health?.database?.ok ? "bg-emerald-400" : health ? "bg-red-400" : "bg-zinc-600"}`} aria-hidden />
+                      {health ? (health.database?.ok ? "Terhubung" : "Tidak terhubung") : "Memuat..."}
+                    </p>
+                    <p className="mt-1 text-[13px] text-zinc-500">Mode: <span className="font-mono text-zinc-400">{health?.database?.mode || "-"}</span></p>
+                  </div>
+                  <div className="bg-[#0a0a0c] p-4">
+                    <div className="flex items-center justify-between">
+                      <p className={tLabel}>Token hari ini</p>
+                      <Coins className="h-4 w-4 text-amber-400" aria-hidden />
+                    </div>
+                    {health?.token_budget ? (
+                      <>
+                        <p className={`mt-2 font-mono text-[18px] font-semibold tabular-nums ${health.token_budget.remaining !== null && health.token_budget.remaining < 0 ? "text-red-300" : "text-zinc-100"}`}>
+                          {fmtNum(health.token_budget.today)}
+                          {health.token_budget.budget > 0 && <span className="text-[13px] font-normal text-zinc-500"> / {fmtNum(health.token_budget.budget)}</span>}
+                        </p>
+                        <p className="mt-1 text-[13px] text-zinc-500">
+                          {health.token_budget.budget === 0 ? "Budget: tanpa batas" : health.token_budget.remaining < 0 ? "Budget terlampaui" : `Sisa ${fmtNum(health.token_budget.remaining)}`}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-[18px] font-semibold text-zinc-500">-</p>
+                    )}
+                  </div>
+                  <div className="bg-[#0a0a0c] p-4">
+                    <div className="flex items-center justify-between">
+                      <p className={tLabel}>Model AI</p>
+                      <Cpu className="h-4 w-4 text-emerald-400" aria-hidden />
+                    </div>
+                    <p className="mt-2 truncate font-mono text-[15px] font-semibold text-zinc-100" title={modelConfig.active_model}>{modelConfig.active_model || "-"}</p>
+                    <p className="mt-1 flex items-center gap-1.5 text-[13px] text-zinc-500">
+                      <Layers className="h-3.5 w-3.5" aria-hidden />
+                      Fallback: <span className="font-mono text-zinc-300">{modelConfig.fallback_models.length}</span>
+                      {modelConfig.fallback_models.length > 0 && <span className="truncate font-mono text-zinc-500" title={modelConfig.fallback_models.join(", ")}>· {modelConfig.fallback_models[0]}{modelConfig.fallback_models.length > 1 ? ` +${modelConfig.fallback_models.length - 1}` : ""}</span>}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] px-4 py-3 text-[13px]">
+                  <p className="text-zinc-500">
+                    Error login terakhir:{" "}
+                    {health?.last_login_failure ? (
+                      <span className="text-amber-300">{fmtDateTime(health.last_login_failure.created_at)} · {health.last_login_failure.actor} · {health.last_login_failure.detail}</span>
+                    ) : (
+                      <span className="text-zinc-400">tidak ada</span>
+                    )}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={runReindex}
+                    disabled={reindexing}
+                    className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-[13px] text-zinc-200 hover:bg-white/[0.1] disabled:opacity-50"
+                  >
+                    {reindexing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Database className="h-3.5 w-3.5" aria-hidden />}
+                    {reindexing ? "Mengindeks ulang..." : "Reindex knowledge"}
+                  </button>
+                </div>
+              </section>
+
               {!realStats ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                   {[1,2,3,4].map((i) => (
@@ -1303,9 +1289,9 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                   {/* KPI row ala referensi: icon kanan-atas, delta chip, sub "vs ..." */}
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     {[
-                      { label: "Total Requests", value: fmtNum(realStats.totalRequests), delta: reqDelta, vs: "vs kemarin", sub: `${realStats.totalPromptsUsed} user + ${realStats.trialTotalUsed} trial`, icon: TrendingUp, iconBg: "bg-emerald-500/10 border-emerald-500/15", iconColor: "text-emerald-400" },
+                      { label: "Total Requests", value: fmtNum(realStats.totalRequests), delta: reqDelta, vs: "last day", sub: `${realStats.totalPromptsUsed} user + ${realStats.trialTotalUsed} trial`, icon: TrendingUp, iconBg: "bg-emerald-500/10 border-emerald-500/15", iconColor: "text-emerald-400" },
                       { label: "Users", value: `${realStats.activeUsers}/${realStats.totalUsers}`, delta: null, vs: "", sub: `${realStats.disabledUsers} nonaktif · ${realStats.exhausted} quota habis · ${realStats.unlimitedUsers} ∞`, icon: User, iconBg: "bg-sky-500/10 border-sky-500/15", iconColor: "text-sky-400" },
-                      { label: "Token Hari Ini", value: tokenStats ? fmtNum(tokenStats.today?.total) : "-", delta: tokDelta, vs: "vs kemarin", sub: tokenStats ? `${fmtNum(tokenStats.today?.prompt)} prompt · ${fmtNum(tokenStats.today?.completion)} completion` : "memuat...", icon: Coins, iconBg: "bg-violet-500/10 border-violet-500/15", iconColor: "text-violet-400" },
+                      { label: "Token Hari Ini", value: tokenStats ? fmtNum(tokenStats.today?.total) : "-", delta: tokDelta, vs: "last day", sub: tokenStats ? `${fmtNum(tokenStats.today?.prompt)} prompt · ${fmtNum(tokenStats.today?.completion)} completion` : "memuat...", icon: Coins, iconBg: "bg-violet-500/10 border-violet-500/15", iconColor: "text-violet-400" },
                       { label: "Total Token", value: tokenStats ? fmtNum(tokenStats.total?.total) : "-", delta: null, vs: "", sub: tokenStats ? `rata2 ${fmtNum(tokAvg14)}/hari · ${fmtNum(tokenStats.total?.prompt)} prompt` : "sejak awal", icon: Zap, iconBg: "bg-amber-500/10 border-amber-500/15", iconColor: "text-amber-400" },
                     ].map((stat, idx) => {
                       const Icon = stat.icon;
@@ -1340,7 +1326,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                               <p className="text-[34px] font-semibold leading-none tracking-tight text-white tabular-nums">
                                 {tokenStats ? fmtNum(tokenStats.today?.total) : "-"}
                               </p>
-                              <DeltaChip v={tokDelta} vs="vs kemarin" />
+                              <DeltaChip v={tokDelta} vs="last day" />
                             </div>
                             <p className="mt-2 text-[13px] text-zinc-500">hari ini · {tokenStats ? fmtNum(tokenStats.today?.prompt) : "-"} prompt + {tokenStats ? fmtNum(tokenStats.today?.completion) : "-"} completion</p>
                           </div>
@@ -1408,7 +1394,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                     </Card>
 
                     {/* Right column: gauge budget + hari terpadat + model (alà Repeat Rate / Most Active / AI Assistant) */}
-                    <div className="space-y-4">
+                    <div className="flex flex-col gap-4 [&>*]:flex-1">
                       <Card className={cardBase}>
                         <CardHeader className={cardHeaderCls}>
                           <CardTitle className={`${tCard} flex items-center gap-2`}><Coins className="h-3.5 w-3.5 text-amber-400" /> Budget Harian</CardTitle>
@@ -1499,6 +1485,84 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                         </CardContent>
                       </Card>
                     </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <Card className={cardBase}>
+                      <CardHeader className={cardHeaderCls}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <CardTitle className={`${tCard} flex items-center gap-2`}><Activity className="h-3.5 w-3.5 text-sky-400" /> Total Requests</CardTitle>
+                          <div className="flex items-center rounded-full border border-white/10 bg-white/[0.03] p-0.5 text-[13px]">
+                            {(["day","week","month","year"] as const).map((p) => (
+                              <button key={p} onClick={() => { setChartPeriod(p); fetchStats(p); }} className={`rounded-full px-2.5 py-1 capitalize transition ${chartPeriod === p ? "bg-white text-black" : "text-zinc-400 hover:text-zinc-200"}`}>{p === "day" ? "Day" : p === "week" ? "Week" : p === "month" ? "Month" : "Year"}</button>
+                            ))}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className={cardContentCls}>
+                        {!realStats.dailyRequests || realStats.dailyRequests.length === 0 ? (
+                          <div className="py-16 text-center text-[16px] text-zinc-500">Belum ada data.</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height={280}>
+                            <BarChart data={realStats.dailyRequests.map((d: any) => {
+                              const lab = String(d.day);
+                              const short = chartPeriod === "day" ? fmtDay(lab) : lab;
+                              return { day: short, count: d.count, full: chartPeriod === "day" ? fmtDayFull(lab) : lab };
+                            })} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.35} vertical={false} />
+                              <XAxis dataKey="day" stroke="#52525b" fontSize={11} fontFamily="monospace" interval={0} tickLine={false} axisLine={{ stroke: "#27272a" }} />
+                              <YAxis stroke="#52525b" fontSize={11} fontFamily="monospace" allowDecimals={false} tickFormatter={fmtCompact} width={44} axisLine={false} tickLine={false} />
+                              <Tooltip content={<ChartTooltip unit=" req" />} cursor={{ fill: "rgba(255,255,255,0.03)" }} labelFormatter={(_: any, payload: any) => payload?.[0]?.payload?.full || _} />
+                              <Bar dataKey="count" name="Requests" fill="#38bdf8" radius={[4,4,0,0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        )}
+                      </CardContent>
+                    </Card>
+                    <Card className={cardBase}>
+                      <CardHeader className={cardHeaderCls}><CardTitle className={`${tCard} flex items-center gap-2`}><Clock className="h-3.5 w-3.5 text-amber-400" /> Response Time Rata2 Models (ms)</CardTitle></CardHeader>
+                      <CardContent className={cardContentCls}>
+                        {!realStats.dailyLatency || realStats.dailyLatency.every((d: any) => d.avg_ms == null) ? (
+                          <div className="py-16 text-center text-[16px] text-zinc-500">Belum ada latency - chat dulu untuk isi data.</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height={280}>
+                            <LineChart data={realStats.dailyLatency.map((d: any) => {
+                              const lab = String(d.day);
+                              const short = chartPeriod === "day" ? fmtDay(lab) : lab;
+                              return { day: short, avg_ms: d.avg_ms, full: chartPeriod === "day" ? fmtDayFull(lab) : lab };
+                            })} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.35} vertical={false} />
+                              <XAxis dataKey="day" stroke="#52525b" fontSize={11} fontFamily="monospace" interval={0} tickLine={false} axisLine={{ stroke: "#27272a" }} />
+                              <YAxis stroke="#52525b" fontSize={11} fontFamily="monospace" tickFormatter={fmtCompact} width={44} axisLine={false} tickLine={false} />
+                              <Tooltip content={<ChartTooltip unit=" ms" />} cursor={{ stroke: "#3f3f46", strokeWidth: 1 }} labelFormatter={(_: any, payload: any) => payload?.[0]?.payload?.full || _} />
+                              <Line type="linear" dataKey="avg_ms" name="Rata-rata" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2.5, fill: "#0c0c10", stroke: "#f59e0b", strokeWidth: 2 }} activeDot={{ r: 4.5, fill: "#f59e0b", stroke: "#0c0c10", strokeWidth: 2 }} connectNulls />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        )}
+                        {realStats.dailyLatency && (() => {
+                          const agg: Record<string, { sum: number; cnt: number }> = {};
+                          realStats.dailyLatency.forEach((d: any) => (d.models || []).forEach((m: any) => {
+                            const k = m.model || "unknown";
+                            if (!agg[k]) agg[k] = { sum: 0, cnt: 0 };
+                            agg[k].sum += (m.avg_ms || 0) * (m.count || 1);
+                            agg[k].cnt += (m.count || 1);
+                          }));
+                          const rows = Object.entries(agg).map(([model, v]) => ({ model, avg_ms: Math.round(v.sum / Math.max(1, v.cnt)), count: v.cnt })).sort((a,b) => a.avg_ms - b.avg_ms).slice(0, 6);
+                          const label = chartPeriod === "day" ? "14 hari" : chartPeriod === "week" ? "12 minggu" : chartPeriod === "month" ? "12 bulan" : "6 tahun";
+                          return rows.length ? (
+                            <div className="mt-4 space-y-1.5 border-t border-white/[0.06] pt-4">
+                              <p className="text-[13px] font-medium tracking-[0.06em] text-zinc-500 uppercase">Rata-rata per model ({label})</p>
+                              {rows.map((r) => (
+                                <div key={r.model} className="flex items-center justify-between gap-2 text-[16px]">
+                                  <span className="truncate font-mono text-zinc-300 text-[14px]" title={r.model}>{r.model}</span>
+                                  <span className="shrink-0 tabular-nums text-zinc-400 text-[14px]">{r.avg_ms} ms · {r.count}x</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null;
+                        })()}
+                      </CardContent>
+                    </Card>
                   </div>
 
                   {/* Token per user (kumulatif + hari ini) */}
@@ -1643,84 +1707,6 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                     </Card>
                   </div>
 
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <Card className={cardBase}>
-                      <CardHeader className={cardHeaderCls}>
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <CardTitle className={`${tCard} flex items-center gap-2`}><Activity className="h-3.5 w-3.5 text-sky-400" /> Total Requests</CardTitle>
-                          <div className="flex items-center rounded-full border border-white/10 bg-white/[0.03] p-0.5 text-[13px]">
-                            {(["day","week","month","year"] as const).map((p) => (
-                              <button key={p} onClick={() => { setChartPeriod(p); fetchStats(p); }} className={`rounded-full px-2.5 py-1 capitalize transition ${chartPeriod === p ? "bg-white text-black" : "text-zinc-400 hover:text-zinc-200"}`}>{p === "day" ? "Day" : p === "week" ? "Week" : p === "month" ? "Month" : "Year"}</button>
-                            ))}
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className={cardContentCls}>
-                        {!realStats.dailyRequests || realStats.dailyRequests.length === 0 ? (
-                          <div className="py-16 text-center text-[16px] text-zinc-500">Belum ada data.</div>
-                        ) : (
-                          <ResponsiveContainer width="100%" height={280}>
-                            <BarChart data={realStats.dailyRequests.map((d: any) => {
-                              const lab = String(d.day);
-                              const short = chartPeriod === "day" ? fmtDay(lab) : lab;
-                              return { day: short, count: d.count, full: chartPeriod === "day" ? fmtDayFull(lab) : lab };
-                            })} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.35} vertical={false} />
-                              <XAxis dataKey="day" stroke="#52525b" fontSize={11} fontFamily="monospace" interval={0} tickLine={false} axisLine={{ stroke: "#27272a" }} />
-                              <YAxis stroke="#52525b" fontSize={11} fontFamily="monospace" allowDecimals={false} tickFormatter={fmtCompact} width={44} axisLine={false} tickLine={false} />
-                              <Tooltip content={<ChartTooltip unit=" req" />} cursor={{ fill: "rgba(255,255,255,0.03)" }} labelFormatter={(_: any, payload: any) => payload?.[0]?.payload?.full || _} />
-                              <Bar dataKey="count" name="Requests" fill="#38bdf8" radius={[4,4,0,0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        )}
-                      </CardContent>
-                    </Card>
-                    <Card className={cardBase}>
-                      <CardHeader className={cardHeaderCls}><CardTitle className={`${tCard} flex items-center gap-2`}><Clock className="h-3.5 w-3.5 text-amber-400" /> Response Time Rata2 Models (ms)</CardTitle></CardHeader>
-                      <CardContent className={cardContentCls}>
-                        {!realStats.dailyLatency || realStats.dailyLatency.every((d: any) => d.avg_ms == null) ? (
-                          <div className="py-16 text-center text-[16px] text-zinc-500">Belum ada latency - chat dulu untuk isi data.</div>
-                        ) : (
-                          <ResponsiveContainer width="100%" height={280}>
-                            <LineChart data={realStats.dailyLatency.map((d: any) => {
-                              const lab = String(d.day);
-                              const short = chartPeriod === "day" ? fmtDay(lab) : lab;
-                              return { day: short, avg_ms: d.avg_ms, full: chartPeriod === "day" ? fmtDayFull(lab) : lab };
-                            })} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.35} vertical={false} />
-                              <XAxis dataKey="day" stroke="#52525b" fontSize={11} fontFamily="monospace" interval={0} tickLine={false} axisLine={{ stroke: "#27272a" }} />
-                              <YAxis stroke="#52525b" fontSize={11} fontFamily="monospace" tickFormatter={fmtCompact} width={44} axisLine={false} tickLine={false} />
-                              <Tooltip content={<ChartTooltip unit=" ms" />} cursor={{ stroke: "#3f3f46", strokeWidth: 1 }} labelFormatter={(_: any, payload: any) => payload?.[0]?.payload?.full || _} />
-                              <Line type="monotone" dataKey="avg_ms" name="Rata-rata" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2.5, fill: "#0c0c10", stroke: "#f59e0b", strokeWidth: 2 }} activeDot={{ r: 4.5, fill: "#f59e0b", stroke: "#0c0c10", strokeWidth: 2 }} connectNulls />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        )}
-                        {realStats.dailyLatency && (() => {
-                          const agg: Record<string, { sum: number; cnt: number }> = {};
-                          realStats.dailyLatency.forEach((d: any) => (d.models || []).forEach((m: any) => {
-                            const k = m.model || "unknown";
-                            if (!agg[k]) agg[k] = { sum: 0, cnt: 0 };
-                            agg[k].sum += (m.avg_ms || 0) * (m.count || 1);
-                            agg[k].cnt += (m.count || 1);
-                          }));
-                          const rows = Object.entries(agg).map(([model, v]) => ({ model, avg_ms: Math.round(v.sum / Math.max(1, v.cnt)), count: v.cnt })).sort((a,b) => a.avg_ms - b.avg_ms).slice(0, 6);
-                          const label = chartPeriod === "day" ? "14 hari" : chartPeriod === "week" ? "12 minggu" : chartPeriod === "month" ? "12 bulan" : "6 tahun";
-                          return rows.length ? (
-                            <div className="mt-4 space-y-1.5 border-t border-white/[0.06] pt-4">
-                              <p className="text-[13px] font-medium tracking-[0.06em] text-zinc-500 uppercase">Rata-rata per model ({label})</p>
-                              {rows.map((r) => (
-                                <div key={r.model} className="flex items-center justify-between gap-2 text-[16px]">
-                                  <span className="truncate font-mono text-zinc-300 text-[14px]" title={r.model}>{r.model}</span>
-                                  <span className="shrink-0 tabular-nums text-zinc-400 text-[14px]">{r.avg_ms} ms · {r.count}x</span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : null;
-                        })()}
-                      </CardContent>
-                    </Card>
-                  </div>
-
                   <Card className={cardBase}>
                     <CardHeader className={cardHeaderCls}><CardTitle className={`${tCard} flex items-center gap-2`}><Activity className="h-3.5 w-3.5 text-emerald-400" /> System</CardTitle></CardHeader>
                     <CardContent className={cardContentCls}>
@@ -1738,6 +1724,28 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                       </div>
                     </CardContent>
                   </Card>
+
+                  <section className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4" aria-label="Audit log">
+                    <div className="mb-3 flex items-center justify-between">
+                      <p className={tLabel}>Log aktivitas (20 terakhir)</p>
+                      <button type="button" onClick={loadAudit} className="text-[13px] text-zinc-400 hover:text-zinc-200">Muat ulang</button>
+                    </div>
+                    {auditRows.length === 0 ? (
+                      <p className="text-[14px] text-zinc-500">Belum ada aktivitas tercatat.</p>
+                    ) : (
+                      <ul className="divide-y divide-white/[0.05] text-[13px]">
+                        {auditRows.map((r) => (
+                          <li key={`${r.created_at}-${r.action}-${r.actor}`} className="flex flex-wrap gap-x-3 gap-y-0.5 py-2">
+                            <span className="font-mono text-zinc-500">{fmtDateTime(r.created_at)}</span>
+                            <span className="text-zinc-300">{r.actor}</span>
+                            <span className="text-zinc-400">{r.action}</span>
+                            {r.target && <span className="font-mono text-zinc-500">{r.target}</span>}
+                            {r.detail && <span className="text-zinc-500">{r.detail}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
                 </>
               )}
             </motion.div>
@@ -1824,16 +1832,27 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                                   </div>
                                 </td>
                                 <td className="px-4 py-3.5">
-                                  {isGoogle ? (
-                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-300">
-                                      <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-                                      Google
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-zinc-400">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" /> Password
-                                    </span>
-                                  )}
+                                  <div className="flex flex-col items-start gap-1">
+                                    {isGoogle ? (
+                                      <span className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[12px] font-medium text-zinc-200">
+                                        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                                        Google
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[12px] font-medium text-zinc-200">
+                                        {(u.provider || "").toLowerCase() === "manual" ? "Dibuat admin" : "Email & sandi"}
+                                      </span>
+                                    )}
+                                    {u.email ? (
+                                      u.email_verified ? (
+                                        <span className="text-[11px] font-medium text-emerald-400">Email terverifikasi</span>
+                                      ) : (
+                                        <span className="text-[11px] font-medium text-amber-400">Email belum diverifikasi</span>
+                                      )
+                                    ) : (
+                                      <span className="text-[11px] text-zinc-500">Tanpa email</span>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="px-4 py-3.5">
                                   {!u.is_active ? (
@@ -2135,278 +2154,74 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
           {/* STYLES (Gaya Respons) */}
           {activeTab === "styles" && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <SectionHeader title="Gaya Respons" desc="Tentukan template gaya jawaban AI. User hanya bisa memilih, tidak bisa custom." />
-              {stylesData.styles.map((s, idx) => (
-                <Card key={s.id || idx} className={cardBase}>
-                  <CardHeader className={cardHeaderCls}>
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <CardTitle className={tCard}>{s.name || `Gaya ${idx + 1}`}</CardTitle>
-                      <span className="rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 font-mono text-[13px] text-zinc-500">id: {s.id}</span>
-                    </div>
-                  </CardHeader>
-                  <CardContent className={`${cardContentCls} grid gap-4`}>
-                    <div className="space-y-2">
-                      <Label className={tLabel}>Nama Gaya</Label>
-                      <Input value={s.name} onChange={(e) => setStylesData((p) => ({ styles: p.styles.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)) }))} className={inputCls} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className={tLabel}>Deskripsi (untuk user)</Label>
-                      <Textarea rows={2} value={s.description} onChange={(e) => setStylesData((p) => ({ styles: p.styles.map((x, i) => (i === idx ? { ...x, description: e.target.value } : x)) }))} className={textareaCls} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className={tLabel}>Instruksi Prompt (dikirim ke model)</Label>
-                      <Textarea rows={5} value={s.prompt} onChange={(e) => setStylesData((p) => ({ styles: p.styles.map((x, i) => (i === idx ? { ...x, prompt: e.target.value } : x)) }))} className={textareaCls} />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-              <div className="flex justify-end">
-                <Button onClick={() => handleSaveConfig("styles")} disabled={saving} className="h-10 bg-white px-6 text-[15px] font-semibold text-black hover:bg-zinc-200">
-                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Simpan Gaya Respons
-                </Button>
-              </div>
-            </motion.div>
+            <StylesTab
+              styles={stylesData.styles}
+              onChange={(styles) => setStylesData({ styles })}
+              onSave={() => handleSaveConfig("styles")}
+              saving={saving}
+            />
           )}
 
           {/* IDENTITY */}
           {activeTab === "identity" && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <SectionHeader title="Identitas AI" desc="Menentukan identitas dasar, nama, peran, dan tujuan ITZ AI." />
-              <Card className={cardBase}>
-                <CardHeader className={cardHeaderCls}>
-                  <CardTitle className={tCard}>Identitas</CardTitle>
-                </CardHeader>
-                <CardContent className={`${cardContentCls} grid gap-4`}>
-                  <div className="space-y-2">
-                    <Label className={tLabel}><span className="flex items-center gap-1.5"><Fingerprint className={`h-3.5 w-3.5 ${cSky}`} />Nama AI</span></Label>
-                    <Input value={identityData.name} onChange={(e) => setIdentityData({ ...identityData, name: e.target.value })} className={inputCls} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className={tLabel}><span className="flex items-center gap-1.5"><Briefcase className={`h-3.5 w-3.5 ${cViolet}`} />Peran</span></Label>
-                    <Input value={identityData.role} onChange={(e) => setIdentityData({ ...identityData, role: e.target.value })} className={inputCls} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className={tLabel}><span className="flex items-center gap-1.5"><ScrollText className={`h-3.5 w-3.5 ${cAmber}`} />Deskripsi</span></Label>
-                    <Textarea rows={2} value={identityData.description} onChange={(e) => setIdentityData({ ...identityData, description: e.target.value })} className={textareaCls} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className={tLabel}><span className="flex items-center gap-1.5"><Brain className={`h-3.5 w-3.5 ${cEmerald}`} />Pernyataan Identitas</span></Label>
-                    <Textarea rows={3} value={identityData.identity} onChange={(e) => setIdentityData({ ...identityData, identity: e.target.value })} className={textareaCls} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className={tLabel}><span className="flex items-center gap-1.5"><Target className={`h-3.5 w-3.5 ${cRose}`} />Tujuan</span></Label>
-                    <Textarea rows={3} value={identityData.purpose} onChange={(e) => setIdentityData({ ...identityData, purpose: e.target.value })} className={textareaCls} />
-                  </div>
-                </CardContent>
-                <CardFooter className="justify-end p-5 pt-0">
-                  <Button onClick={() => handleSaveConfig("identity")} disabled={saving} className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5">
-                    <Save className="h-4 w-4" />
-                    <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
-                  </Button>
-                </CardFooter>
-              </Card>
-            </motion.div>
+            <IdentityTab
+              data={identityData}
+              onChange={setIdentityData}
+              onSave={() => handleSaveConfig("identity")}
+              saving={saving}
+            />
           )}
 
           {/* PERSONAL */}
           {activeTab === "personal" && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <SectionHeader title="Informasi Personal" desc="Informasi mengenai owner yang dipakai sebagai konteks AI." />
-              <Card className={cardBase}>
-                <CardHeader className={cardHeaderCls}>
-                  <CardTitle className={tCard}>Personal Information</CardTitle>
-                </CardHeader>
-                <CardContent className={`${cardContentCls} grid gap-4`}>
-                  {[
-                    { key: "profile", label: "Profil", Icon: User, color: cSky },
-                    { key: "background", label: "Latar Belakang", Icon: History, color: cAmber },
-                    { key: "interests", label: "Minat", Icon: Heart, color: cRose },
-                    { key: "experience", label: "Pengalaman", Icon: Briefcase, color: cViolet },
-                    { key: "projects", label: "Proyek", Icon: Rocket, color: cEmerald },
-                    { key: "preferences", label: "Preferensi", Icon: Settings2, color: cZinc },
-                    { key: "relevant_context", label: "Konteks Relevan", Icon: MapPin, color: cSky },
-                  ].map((item) => {
-                    const Ico = item.Icon;
-                    return (
-                    <div key={item.key} className="space-y-2">
-                      <Label className={tLabel}><span className="flex items-center gap-1.5"><Ico className={`h-3.5 w-3.5 ${item.color}`} />{item.label}</span></Label>
-                      <Textarea rows={2} value={(personalData as any)[item.key] || ""} onChange={(e) => setPersonalData({ ...personalData, [item.key]: e.target.value })} className={textareaCls} />
-                    </div>
-                  );})}
-                </CardContent>
-                <CardFooter className="justify-end p-5 pt-0">
-                  <Button onClick={() => handleSaveConfig("personal")} disabled={saving} className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5">
-                    <Save className="h-4 w-4" />
-                    <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
-                  </Button>
-                </CardFooter>
-              </Card>
-            </motion.div>
+            <PersonalTab
+              data={personalData}
+              onChange={setPersonalData}
+              onSave={() => handleSaveConfig("personal")}
+              saving={saving}
+            />
           )}
 
           {/* KNOWLEDGE */}
           {activeTab === "knowledge" && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <SectionHeader title="Basis Pengetahuan" desc="Pengetahuan owner terstruktur dan persisten dengan pencarian embedding semantik." />
-              <Card className={cardBase}>
-                <CardHeader className={cardHeaderCls}>
-                  <div className="flex items-center justify-between gap-3">
-                    <CardTitle className={tCard}>Knowledge Entries</CardTitle>
-                    <Button onClick={() => { setEntryForm({ id: "", title: "", content: "", category_id: "" }); setNewEntryModal(true); }} className="h-8 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5">
-                      <Plus className="h-4 w-4" />
-                      <span>Tambah Knowledge</span>
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className={`${cardContentCls} space-y-4`}>
-                  <div className="flex flex-wrap gap-2">
-                    {knowledgeCategories.map((cat) => (
-                      <Button key={cat.id} variant={selectedCategorySlug === cat.slug ? "default" : "outline"} size="sm" onClick={() => setSelectedCategorySlug(cat.slug)} className={`h-8 text-[14px] ${selectedCategorySlug === cat.slug ? "bg-white text-black hover:bg-zinc-100 border border-white" : "border-white/10 bg-white/[0.04] text-zinc-300 hover:bg-white/[0.08]"}`}>
-                        {cat.name}
-                      </Button>
-                    ))}
-                  </div>
-                  <div className="space-y-3">
-                    {knowledgeEntries
-                      .filter((e) => {
-                        const cat = knowledgeCategories.find((c) => c.id === e.category_id);
-                        return !selectedCategorySlug || (cat && cat.slug === selectedCategorySlug);
-                      })
-                      .map((entry) => (
-                        <Card key={entry.id} className="rounded-xl border border-white/[0.07] bg-zinc-900/60">
-                          <CardContent className="flex items-start justify-between gap-3 p-4">
-                            <div className="space-y-1 min-w-0">
-                              <h4 className="text-[16px] font-medium text-zinc-200 leading-relaxed">{entry.title}</h4>
-                              <p className="line-clamp-2 text-[14px] leading-relaxed text-zinc-500">{entry.content}</p>
-                            </div>
-                            <Button variant="ghost" size="icon" onClick={() => handleDeleteKnowledgeEntry(entry.id)} className="shrink-0 h-8 w-8 text-zinc-500 hover:text-red-300 hover:bg-red-500/10" title="Hapus entri">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    {knowledgeEntries.filter((e) => {
-                      const cat = knowledgeCategories.find((c) => c.id === e.category_id);
-                      return !selectedCategorySlug || (cat && cat.slug === selectedCategorySlug);
-                    }).length === 0 && (
-                      <Card className="border-dashed border-white/10 bg-zinc-900/40 rounded-xl">
-                        <CardContent className="p-8 text-center text-[16px] text-zinc-500">
-                          Belum ada knowledge pada kategori ini. Klik "Tambah Knowledge" untuk membuat entri baru.
-                        </CardContent>
-                      </Card>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+            <KnowledgeTab
+              categories={knowledgeCategories}
+              entries={knowledgeEntries}
+              selectedCategorySlug={selectedCategorySlug}
+              onSelectCategory={setSelectedCategorySlug}
+              onAddEntry={() => { setEntryForm({ id: "", title: "", content: "", category_id: "" }); setNewEntryModal(true); }}
+              onDeleteEntry={handleDeleteKnowledgeEntry}
+            />
           )}
 
           {/* PERSONALITY */}
           {activeTab === "personality" && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <SectionHeader title="Kepribadian" desc="Menentukan karakter, nada, sikap, dan batasan perilaku AI." />
-              <Card className={cardBase}>
-                <CardHeader className={cardHeaderCls}>
-                  <CardTitle className={tCard}>Personality</CardTitle>
-                </CardHeader>
-                <CardContent className={`${cardContentCls} grid gap-4`}>
-                  {[
-                    { key: "personality", label: "Kepribadian", Icon: Brain, color: cViolet },
-                    { key: "tone", label: "Nada", Icon: Mic2, color: cSky },
-                    { key: "attitude", label: "Sikap", Icon: Heart, color: cRose },
-                    { key: "reasoning_style", label: "Gaya Penalaran", Icon: Lightbulb, color: cAmber },
-                    { key: "criticism_style", label: "Gaya Kritik", Icon: MessageSquare, color: cSky },
-                    { key: "response_behavior", label: "Perilaku Respons", Icon: Zap, color: cAmber },
-                    { key: "prohibited_behavior", label: "Perilaku Terlarang", Icon: ShieldCheck, color: cEmerald },
-                  ].map((item) => {
-                    const Ico = item.Icon;
-                    return (
-                    <div key={item.key} className="space-y-2">
-                      <Label className={tLabel}><span className="flex items-center gap-1.5"><Ico className={`h-3.5 w-3.5 ${item.color}`} />{item.label}</span></Label>
-                      <Textarea rows={2} value={(personalityData as any)[item.key] || ""} onChange={(e) => setPersonalityData({ ...personalityData, [item.key]: e.target.value })} className={textareaCls} />
-                    </div>
-                  );})}
-                </CardContent>
-                <CardFooter className="justify-end p-5 pt-0">
-                  <Button onClick={() => handleSaveConfig("personality")} disabled={saving} className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5">
-                    <Save className="h-4 w-4" />
-                    <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
-                  </Button>
-                </CardFooter>
-              </Card>
-            </motion.div>
+            <PersonalityTab
+              data={personalityData}
+              onChange={setPersonalityData}
+              onSave={() => handleSaveConfig("personality")}
+              saving={saving}
+            />
           )}
 
           {/* COMMUNICATION */}
           {activeTab === "communication" && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <SectionHeader title="Gaya Komunikasi" desc="Pengaturan bahasa, panjang respons, format, dan kedalaman teknis." />
-              <Card className={cardBase}>
-                <CardHeader className={cardHeaderCls}>
-                  <CardTitle className={tCard}>Communication</CardTitle>
-                </CardHeader>
-                <CardContent className={`${cardContentCls} grid gap-4`}>
-                  {[
-                    { key: "primary_language", label: "Bahasa Utama", Icon: Globe, color: cSky },
-                    { key: "tone", label: "Nada", Icon: Mic2, color: cRose },
-                    { key: "response_length", label: "Panjang Respons", Icon: Type, color: cZinc },
-                    { key: "formatting_preference", label: "Preferensi Format", Icon: Palette, color: cViolet },
-                    { key: "technical_depth", label: "Kedalaman Teknis", Icon: Gauge, color: cAmber },
-                    { key: "explanation_style", label: "Gaya Penjelasan", Icon: PenTool, color: cEmerald },
-                  ].map((item) => {
-                    const Ico = item.Icon;
-                    return (
-                    <div key={item.key} className="space-y-2">
-                      <Label className={tLabel}><span className="flex items-center gap-1.5"><Ico className={`h-3.5 w-3.5 ${item.color}`} />{item.label}</span></Label>
-                      <Input value={(commData as any)[item.key] || ""} onChange={(e) => setCommData({ ...commData, [item.key]: e.target.value })} className={inputCls} />
-                    </div>
-                  );})}
-                </CardContent>
-                <CardFooter className="justify-end p-5 pt-0">
-                  <Button onClick={() => handleSaveConfig("communication")} disabled={saving} className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5">
-                    <Save className="h-4 w-4" />
-                    <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
-                  </Button>
-                </CardFooter>
-              </Card>
-            </motion.div>
+            <CommunicationTab
+              data={commData}
+              onChange={setCommData}
+              onSave={() => handleSaveConfig("communication")}
+              saving={saving}
+            />
           )}
 
           {/* INSTRUCTIONS */}
           {activeTab === "instructions" && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <SectionHeader title="Instruksi Sistem" desc="Layer dengan prioritas tertinggi untuk behavioral rules, safety rules, dan knowledge priority." />
-              <Card className={cardBase}>
-                <CardHeader className={cardHeaderCls}>
-                  <CardTitle className={tCard}>System Instructions</CardTitle>
-                </CardHeader>
-                <CardContent className={`${cardContentCls} grid gap-4`}>
-                  {[
-                    { key: "behavioral_rules", label: "Behavioral Rules", Icon: Cog, color: cZinc },
-                    { key: "response_rules", label: "Response Rules", Icon: ScrollText, color: cAmber },
-                    { key: "safety_rules", label: "Safety Rules", Icon: ShieldCheck, color: cEmerald },
-                    { key: "knowledge_priority", label: "Knowledge Priority", Icon: Layers3, color: cViolet },
-                    { key: "reasoning_constraints", label: "Reasoning Constraints", Icon: GitBranch, color: cSky },
-                    { key: "formatting_rules", label: "Formatting Rules", Icon: FileCode, color: cRose },
-                  ].map((item) => {
-                    const Ico = item.Icon;
-                    return (
-                    <div key={item.key} className="space-y-2">
-                      <Label className={tLabel}><span className="flex items-center gap-1.5"><Ico className={`h-3.5 w-3.5 ${item.color}`} />{item.label}</span></Label>
-                      <Textarea rows={2} value={(sysData as any)[item.key] || ""} onChange={(e) => setSysData({ ...sysData, [item.key]: e.target.value })} className={textareaCls} />
-                    </div>
-                  );})}
-                </CardContent>
-                <CardFooter className="justify-end p-5 pt-0">
-                  <Button onClick={() => handleSaveConfig("instructions")} disabled={saving} className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5">
-                    <Save className="h-4 w-4" />
-                    <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
-                  </Button>
-                </CardFooter>
-              </Card>
-            </motion.div>
+            <InstructionsTab
+              data={sysData}
+              onChange={setSysData}
+              onSave={() => handleSaveConfig("instructions")}
+              saving={saving}
+            />
           )}
 
         </div>

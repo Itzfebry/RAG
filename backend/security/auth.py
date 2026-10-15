@@ -29,7 +29,7 @@ def verify_password(plain: str, hash_val: str) -> bool:
 def is_valid_username(username: str) -> bool:
     return bool(USERNAME_RE.match(username or ""))
 
-def create_jwt(username: str, role: str = "admin", expiry_hours: int | None = None) -> str:
+def create_jwt(username: str, role: str = "admin", expiry_hours: int | None = None, extra: dict | None = None) -> str:
     now = datetime.now(timezone.utc)
     hours = expiry_hours if expiry_hours is not None else (JWT_EXPIRY_HOURS if role == "admin" else 24)
     payload = {
@@ -38,13 +38,14 @@ def create_jwt(username: str, role: str = "admin", expiry_hours: int | None = No
         "iat": now,
         "exp": now + timedelta(hours=hours),
         "jti": secrets.token_hex(8),
+        **(extra or {}),
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=JWT_ALGO)
 
 def create_admin_jwt(username: str) -> str:
     return create_jwt(username, role="admin", expiry_hours=JWT_EXPIRY_HOURS)
 
-def create_user_jwt(username: str, expiry_hours: int | None = None) -> str:
+def create_user_jwt(username: str, expiry_hours: int | None = None, session_version: int = 0) -> str:
     # expiry dynamically fetched from settings if not passed
     if expiry_hours is None:
         try:
@@ -58,7 +59,8 @@ def create_user_jwt(username: str, expiry_hours: int | None = None) -> str:
         except Exception:
             expiry_hours = 24
         expiry_hours = max(1, min(720, int(expiry_hours)))
-    return create_jwt(username, role="user", expiry_hours=expiry_hours)
+    token_payload_extra = {"sv": int(session_version)}
+    return create_jwt(username, role="user", expiry_hours=expiry_hours, extra=token_payload_extra)
 
 def verify_jwt(token: str, allowed_roles: tuple[str, ...] | None = None) -> dict | None:
     try:
