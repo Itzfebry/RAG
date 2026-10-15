@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// Edge middleware: rate limit + separate admin/user login walls
+// Edge proxy: rate limit + separate admin/user login walls
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 180;
 const ipHits = new Map<string, number[]>();
@@ -27,7 +27,7 @@ function isRateLimited(ip: string): boolean {
   return fresh.length > RATE_MAX;
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const ip = getIp(req);
 
@@ -48,7 +48,6 @@ export function middleware(req: NextRequest) {
   }
 
   const adminToken = req.cookies.get("itz_admin_token")?.value;
-  const userToken = req.cookies.get("itz_user_token")?.value;
 
   // Admin wall: /admin -> require admin token, /admin/login is public
   if (pathname === "/admin" || pathname.startsWith("/admin/")) {
@@ -70,19 +69,7 @@ export function middleware(req: NextRequest) {
   }
 
   // User wall: allow trial guests on /chat; gate only if trial exhausted
-  // Trial enforcement is backend-side per-IP; middleware stays permissive for guests
-  if (pathname === "/" || pathname === "" || pathname.startsWith("/chat")) {
-    return res;
-  }
-  if (pathname.startsWith("/login")) {
-    if (userToken) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/chat";
-      return NextResponse.redirect(url);
-    }
-    return res;
-  }
-
+  // Trial enforcement is backend-side per-IP; proxy stays permissive for guests
   return res;
 }
 

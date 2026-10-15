@@ -247,12 +247,15 @@ export default function QuotaOfferModal({
                 )}
 
                 {variant === "trial" && (
-                  <a
-                    href="/login"
-                    className="flex items-center justify-center gap-1 text-[14px] text-zinc-400 transition-colors hover:text-white"
-                  >
-                    Sudah punya akun? Login <ArrowUpRight className="h-3.5 w-3.5" />
-                  </a>
+                  <div className="flex items-center justify-center gap-4 text-[14px] text-zinc-400">
+                    <a href="/login?mode=register" className="flex items-center gap-1 font-medium text-zinc-200 transition-colors hover:text-white">
+                      Daftar akun <ArrowUpRight className="h-3.5 w-3.5" />
+                    </a>
+                    <span className="text-zinc-600">·</span>
+                    <a href="/login" className="flex items-center gap-1 transition-colors hover:text-white">
+                      Sudah punya akun? Login
+                    </a>
+                  </div>
                 )}
 
                 <button

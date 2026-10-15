@@ -272,7 +272,7 @@ class AgentOrchestrator:
                         }
                     
                     # Stream content in chunks - 12 chars smooth, tanpa sleep
-                    content_text = _clean_chunk(content_text)
+                    content_text = _CLOSING_RE.sub("", _clean_chunk(content_text))
                     if ttft_ms is None:
                         ttft_ms = int((time.perf_counter() - start) * 1000)
                     buffer = ""

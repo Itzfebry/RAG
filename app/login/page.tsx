@@ -46,11 +46,13 @@ export default function UserLoginPage() {
   const [infoMsg, setInfoMsg] = useState("");
 
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search).get("auth_error");
+    const sp = new URLSearchParams(window.location.search);
+    const p = sp.get("auth_error");
     if (p) {
       setAuthError(p);
       window.history.replaceState({}, "", window.location.pathname);
     }
+    if (sp.get("mode") === "register") setMode("register");
     try {
       const saved = localStorage.getItem(REMEMBER_KEY);
       if (saved) {
@@ -268,7 +270,7 @@ export default function UserLoginPage() {
               ] }}
               transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
             >
-              <Image src="/image/favicon.png" alt="ITZ" width={44} height={44} className="h-full w-full object-cover" />
+              <Image src="/image/favicon.png" alt="ITZ" width={44} height={44} loading="eager" className="h-full w-full object-cover" />
             </motion.span>
             <div>
               <div className="text-[15px] font-semibold tracking-[0.12em] text-zinc-100">ITZ AI</div>
@@ -304,22 +306,21 @@ export default function UserLoginPage() {
             transition={{ duration: 0.9, delay: 0.75, ease: EASE }}
             className="mt-9 border-t border-white/[0.07]"
           >
-            {VALUE_POINTS.map((v) => (
+            {VALUE_POINTS.map((v, i) => (
               <motion.div
                 key={v.title}
                 initial={{ opacity: 0, x: -12 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.5, delay: 0.85 + VALUE_POINTS.indexOf(v) * 0.1, ease: EASE }}
+                transition={{ duration: 0.5, delay: 0.85 + i * 0.1, ease: EASE }}
                 whileHover={{ x: 4 }}
                 className="group flex cursor-default gap-4 border-b border-white/[0.07] py-4 transition-colors hover:bg-white/[0.02]"
               >
-                <motion.span
-                  whileHover={{ rotate: [0, -10, 10, 0], scale: 1.08 }}
-                  transition={{ duration: 0.5 }}
-                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] transition-colors group-hover:border-white/[0.16] group-hover:bg-white/[0.06]"
+                <span
+                  className="itz-float mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] transition-colors group-hover:border-white/[0.16] group-hover:bg-white/[0.06]"
+                  style={{ animationDelay: `${i * 0.5}s` }}
                 >
                   <v.icon className="h-4 w-4 text-zinc-400 transition-colors group-hover:text-zinc-200" />
-                </motion.span>
+                </span>
                 <div>
                   <div className="text-[14px] font-medium text-zinc-200">{v.title}</div>
                   <div className="mt-0.5 text-[13px] leading-relaxed text-zinc-500">{v.desc}</div>
@@ -554,11 +555,11 @@ export default function UserLoginPage() {
               )}
 
               <div className="space-y-1.5">
-                <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Nama Pengguna</label>
+                <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{mode === "login" ? "Nama Pengguna atau Email" : "Nama Pengguna"}</label>
                 <Input
                   autoComplete="username"
                   className="h-12 border-white/[0.08] bg-[#0a0a0c] text-[14px] text-zinc-100 placeholder:text-zinc-700 focus:border-zinc-500 focus:bg-black/40 transition-all duration-300 rounded-xl"
-                  placeholder="Username"
+                  placeholder={mode === "login" ? "Username atau email" : "Username"}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />
@@ -623,7 +624,7 @@ export default function UserLoginPage() {
 
               <Button
                 type="submit"
-                className="h-12 w-full bg-zinc-100 text-[13px] font-bold text-black hover:bg-white transition-all active:scale-[0.98] duration-200 rounded-xl"
+                className="itz-cta-pulse h-12 w-full bg-zinc-100 text-[13px] font-bold text-black hover:bg-white transition-all active:scale-[0.98] duration-200 rounded-xl"
                 onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-1px)")}
                 onMouseLeave={(e) => (e.currentTarget.style.transform = "")}
                 disabled={

@@ -429,7 +429,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
   const loadAudit = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/python/admin/audit?limit=20");
+      const res = await fetch("/api/python/admin/audit?limit=100");
       if (res.ok) setAuditRows((await res.json()).items || []);
     } catch {}
   }, []);
@@ -1720,19 +1720,41 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
                   <section className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4" aria-label="Audit log">
                     <div className="mb-3 flex items-center justify-between">
-                      <p className={tLabel}>Log aktivitas (20 terakhir)</p>
+                      <p className={tLabel}>Log aktivitas admin (20 terakhir)</p>
                       <button type="button" onClick={loadAudit} className="text-[13px] text-zinc-400 hover:text-zinc-200">Muat ulang</button>
                     </div>
-                    {auditRows.length === 0 ? (
+                    {auditRows.filter((r) => !String(r.action).startsWith("user_")).length === 0 ? (
                       <p className="text-[14px] text-zinc-500">Belum ada aktivitas tercatat.</p>
                     ) : (
                       <ul className="divide-y divide-white/[0.05] text-[13px]">
-                        {auditRows.map((r) => (
+                        {auditRows.filter((r) => !String(r.action).startsWith("user_")).slice(0, 20).map((r) => (
                           <li key={`${r.created_at}-${r.action}-${r.actor}`} className="flex flex-wrap gap-x-3 gap-y-0.5 py-2">
                             <span className="font-mono text-zinc-500">{fmtDateTime(r.created_at)}</span>
                             <span className="text-zinc-300">{r.actor}</span>
                             <span className="text-zinc-400">{r.action}</span>
                             {r.target && <span className="font-mono text-zinc-500">{r.target}</span>}
+                            {r.detail && <span className="text-zinc-500">{r.detail}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+
+                  <section className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4" aria-label="Log login user">
+                    <div className="mb-3 flex items-center justify-between">
+                      <p className={tLabel}>Log login user (20 terakhir)</p>
+                      <button type="button" onClick={loadAudit} className="text-[13px] text-zinc-400 hover:text-zinc-200">Muat ulang</button>
+                    </div>
+                    {auditRows.filter((r) => String(r.action).startsWith("user_")).length === 0 ? (
+                      <p className="text-[14px] text-zinc-500">Belum ada login user tercatat.</p>
+                    ) : (
+                      <ul className="divide-y divide-white/[0.05] text-[13px]">
+                        {auditRows.filter((r) => String(r.action).startsWith("user_")).slice(0, 20).map((r) => (
+                          <li key={`${r.created_at}-${r.action}-${r.actor}`} className="flex flex-wrap gap-x-3 gap-y-0.5 py-2">
+                            <span className="font-mono text-zinc-500">{fmtDateTime(r.created_at)}</span>
+                            <span className="text-zinc-300">{r.actor}</span>
+                            <span className={r.action === "user_login_failed" ? "text-red-300" : "text-emerald-300"}>{r.action}</span>
+                            {r.ip && <span className="font-mono text-zinc-500">{r.ip}</span>}
                             {r.detail && <span className="text-zinc-500">{r.detail}</span>}
                           </li>
                         ))}

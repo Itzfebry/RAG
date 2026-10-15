@@ -6,6 +6,7 @@ import { MessageBubble } from "@/components/chat/MessageBubble";
 import { AIChatInput } from "@/components/ui/ai-chat-input";
 import QuotaOfferModal, { QuotaOfferVariant } from "@/components/chat/QuotaOfferModal";
 import QuotaNotice from "@/components/chat/QuotaNotice";
+import ChatHistoryPanel, { ChatSummary } from "@/components/chat/ChatHistoryPanel";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, Info, X } from "lucide-react";
 
@@ -60,6 +61,12 @@ export default function ChatPage() {
   const [pwMsg, setPwMsg] = useState<string | null>(null);
   const [pwSaving, setPwSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
+  // Riwayat chat tersimpan (hanya user login). Trial/tamu tetap state lokal.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [chatList, setChatList] = useState<ChatSummary[]>([]);
+  const [chatLimit, setChatLimit] = useState(3);
+  const [chatRetention, setChatRetention] = useState(7);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   useEffect(() => {
     if (quotaOffer === "quota" || quotaOffer === "trial") {
       setQuotaOut(quotaOffer);
@@ -164,6 +171,56 @@ export default function ChatPage() {
     window.location.href = "/login";
   };
 
+  const loadChatList = useCallback(async () => {
+    try {
+      const r = await fetch("/api/python/user/chats");
+      if (!r.ok) return;
+      const j = await r.json();
+      setChatList(j.items || []);
+      if (typeof j.limit === "number") setChatLimit(j.limit);
+      if (typeof j.retention_days === "number") setChatRetention(j.retention_days);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (userInfo) loadChatList();
+  }, [userInfo, loadChatList]);
+
+  const openChat = async (id: string) => {
+    if (isLoading) return;
+    try {
+      const r = await fetch(`/api/python/user/chats/${id}`);
+      if (!r.ok) { setError("Chat tidak ditemukan"); return; }
+      const j = await r.json();
+      setMessages((j.messages || []).map((m: { role: "user" | "assistant"; content: string }) => ({ role: m.role, content: m.content })));
+      setActiveChatId(id);
+      setError(null);
+      setHistoryOpen(false);
+    } catch {
+      setError("Gagal membuka chat");
+    }
+  };
+
+  const deleteChat = async (id: string) => {
+    if (!window.confirm("Hapus chat ini? Tindakan ini tidak bisa dibatalkan.")) return;
+    try {
+      const r = await fetch(`/api/python/user/chats/${id}`, { method: "DELETE" });
+      if (!r.ok) { setError("Gagal menghapus chat"); return; }
+      if (activeChatId === id) { setActiveChatId(null); setMessages([]); }
+      await loadChatList();
+    } catch {
+      setError("Gagal menghapus chat");
+    }
+  };
+
+  const startNewChat = () => {
+    setActiveChatId(null);
+    setMessages([]);
+    setError(null);
+    setQuotaAlert(null);
+    setHistoryOpen(false);
+  };
+
   const openProfile = useCallback(() => {
     if (!userInfo) return;
     setProfileName(userInfo.display_name || "");
@@ -250,8 +307,51 @@ export default function ChatPage() {
     if (!input.trim() || isLoading) return;
     const userMessage = input.trim();
     setInput("");
+    await runChat(userMessage, messages);
+  };
+
+  const handleRegenerate = async () => {
+    if (isLoading) return;
+    const idx = messages.map((m) => m.role).lastIndexOf("user");
+    if (idx < 0) return;
+    await runChat(String(messages[idx].content), messages.slice(0, idx));
+  };
+
+  const saveTurn = async (userMessage: string, answer: string) => {
+    try {
+      let id = activeChatId;
+      if (!id) {
+        const r = await fetch("/api/python/user/chats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: userMessage.slice(0, 60) }),
+        });
+        if (!r.ok) {
+          // batas 3 chat tercapai: jawaban tetap tampil, tapi tidak disimpan
+          if (r.status === 409) setQuotaAlert((await r.json().catch(() => ({}))).detail || "Maksimal 3 chat tersimpan.");
+          return;
+        }
+        const j = await r.json();
+        id = String(j.id);
+        setActiveChatId(id);
+      }
+      await fetch(`/api/python/user/chats/${id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            { role: "user", content: userMessage },
+            { role: "assistant", content: answer },
+          ],
+        }),
+      });
+      await loadChatList();
+    } catch {}
+  };
+
+  const runChat = async (userMessage: string, base: Message[]) => {
     setError(null);
-    const next: Message[] = [...messages, { role: "user", content: userMessage }];
+    const next: Message[] = [...base, { role: "user", content: userMessage }];
     setMessages(next);
     const started = Date.now();
     startedAtRef.current = started;
@@ -312,6 +412,9 @@ export default function ChatPage() {
       }
       if (userInfo) fetch("/api/python/user/me").then(async (r) => { if (r.ok) { const j = await r.json(); setUserInfo(j); if (j.remaining === 0) { setQuotaOut("quota"); setQuotaNoticeHidden(false); } } }).catch(() => {});
       else fetch("/api/python/trial").then((x) => x.json()).then(setTrialInfo).catch(() => {});
+      if (userInfo && acc.trim()) {
+        void saveTurn(userMessage, acc);
+      }
       const dur = Date.now() - started;
       setMessages((prev) => {
         const u = [...prev];
@@ -383,7 +486,7 @@ export default function ChatPage() {
               <Info className="h-4 w-4" />
             </motion.button>
             {infoOpen && (
-              <div className="absolute right-0 top-full z-40 mt-2 w-60 overflow-hidden rounded-xl border border-white/10 bg-[#16161c] shadow-[0_16px_48px_rgba(0,0,0,0.65)]">
+              <div className="fixed inset-x-3 top-[64px] z-40 overflow-hidden rounded-xl border border-white/10 bg-[#16161c] shadow-[0_16px_48px_rgba(0,0,0,0.65)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-60">
                 <div className="flex items-center justify-between border-b border-white/[0.07] bg-white/[0.03] px-4 py-2.5">
                   <span className="text-[10.5px] font-medium uppercase tracking-wider text-zinc-500">Info Kuota</span>
                   <span className="relative flex h-1.5 w-1.5" aria-hidden>
@@ -409,8 +512,19 @@ export default function ChatPage() {
               </div>
             )}
           </div>
+          {userInfo && (
+            <button
+              onClick={() => { setHistoryOpen(true); loadChatList(); }}
+              title="Riwayat chat"
+              aria-label="Riwayat chat"
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
+            >
+              <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
+              <span className="hidden sm:inline">Riwayat</span>
+            </button>
+          )}
           <button 
-            onClick={() => { setMessages([]); setError(null); setQuotaAlert(null); setSuggestions(pickSuggestions()); refreshSuggestions(); }}
+            onClick={() => { startNewChat(); setSuggestions(pickSuggestions()); refreshSuggestions(); }}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
           >
             <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
@@ -448,6 +562,18 @@ export default function ChatPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ChatHistoryPanel
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        items={chatList}
+        activeId={activeChatId}
+        limit={chatLimit}
+        retentionDays={chatRetention}
+        onOpenChat={openChat}
+        onDeleteChat={deleteChat}
+        onNewChat={startNewChat}
+      />
 
       {/* Konfirmasi keluar */}
       <AnimatePresence>
@@ -758,6 +884,7 @@ export default function ChatPage() {
                         content={m.content}
                         isStreaming={streaming}
                         durationMs={streaming && !m.durationMs ? elapsedMs : m.durationMs}
+                        onRegenerate={i === messages.length - 1 && m.role === "assistant" && !isLoading && messages.length > 1 ? handleRegenerate : undefined}
                       />
                     );
                   })}

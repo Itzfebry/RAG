@@ -5,7 +5,7 @@ import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, RotateCw } from "lucide-react";
 import { TripleDotSpinner } from "@/components/ui/triple-dot-spinner";
 import { motion } from "framer-motion";
 
@@ -14,6 +14,7 @@ interface Props {
   content: string | any;
   isStreaming?: boolean;
   durationMs?: number;
+  onRegenerate?: () => void;
 }
 
 function fmtSec(ms: number) {
@@ -21,7 +22,7 @@ function fmtSec(ms: number) {
   return `${(ms / 1000).toFixed(2)} dtk`;
 }
 
-export const MessageBubble: React.FC<Props> = ({ role, content, isStreaming = false, durationMs }) => {
+export const MessageBubble: React.FC<Props> = ({ role, content, isStreaming = false, durationMs, onRegenerate }) => {
   const [copied, setCopied] = useState(false);
   const raw =
     typeof content === "string"
@@ -129,6 +130,15 @@ export const MessageBubble: React.FC<Props> = ({ role, content, isStreaming = fa
               {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
               {copied ? "Copied" : "Copy"}
             </button>
+            {onRegenerate && (
+              <button
+                onClick={onRegenerate}
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.07] bg-white/[0.04] px-2.5 py-1 text-[11px] tracking-wide text-zinc-500 opacity-0 transition-all duration-200 hover:border-white/[0.12] hover:bg-white/[0.08] hover:text-zinc-300 hover:scale-105 group-hover:opacity-100 focus-visible:opacity-100"
+              >
+                <RotateCw className="h-3 w-3" />
+                Regenerate
+              </button>
+            )}
           </motion.div>
         )}
       </div>

@@ -87,13 +87,6 @@ def build_system_prompt(query: str, session_history: List[Dict], user_profile: O
         except Exception:
             pass
 
-    # Format session history summary (last 8 messages for consistency)
-    history_text = ""
-    if session_history:
-        last_messages = session_history[-8:]
-        history_text = "\n".join([f"{m['role']}: {m['content']}" for m in last_messages])
-    else:
-        history_text = "(No prior conversation)"
 
     # Get response length preference
     response_length = comm.get('response_length', 'Concise and informative')
@@ -190,9 +183,6 @@ Formatting Rules: {sys_instr.get('formatting_rules', '')}
 
 # Relevant Retrieved Owner Knowledge
 {relevant_knowledge}
-
-# Current Session History
-{history_text}
 
 # Answer Format (wajib dipakai untuk setiap jawaban yang punya lebih dari satu poin)
 - Gunakan Markdown: **bold** untuk istilah kunci, judul bagian, dan poin penting.

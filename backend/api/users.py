@@ -15,16 +15,17 @@ try:
         create_user_jwt,
         verify_user_jwt,
         USER_COOKIE_NAME,
-        is_valid_username,
     )
     from backend.security.rate_limiter import get_client_ip, check_rate_limit, is_locked_out, record_failed_login, clear_failed_login
+    from backend.security.audit import log_action as audit_log
     from backend.api.admin import get_current_admin, get_config, get_knowledge_categories, get_knowledge_entries, admin_list_models
 except ImportError:
     from config.config import settings  # type: ignore
     from database.db import DatabaseService  # type: ignore
     from security import otp  # type: ignore
-    from security.auth import verify_password, hash_password, create_user_jwt, verify_user_jwt, USER_COOKIE_NAME, is_valid_username  # type: ignore
+    from security.auth import verify_password, hash_password, create_user_jwt, verify_user_jwt, USER_COOKIE_NAME  # type: ignore
     from security.rate_limiter import get_client_ip, check_rate_limit, is_locked_out, record_failed_login, clear_failed_login  # type: ignore
+    from security.audit import log_action as audit_log  # type: ignore
     from api.admin import get_current_admin, get_config, get_knowledge_categories, get_knowledge_entries, admin_list_models  # type: ignore
 
 router = APIRouter(prefix="/api", tags=["Users"])
@@ -34,6 +35,7 @@ admin_router = APIRouter(prefix="/api/admin", tags=["Admin Users"])
 # ── schemas ──
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,32}$")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 class UserCreateRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
@@ -73,13 +75,17 @@ class UserUpdateRequest(BaseModel):
         return v or None
 
 class UserLoginRequest(BaseModel):
-    username: str = Field(min_length=3, max_length=32)
+    username: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=128)
 
     @field_validator("username")
     @classmethod
     def check_username(cls, v: str) -> str:
         v = v.strip().lower()
+        if "@" in v:
+            if not EMAIL_RE.match(v):
+                raise ValueError("Invalid email")
+            return v
         if not USERNAME_RE.match(v):
             raise ValueError("Invalid username")
         return v
@@ -125,20 +131,30 @@ def get_current_user(request: Request) -> Dict[str, Any]:
 @router.post("/user/login")
 def user_login(payload: UserLoginRequest, request: Request, response: Response):
     ip = get_client_ip(request)
-    locked, retry = is_locked_out(f"user:{ip}")
+    payload.username = payload.username.strip().lower()
+    if "@" in payload.username:
+        user = DatabaseService.get_user_by_email(payload.username)
+    else:
+        user = DatabaseService.get_user_by_username(payload.username)
+    # kunci lockout = akun + IP, supaya satu IP tidak mengunci akun lain
+    lock_key = f"user:{(user or {}).get('username') or payload.username}:{ip}"
+    locked, retry = is_locked_out(lock_key)
     if locked:
         raise HTTPException(status_code=429, detail=f"Account locked. Retry after {retry}s", headers={"Retry-After": str(retry)})
     allowed, retry = check_rate_limit(f"user:login:{ip}", 10, 60)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Too many login attempts. Retry after {retry}s", headers={"Retry-After": str(retry)})
-    payload.username = payload.username.strip().lower()
-    user = DatabaseService.get_user_by_username(payload.username)
     if not user or not verify_password(payload.password, user.get("password_hash") or ""):
-        record_failed_login(f"user:{ip}")
+        record_failed_login(lock_key)
+        audit_log(payload.username, "user_login_failed", target="user", detail="unknown user" if not user else "wrong password", ip=ip)
+        if user and user.get("provider") == "google" and not user.get("password_hash"):
+            raise HTTPException(status_code=401, detail="Akun ini daftar lewat Google. Atur kata sandi dulu lewat Lupa kata sandi.")
         raise HTTPException(status_code=401, detail="Invalid username or password")
     if not bool(user.get("is_active", True)):
+        audit_log(payload.username, "user_login_failed", target="user", detail="account disabled", ip=ip)
         raise HTTPException(status_code=403, detail="Account disabled - hubungi admin")
-    clear_failed_login(f"user:{ip}")
+    clear_failed_login(lock_key)
+    audit_log(user["username"], "user_login_success", target="user", ip=ip)
     # expiry from app settings
     app_s = DatabaseService.get_app_settings()
     hours = max(1, min(720, int(app_s.get("user_token_expiry_hours", 24))))
@@ -515,6 +531,76 @@ def user_update_profile(payload: UserProfileUpdateRequest, request: Request, use
         "goal": str(profile.get("goal") or "").strip(),
         "style_id": str(profile.get("style_id") or "").strip(),
     }
+
+
+# ── Riwayat chat user login (retensi 7 hari, maks 3 chat) ──
+
+class ChatSessionCreate(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=120)
+
+
+class ChatMessageItem(BaseModel):
+    role: str = Field(pattern=r"^(user|assistant)$")
+    content: str = Field(min_length=1, max_length=20000)
+
+
+class ChatMessagesAppend(BaseModel):
+    messages: List[ChatMessageItem] = Field(min_length=1, max_length=2)
+
+
+@router.get("/user/chats")
+def user_list_chats(user: dict = Depends(get_current_user)):
+    rows = DatabaseService.list_chat_sessions(str(user["id"]))
+    return {
+        "items": [{"id": s["id"], "title": s.get("title") or "Chat baru", "updated_at": s.get("updated_at")} for s in rows],
+        "limit": DatabaseService.CHAT_MAX_PER_USER,
+        "retention_days": DatabaseService.CHAT_RETENTION_DAYS,
+    }
+
+
+@router.post("/user/chats")
+def user_create_chat(payload: ChatSessionCreate, user: dict = Depends(get_current_user)):
+    uid = str(user["id"])
+    if DatabaseService.count_chat_sessions(uid) >= DatabaseService.CHAT_MAX_PER_USER:
+        raise HTTPException(status_code=409, detail=f"Maksimal {DatabaseService.CHAT_MAX_PER_USER} chat tersimpan. Hapus salah satu dulu.")
+    s = DatabaseService.create_chat_session(uid, (payload.title or "").strip() or "Chat baru")
+    return {"id": s["id"], "title": s.get("title"), "updated_at": s.get("updated_at")}
+
+
+@router.get("/user/chats/{session_id}")
+def user_get_chat(session_id: str, user: dict = Depends(get_current_user)):
+    uid = str(user["id"])
+    s = DatabaseService.get_chat_session(uid, session_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail="Chat tidak ditemukan")
+    msgs = DatabaseService.list_chat_messages(session_id)
+    return {
+        "id": s["id"],
+        "title": s.get("title") or "Chat baru",
+        "messages": [{"role": m["role"], "content": m["content"]} for m in msgs],
+    }
+
+
+@router.post("/user/chats/{session_id}/messages")
+def user_append_chat_messages(session_id: str, payload: ChatMessagesAppend, user: dict = Depends(get_current_user)):
+    uid = str(user["id"])
+    s = DatabaseService.get_chat_session(uid, session_id)
+    if s is None:
+        raise HTTPException(status_code=404, detail="Chat tidak ditemukan")
+    items = [{"role": m.role, "content": m.content} for m in payload.messages]
+    DatabaseService.append_chat_messages(session_id, items)
+    if (s.get("title") or "Chat baru") == "Chat baru":
+        first_user = next((m["content"] for m in items if m["role"] == "user"), "")
+        if first_user:
+            DatabaseService.rename_chat_session(session_id, first_user[:60])
+    return {"status": "success"}
+
+
+@router.delete("/user/chats/{session_id}")
+def user_delete_chat(session_id: str, user: dict = Depends(get_current_user)):
+    if not DatabaseService.delete_chat_session(str(user["id"]), session_id):
+        raise HTTPException(status_code=404, detail="Chat tidak ditemukan")
+    return {"status": "success"}
 
 
 # ── Admin CRUD users + settings ──

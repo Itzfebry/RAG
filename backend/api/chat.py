@@ -6,8 +6,6 @@ import json
 import os
 import re
 import random
-import shutil
-import tempfile
 
 try:
     from backend.security.rate_limiter import get_client_ip, check_rate_limit
@@ -160,7 +158,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
-    history: Optional[List[ChatMessage]] = Field(default=None, max_length=20)
+    history: Optional[List[ChatMessage]] = Field(default=None, max_length=50)
     model: Optional[str] = Field(default=None, max_length=256)
 
     @field_validator("message")
