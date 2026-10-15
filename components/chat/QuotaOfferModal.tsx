@@ -13,6 +13,8 @@ const PACKAGES = [
   { prompts: 1000, price: "Rp500.000", popular: false },
 ];
 
+const SPRING = { type: "spring" as const, stiffness: 420, damping: 26 };
+
 const COPY = {
   quota: {
     label: "Kuota terpakai",
@@ -50,7 +52,9 @@ export default function QuotaOfferModal({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [selected, setSelected] = useState<number>(200);
   const t = COPY[variant];
+  const chosen = PACKAGES.find((p) => p.prompts === selected) ?? PACKAGES[1];
   const hasCount = typeof used === "number" && typeof max === "number" && max > 0;
   const pct = hasCount ? Math.min(100, Math.round((used! / max!) * 100)) : 100;
 
@@ -73,7 +77,7 @@ export default function QuotaOfferModal({
   }, [copied]);
 
   const handleContact = async () => {
-    const text = `Halo admin ITZ AI, saya mau tambah kuota prompt.${username ? ` Username: ${username}` : ""}`;
+    const text = `Halo admin ITZ AI, saya mau ambil paket ${chosen.prompts} prompt (${chosen.price}).${username ? ` Username: ${username}` : ""}`;
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -166,32 +170,51 @@ export default function QuotaOfferModal({
 
               {/* paket */}
               {variant !== "login" && (
-                <motion.div variants={item} className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                  {PACKAGES.map((p) => (
-                    <div
-                      key={p.prompts}
-                      className={`relative rounded-xl border p-4 transition-colors duration-200 ${
-                        p.popular
-                          ? "border-white/25 bg-white/[0.05]"
-                          : "border-white/[0.08] bg-transparent hover:border-white/[0.16]"
-                      }`}
-                    >
-                      <div className="text-[26px] font-semibold leading-none tracking-[-0.03em] tabular-nums text-white">
-                        {p.prompts}
-                      </div>
-                      <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
-                        prompt
-                      </div>
-                      <div className="mt-3 border-t border-white/[0.07] pt-3 text-[15px] font-medium tabular-nums text-zinc-200">
-                        {p.price}
-                      </div>
-                      {p.popular && (
-                        <span className="absolute right-3 top-3 rounded border border-white/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-300">
-                          Pilihan
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                <motion.div variants={item} role="radiogroup" aria-label="Pilih paket" className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                  {PACKAGES.map((p) => {
+                    const active = selected === p.prompts;
+                    return (
+                      <motion.button
+                        key={p.prompts}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => setSelected(p.prompts)}
+                        whileHover={{ y: -2 }}
+                        whileTap={{ scale: 0.97 }}
+                        transition={SPRING}
+                        className={`relative cursor-pointer rounded-xl border p-4 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${
+                          active
+                            ? "border-white bg-white/[0.08] shadow-[0_0_0_1px_rgba(255,255,255,0.15),0_12px_32px_-12px_rgba(255,255,255,0.25)]"
+                            : "border-white/[0.08] bg-transparent hover:border-white/[0.2] hover:bg-white/[0.03]"
+                        }`}
+                      >
+                        <div className="text-[26px] font-semibold leading-none tracking-[-0.03em] tabular-nums text-white">
+                          {p.prompts}
+                        </div>
+                        <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
+                          prompt
+                        </div>
+                        <div className="mt-3 border-t border-white/[0.07] pt-3 text-[15px] font-medium tabular-nums text-zinc-200">
+                          {p.price}
+                        </div>
+                        <motion.span
+                          aria-hidden
+                          initial={false}
+                          animate={{ scale: active ? 1 : 0, opacity: active ? 1 : 0 }}
+                          transition={SPRING}
+                          className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-white text-black"
+                        >
+                          <Check className="h-3 w-3" strokeWidth={3} />
+                        </motion.span>
+                        {p.popular && !active && (
+                          <span className="absolute right-3 top-3 rounded border border-white/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-300">
+                            Populer
+                          </span>
+                        )}
+                      </motion.button>
+                    );
+                  })}
                 </motion.div>
               )}
 

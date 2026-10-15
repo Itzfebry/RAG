@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 
 // Edge middleware: rate limit + separate admin/user login walls
 const RATE_WINDOW_MS = 60_000;
-const RATE_MAX = 60;
+const RATE_MAX = 180;
 const ipHits = new Map<string, number[]>();
 
 function getIp(req: NextRequest): string {

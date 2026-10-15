@@ -27,9 +27,15 @@ export default function QuotaNotice({
           className="overflow-hidden"
         >
           <div className="flex items-start gap-3 rounded-2xl border border-white/[0.09] bg-white/[0.03] px-4 py-3.5">
-            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/[0.12] bg-zinc-900">
+            <motion.span
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              whileHover={{ rotate: 15, scale: 1.1 }}
+              transition={{ type: "spring", stiffness: 420, damping: 18 }}
+              className="mt-0.5 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full border border-white/[0.12] bg-zinc-900"
+            >
               <Zap className="h-3.5 w-3.5 text-zinc-300" />
-            </span>
+            </motion.span>
 
             <div className="min-w-0 flex-1">
               <p className="text-[14px] font-semibold leading-tight text-zinc-100">
@@ -46,13 +52,16 @@ export default function QuotaNotice({
               </button>
             </div>
 
-            <button
+            <motion.button
+              whileHover={{ rotate: 90 }}
+              whileTap={{ scale: 0.85 }}
+              transition={{ type: "spring", stiffness: 380, damping: 20 }}
               onClick={onDismiss}
               aria-label="Tutup info kuota"
               className="shrink-0 rounded-md p-1 text-zinc-600 transition-colors hover:bg-white/[0.06] hover:text-zinc-300"
             >
               <X className="h-4 w-4" />
-            </button>
+            </motion.button>
           </div>
         </motion.div>
       )}

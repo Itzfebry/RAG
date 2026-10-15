@@ -147,7 +147,7 @@ class KnowledgeEntryRequest(BaseModel):
 def get_current_admin(request: Request) -> str:
     # rate-limit token brute force: 30 checks/min per IP
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:verify:{ip}", 60, 60)
+    allowed, retry = check_rate_limit(f"admin:verify:{ip}", 180, 60)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
     token = request.cookies.get(COOKIE_NAME)

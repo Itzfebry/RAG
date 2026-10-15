@@ -18,14 +18,14 @@ try:
         is_valid_username,
     )
     from backend.security.rate_limiter import get_client_ip, check_rate_limit, is_locked_out, record_failed_login, clear_failed_login
-    from backend.api.admin import get_current_admin
+    from backend.api.admin import get_current_admin, get_config, get_knowledge_categories, get_knowledge_entries, admin_list_models
 except ImportError:
     from config.config import settings  # type: ignore
     from database.db import DatabaseService  # type: ignore
     from security import otp  # type: ignore
     from security.auth import verify_password, hash_password, create_user_jwt, verify_user_jwt, USER_COOKIE_NAME, is_valid_username  # type: ignore
     from security.rate_limiter import get_client_ip, check_rate_limit, is_locked_out, record_failed_login, clear_failed_login  # type: ignore
-    from api.admin import get_current_admin  # type: ignore
+    from api.admin import get_current_admin, get_config, get_knowledge_categories, get_knowledge_entries, admin_list_models  # type: ignore
 
 router = APIRouter(prefix="/api", tags=["Users"])
 admin_router = APIRouter(prefix="/api/admin", tags=["Admin Users"])
@@ -518,6 +518,24 @@ def user_update_profile(payload: UserProfileUpdateRequest, request: Request, use
 
 
 # ── Admin CRUD users + settings ──
+
+@admin_router.get("/bootstrap")
+def admin_bootstrap(request: Request, admin: str = Depends(get_current_admin)):
+    return {
+        "config": {
+            "identity": get_config("ai_identity", admin),
+            "personal": get_config("personal_information", admin),
+            "personality": get_config("ai_personality", admin),
+            "communication": get_config("communication_settings", admin),
+            "system": get_config("system_instructions", admin),
+            "response_styles": get_config("response_styles", admin),
+        },
+        "categories": get_knowledge_categories(admin),
+        "entries": get_knowledge_entries(None, admin),
+        "models": admin_list_models(request, admin=admin),
+        "users": admin_list_users(admin),
+        "settings": admin_get_settings(admin),
+    }
 
 @admin_router.get("/users")
 def admin_list_users(admin: str = Depends(get_current_admin)):

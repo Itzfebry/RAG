@@ -305,15 +305,26 @@ export default function UserLoginPage() {
             className="mt-9 border-t border-white/[0.07]"
           >
             {VALUE_POINTS.map((v) => (
-              <div key={v.title} className="group flex gap-4 border-b border-white/[0.07] py-4 transition-colors hover:bg-white/[0.02]">
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] transition-colors group-hover:border-white/[0.16] group-hover:bg-white/[0.06]">
+              <motion.div
+                key={v.title}
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 0.85 + VALUE_POINTS.indexOf(v) * 0.1, ease: EASE }}
+                whileHover={{ x: 4 }}
+                className="group flex cursor-default gap-4 border-b border-white/[0.07] py-4 transition-colors hover:bg-white/[0.02]"
+              >
+                <motion.span
+                  whileHover={{ rotate: [0, -10, 10, 0], scale: 1.08 }}
+                  transition={{ duration: 0.5 }}
+                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] transition-colors group-hover:border-white/[0.16] group-hover:bg-white/[0.06]"
+                >
                   <v.icon className="h-4 w-4 text-zinc-400 transition-colors group-hover:text-zinc-200" />
-                </span>
+                </motion.span>
                 <div>
                   <div className="text-[14px] font-medium text-zinc-200">{v.title}</div>
                   <div className="mt-0.5 text-[13px] leading-relaxed text-zinc-500">{v.desc}</div>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </motion.div>
         </div>
@@ -372,8 +383,16 @@ export default function UserLoginPage() {
                 </div>
                 <AnimatePresence>
                   {authError && (
-                    <motion.div className="flex items-center gap-2 rounded-lg bg-red-950/20 px-3 py-2 text-red-200 border border-red-500/10 overflow-hidden">
-                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    <motion.div
+                      role="alert"
+                      initial={{ height: 0, opacity: 0, y: -6 }}
+                      animate={{ height: "auto", opacity: 1, y: 0 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="flex items-center gap-2 rounded-lg bg-red-950/20 px-3 py-2 text-red-200 border border-red-500/10 overflow-hidden"
+                    >
+                      <motion.span animate={{ x: [0, -4, 4, -3, 3, 0] }} transition={{ duration: 0.45, delay: 0.1 }} className="shrink-0">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                      </motion.span>
                       <p className="text-[12px]">{authError}</p>
                     </motion.div>
                   )}
@@ -411,8 +430,16 @@ export default function UserLoginPage() {
                 </div>
                 <AnimatePresence>
                   {authError && (
-                    <motion.div className="flex items-center gap-2 rounded-lg bg-red-950/20 px-3 py-2 text-red-200 border border-red-500/10 overflow-hidden">
-                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    <motion.div
+                      role="alert"
+                      initial={{ height: 0, opacity: 0, y: -6 }}
+                      animate={{ height: "auto", opacity: 1, y: 0 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="flex items-center gap-2 rounded-lg bg-red-950/20 px-3 py-2 text-red-200 border border-red-500/10 overflow-hidden"
+                    >
+                      <motion.span animate={{ x: [0, -4, 4, -3, 3, 0] }} transition={{ duration: 0.45, delay: 0.1 }} className="shrink-0">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                      </motion.span>
                       <p className="text-[12px]">{authError}</p>
                     </motion.div>
                   )}
@@ -470,8 +497,16 @@ export default function UserLoginPage() {
                 </div>
                 <AnimatePresence>
                   {authError && (
-                    <motion.div className="flex items-center gap-2 rounded-lg bg-red-950/20 px-3 py-2 text-red-200 border border-red-500/10 overflow-hidden">
-                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    <motion.div
+                      role="alert"
+                      initial={{ height: 0, opacity: 0, y: -6 }}
+                      animate={{ height: "auto", opacity: 1, y: 0 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="flex items-center gap-2 rounded-lg bg-red-950/20 px-3 py-2 text-red-200 border border-red-500/10 overflow-hidden"
+                    >
+                      <motion.span animate={{ x: [0, -4, 4, -3, 3, 0] }} transition={{ duration: 0.45, delay: 0.1 }} className="shrink-0">
+                        <AlertCircle className="h-3.5 w-3.5" />
+                      </motion.span>
                       <p className="text-[12px]">{authError}</p>
                     </motion.div>
                   )}
@@ -572,12 +607,15 @@ export default function UserLoginPage() {
               <AnimatePresence>
                 {authError && (
                   <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
+                    role="alert"
+                    initial={{ height: 0, opacity: 0, y: -6 }}
+                    animate={{ height: "auto", opacity: 1, y: 0 }}
                     exit={{ height: 0, opacity: 0 }}
                     className="flex items-center gap-2 rounded-lg bg-red-950/20 px-3 py-2 text-red-200 border border-red-500/10 overflow-hidden"
                   >
-                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    <motion.span animate={{ x: [0, -4, 4, -3, 3, 0] }} transition={{ duration: 0.45, delay: 0.1 }} className="shrink-0">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                    </motion.span>
                     <p className="text-[12px]">{authError}</p>
                   </motion.div>
                 )}
@@ -586,6 +624,8 @@ export default function UserLoginPage() {
               <Button
                 type="submit"
                 className="h-12 w-full bg-zinc-100 text-[13px] font-bold text-black hover:bg-white transition-all active:scale-[0.98] duration-200 rounded-xl"
+                onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-1px)")}
+                onMouseLeave={(e) => (e.currentTarget.style.transform = "")}
                 disabled={
                   isLoading ||
                   !username.trim() ||

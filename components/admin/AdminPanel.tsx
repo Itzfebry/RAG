@@ -387,7 +387,6 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       if (res.ok) {
         setIsAuthenticated(true);
         loadAllData();
-        loadUsersAndSettings();
       } else {
         router.replace("/admin/login");
       }
@@ -519,59 +518,53 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   };
 
   const loadAllData = async () => {
+    setUsersLoading(true);
     try {
-      const [idRes, perRes, persRes, commRes, sysRes, catRes, entRes, modelRes, stRes] = await Promise.all([
-        fetch("/api/python/admin/config/ai_identity"),
-        fetch("/api/python/admin/config/personal_information"),
-        fetch("/api/python/admin/config/ai_personality"),
-        fetch("/api/python/admin/config/communication_settings"),
-        fetch("/api/python/admin/config/system_instructions"),
-        fetch("/api/python/admin/knowledge/categories"),
-        fetch("/api/python/admin/knowledge/entries"),
-        fetch("/api/python/admin/models"),
-        fetch("/api/python/admin/config/response_styles"),
-      ]);
+      const res = await fetch("/api/python/admin/bootstrap");
+      if (authExpired(res.status)) return;
+      if (!res.ok) return;
+      const b = await res.json();
 
-      if (idRes.ok) setIdentityData(await idRes.json());
-      if (perRes.ok) setPersonalData(await perRes.json());
-      if (persRes.ok) setPersonalityData(await persRes.json());
-      if (commRes.ok) setCommData(await commRes.json());
-      if (sysRes.ok) setSysData(await sysRes.json());
-      if (stRes.ok) {
-        const st = await stRes.json();
-        if (Array.isArray(st?.styles)) setStylesData({ styles: st.styles });
-      }
-      if (catRes.ok) {
-        const cats = await catRes.json();
-        setKnowledgeCategories(cats);
-        if (entRes.ok) {
-          const entries = await entRes.json();
-          setKnowledgeEntries(entries);
-          const catCounts: Record<string, number> = {};
-          entries.forEach((e: any) => {
-            const cat = cats.find((c: any) => c.id === e.category_id);
-            if (cat) catCounts[cat.name] = (catCounts[cat.name] || 0) + 1;
-          });
-          setCategoryData(Object.entries(catCounts).map(([name, value]) => ({ name, value })));
-        }
-      }
-      if (modelRes.ok) {
-        const m = await modelRes.json();
-        const cur = m.current || m;
-        setModelConfig({
-          active_model: cur.active_model || "",
-          fallback_models: (cur.fallback_models || []).map((s: any) => String(s)),
-          provider: cur.provider || "openrouter",
-          api_base_url: cur.api_base_url || "https://openrouter.ai/api/v1",
-          temperature: Number(cur.temperature ?? 0.4),
-          reasoning_enabled: Boolean(cur.reasoning_enabled),
-          max_tokens: Number(cur.max_tokens) || 8192,
-        });
-        const cat = m.live_catalog?.data || m.live_catalog?.fallback?.data || [];
-        if (Array.isArray(cat) && cat.length) setAvailableModels(cat);
-      }
+      const c = b.config || {};
+      if (c.identity) setIdentityData(c.identity);
+      if (c.personal) setPersonalData(c.personal);
+      if (c.personality) setPersonalityData(c.personality);
+      if (c.communication) setCommData(c.communication);
+      if (c.system) setSysData(c.system);
+      if (Array.isArray(c.response_styles?.styles)) setStylesData({ styles: c.response_styles.styles });
+
+      const cats = Array.isArray(b.categories) ? b.categories : [];
+      const entries = Array.isArray(b.entries) ? b.entries : [];
+      setKnowledgeCategories(cats);
+      setKnowledgeEntries(entries);
+      const catCounts: Record<string, number> = {};
+      entries.forEach((e: any) => {
+        const cat = cats.find((x: any) => x.id === e.category_id);
+        if (cat) catCounts[cat.name] = (catCounts[cat.name] || 0) + 1;
+      });
+      setCategoryData(Object.entries(catCounts).map(([name, value]) => ({ name, value })));
+
+      const m = b.models || {};
+      const cur = m.current || m;
+      setModelConfig({
+        active_model: cur.active_model || "",
+        fallback_models: (cur.fallback_models || []).map((s: any) => String(s)),
+        provider: cur.provider || "openrouter",
+        api_base_url: cur.api_base_url || "https://openrouter.ai/api/v1",
+        temperature: Number(cur.temperature ?? 0.4),
+        reasoning_enabled: Boolean(cur.reasoning_enabled),
+        max_tokens: Number(cur.max_tokens) || 8192,
+      });
+      const cat = m.live_catalog?.data || m.live_catalog?.fallback?.data || [];
+      if (Array.isArray(cat) && cat.length) setAvailableModels(cat);
+
+      setUsers(Array.isArray(b.users) ? b.users : []);
+      const s = b.settings?.settings || b.settings || {};
+      setAppSettings(parseAppSettings(s));
     } catch (err) {
       console.error("Error loading admin data:", err);
+    } finally {
+      setUsersLoading(false);
     }
   };
 
@@ -1326,7 +1319,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                               <p className="text-[34px] font-semibold leading-none tracking-tight text-white tabular-nums">
                                 {tokenStats ? fmtNum(tokenStats.today?.total) : "-"}
                               </p>
-                              <DeltaChip v={tokDelta} vs="last day" />
+                              <DeltaChip v={tokDelta} />
                             </div>
                             <p className="mt-2 text-[13px] text-zinc-500">hari ini · {tokenStats ? fmtNum(tokenStats.today?.prompt) : "-"} prompt + {tokenStats ? fmtNum(tokenStats.today?.completion) : "-"} completion</p>
                           </div>

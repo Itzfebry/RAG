@@ -4,10 +4,10 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { AIChatInput } from "@/components/ui/ai-chat-input";
-import OrbitalSphereBackground from "@/components/ui/orbital-sphere";
 import QuotaOfferModal, { QuotaOfferVariant } from "@/components/chat/QuotaOfferModal";
 import QuotaNotice from "@/components/chat/QuotaNotice";
 import { motion, AnimatePresence } from "framer-motion";
+import { AlertTriangle, Info, X } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
@@ -332,49 +332,26 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#101015] text-zinc-100 antialiased selection:bg-white/10">
-      {/* Orbital sphere background */}
-      <div className="pointer-events-none fixed inset-0 z-0">
-        <OrbitalSphereBackground 
-          particleCount={1800}
-          particleSize={1.8}
-          orbitRadius={3.2}
-          ringCount={3}
-          rotationSpeed={0.08}
-          cameraDistance={9}
-          nodeCount={10}
-          nodeSize={5}
-          hue={0}
-        />
-      </div>
-
-      {/* aurora overlay - subtle gradient on top */}
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-x-0 top-0 z-[1] h-[860px]"
-        style={{
-          background: `
-            radial-gradient(1100px 580px at 18% -8%, rgba(56,189,248,0.08), transparent 68%),
-            radial-gradient(980px 550px at 78% -10%, rgba(124,92,255,0.09), transparent 70%),
-            radial-gradient(820px 480px at 50% -10%, rgba(52,211,153,0.045), transparent 72%),
-            linear-gradient(to bottom, rgba(8,8,10,0.3) 0%, rgba(8,8,10,0.5) 16%, rgba(8,8,10,0.7) 36%, rgba(8,8,10,0.85) 66%)
-          `,
-          maskImage: "linear-gradient(to bottom, black 0%, black 24%, rgba(0,0,0,0.8) 46%, rgba(0,0,0,0.95) 78%)",
-          WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 24%, rgba(0,0,0,0.8) 46%, rgba(0,0,0,0.95) 78%)",
-        }}
+        className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(900px_500px_at_50%_-10%,rgba(255,255,255,0.035),transparent_70%)]"
       />
-      {/* particles - subtle accents */}
       <div aria-hidden className="itz-particles z-[1]">
-        <span className="itz-dot" style={{ left: "14%", top: "10%", width: 4, height: 4, color: "rgba(56,189,248,0.7)", animationDelay: "0s", ["--dur" as any]: "5s" }} />
-        <span className="itz-dot" style={{ left: "68%", top: "12%", width: 5, height: 5, color: "rgba(56,189,248,0.6)", animationDelay: "1.1s", ["--dur" as any]: "5.5s" }} />
-        <span className="itz-dot" style={{ left: "28%", top: "26%", width: 3, height: 3, color: "rgba(124,92,255,0.65)", animationDelay: "1.6s", ["--dur" as any]: "4.8s" }} />
-        <span className="itz-dot" style={{ left: "74%", top: "38%", width: 4, height: 4, color: "rgba(124,92,255,0.6)", animationDelay: "1.3s", ["--dur" as any]: "5.2s" }} />
+        <span className="itz-dot" style={{ left: "14%", top: "10%", width: 4, height: 4, color: "rgba(255,255,255,0.35)", animationDelay: "0s", ["--dur" as any]: "5s" }} />
+        <span className="itz-dot" style={{ left: "68%", top: "12%", width: 3, height: 3, color: "rgba(255,255,255,0.25)", animationDelay: "1.1s", ["--dur" as any]: "5.5s" }} />
+        <span className="itz-dot" style={{ left: "28%", top: "26%", width: 3, height: 3, color: "rgba(255,255,255,0.2)", animationDelay: "1.6s", ["--dur" as any]: "4.8s" }} />
+        <span className="itz-dot" style={{ left: "74%", top: "38%", width: 4, height: 4, color: "rgba(255,255,255,0.25)", animationDelay: "1.3s", ["--dur" as any]: "5.2s" }} />
       </div>
 
       <header className="relative z-30 flex h-[56px] shrink-0 items-center justify-between border-b border-white/[0.08] bg-[rgba(14,14,19,0.13)] px-4 backdrop-blur-xl supports-[backdrop-filter]:bg-[rgba(14,14,19,0.13)] sm:px-6">
         <div className="flex items-center gap-3">
-          <div className="itz-logo itz-logo-sheen relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-white/[0.12] bg-zinc-900 shadow-lg">
+          <motion.div
+            whileHover={{ rotate: [0, -8, 8, 0], scale: 1.06 }}
+            transition={{ duration: 0.6, ease: "easeInOut" }}
+            className="itz-logo itz-logo-sheen relative flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-white/[0.12] bg-zinc-900 shadow-lg"
+          >
             <Image src="/image/favicon.png" alt="ITZ" width={36} height={36} className="h-full w-full object-cover" priority />
-          </div>
+          </motion.div>
           <span className="itz-brand text-[15.5px] font-semibold tracking-[0.14em]">ITZ AI</span>
         </div>
         <div className="flex items-center gap-2">
@@ -394,15 +371,17 @@ export default function ChatPage() {
             );
           })()}
           <div className="relative" ref={infoRef}>
-            <button
+            <motion.button
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.92 }}
               onClick={() => setInfoOpen((v) => !v)}
               title="Informasi kuota"
               aria-label="Informasi kuota"
               aria-expanded={infoOpen}
               className="flex items-center rounded-lg px-2 py-1.5 text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
             >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-            </button>
+              <Info className="h-4 w-4" />
+            </motion.button>
             {infoOpen && (
               <div className="absolute right-0 top-full z-40 mt-2 w-60 overflow-hidden rounded-xl border border-white/10 bg-[#16161c] shadow-[0_16px_48px_rgba(0,0,0,0.65)]">
                 <div className="flex items-center justify-between border-b border-white/[0.07] bg-white/[0.03] px-4 py-2.5">
@@ -439,12 +418,12 @@ export default function ChatPage() {
           </button>
           {userInfo ? (
             <>
-              <button onClick={openProfile} title="Pengaturan profil" aria-label="Pengaturan profil" className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              </button>
-              <button onClick={() => setConfirmLogout(true)} title="Keluar" aria-label="Keluar" className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-              </button>
+              <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.92 }} onClick={openProfile} title="Pengaturan profil" aria-label="Pengaturan profil" className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
+                <motion.svg whileHover={{ rotate: 90 }} transition={{ type: "spring", stiffness: 260, damping: 16 }} className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></motion.svg>
+              </motion.button>
+              <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.92 }} onClick={() => setConfirmLogout(true)} title="Keluar" aria-label="Keluar" className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
+                <motion.svg whileHover={{ x: 3 }} transition={{ type: "spring", stiffness: 300, damping: 15 }} className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></motion.svg>
+              </motion.button>
             </>
           ) : (
             <a href="/login" className="ml-1 rounded-lg bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-black transition-colors hover:bg-zinc-200">Login</a>
@@ -678,14 +657,40 @@ export default function ChatPage() {
         )}
       </AnimatePresence>
 
-      {quotaAlert && (
-        <div className="relative z-20 mx-auto w-full max-w-[720px] px-4 pt-3 sm:px-6">
-          <div role="alert" className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[13px] leading-5 text-amber-200">
-            <span className="mt-0.5">⚠</span><span className="flex-1">{quotaAlert.includes("Budget token") ? <>Batas harian ITZ AI sudah tercapai. Coba lagi besok atau hubungi admin.</> : <>{quotaAlert} <a href="/login" className="underline underline-offset-2">Login</a> atau hubungi admin.</>}</span>
-            <button onClick={() => setQuotaAlert(null)} className="shrink-0 rounded-md px-2 py-1 text-amber-300 hover:bg-white/10">Tutup</button>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {quotaAlert && (
+          <motion.div
+            key="quota-alert"
+            initial={{ opacity: 0, y: -10, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, y: -8, height: 0 }}
+            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+            className="relative z-20 mx-auto w-full max-w-[720px] overflow-hidden px-4 pt-3 sm:px-6"
+          >
+            <div role="alert" className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[13px] leading-5 text-amber-200">
+              <motion.span
+                aria-hidden
+                animate={{ rotate: [0, -12, 12, -8, 8, 0] }}
+                transition={{ duration: 0.7, delay: 0.2, ease: "easeInOut" }}
+                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/20 text-amber-300"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+              </motion.span>
+              <span className="flex-1">{quotaAlert.includes("Budget token") ? <>Batas harian ITZ AI sudah tercapai. Coba lagi besok atau hubungi admin.</> : <>{quotaAlert} <a href="/login" className="underline underline-offset-2 hover:text-amber-100">Login</a> atau hubungi admin.</>}</span>
+              <motion.button
+                type="button"
+                onClick={() => setQuotaAlert(null)}
+                whileHover={{ scale: 1.06 }}
+                whileTap={{ scale: 0.92 }}
+                aria-label="Tutup peringatan"
+                className="shrink-0 rounded-md p-1 text-amber-300 transition-colors hover:bg-white/10"
+              >
+                <X className="h-3.5 w-3.5" />
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <QuotaOfferModal
         open={quotaOffer !== null}
