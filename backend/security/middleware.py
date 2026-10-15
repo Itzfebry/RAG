@@ -5,7 +5,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-MAX_BODY_BYTES = 1_000_000  # 1 MB
+MAX_BODY_BYTES = 1_000_000  # 1 MB (QRIS data URL di /api/admin/pricing dibatasi 600k char)
 
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",

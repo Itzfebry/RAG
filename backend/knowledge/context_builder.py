@@ -9,10 +9,12 @@ try:
     from backend.database.db import DatabaseService
     from backend.knowledge.knowledge_service import KnowledgeService
     from backend.database.cache import rag_cache
+    from backend.agent.commands import build_command_block
 except ImportError:
     from database.db import DatabaseService
     from knowledge.knowledge_service import KnowledgeService
     from database.cache import rag_cache
+    from agent.commands import build_command_block
 
 # Cache system prompt components (configs don't change often)
 _prompt_cache = {}
@@ -40,7 +42,48 @@ def _get_cached_configs():
     return configs
 
 
-def build_system_prompt(query: str, session_history: List[Dict], user_profile: Optional[Dict] = None) -> str:
+def _build_pricing_block() -> str:
+    """Blok harga live dari pricing_config supaya AI tidak memakai harga basi di KB."""
+    try:
+        cfg = DatabaseService.get_pricing()
+    except Exception:
+        return ""
+    plans = []
+    for p in (cfg.get("plans") or []):
+        if not isinstance(p, dict):
+            continue
+        try:
+            prompts = int(p.get("prompts") or 0)
+            amount = int(p.get("amount") or 0)
+        except Exception:
+            continue
+        if prompts <= 0 or not str(p.get("id") or "").strip():
+            continue
+        label = str(p.get("label") or f"Paket {prompts} Prompt").strip()
+        plans.append(f"- {label}: {prompts} prompt, Rp{amount:,}".replace(",", "."))
+    if not plans:
+        return ""
+    lines = [
+        "",
+        "# Harga & Paket (SUMBER RESMI, selalu pakai ini)",
+        "Harga dan paket berikut diambil langsung dari konfigurasi admin. Ini SATU-SATUNYA "
+        "harga yang boleh disebut. Abaikan angka harga lain yang mungkin muncul di knowledge lama.",
+    ]
+    lines.extend(plans)
+    contact = str(cfg.get("contact") or "").strip()
+    qris = str(cfg.get("payment_qris") or "").strip()
+    order_note = str(cfg.get("order_note") or "").strip()
+    if contact:
+        lines.append(f"Kontak admin: {contact}")
+    if qris:
+        lines.append("Pembayaran QRIS tersedia di halaman /pricing saat membuat order.")
+    if order_note:
+        lines.append(f"Catatan: {order_note}")
+    lines.append("Cara beli: buka /pricing, pilih paket, buat order, bayar, lalu tunggu konfirmasi admin.")
+    return "\n".join(lines) + "\n"
+
+
+def build_system_prompt(query: str, session_history: List[Dict], user_profile: Optional[Dict] = None, command_names: Optional[List[str]] = None) -> str:
     """
     Build the system prompt for the AI agent (optimized with caching).
     - Retrieves relevant knowledge (hybrid semantic + keyword search)
@@ -140,6 +183,9 @@ def build_system_prompt(query: str, session_history: List[Dict], user_profile: O
         if profile_lines:
             user_profile_block = "\n# User Profile (konteks pengguna saat ini)\n" + "\n".join(profile_lines) + "\n"
 
+    command_block = build_command_block(command_names or [])
+    pricing_block = _build_pricing_block()
+
     system_prompt = f"""
 You are {identity.get('name', 'ITZ AI')} : {identity.get('role', 'Personal AI Assistant')}.
 {identity.get('description', '')}
@@ -183,7 +229,7 @@ Formatting Rules: {sys_instr.get('formatting_rules', '')}
 
 # Relevant Retrieved Owner Knowledge
 {relevant_knowledge}
-
+{pricing_block}{command_block}
 # Answer Format (wajib dipakai untuk setiap jawaban yang punya lebih dari satu poin)
 - Gunakan Markdown: **bold** untuk istilah kunci, judul bagian, dan poin penting.
 - Pecah jawaban panjang dengan heading ringkas (### Judul) per bagian.

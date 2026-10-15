@@ -596,6 +596,14 @@ def user_append_chat_messages(session_id: str, payload: ChatMessagesAppend, user
     return {"status": "success"}
 
 
+@router.post("/user/chats/{session_id}/truncate-last-turn")
+def user_truncate_last_turn(session_id: str, user: dict = Depends(get_current_user)):
+    if DatabaseService.get_chat_session(str(user["id"]), session_id) is None:
+        raise HTTPException(status_code=404, detail="Chat tidak ditemukan")
+    DatabaseService.truncate_last_chat_turn(session_id)
+    return {"status": "success"}
+
+
 @router.delete("/user/chats/{session_id}")
 def user_delete_chat(session_id: str, user: dict = Depends(get_current_user)):
     if not DatabaseService.delete_chat_session(str(user["id"]), session_id):
@@ -615,6 +623,7 @@ def admin_bootstrap(request: Request, admin: str = Depends(get_current_admin)):
             "communication": get_config("communication_settings", admin),
             "system": get_config("system_instructions", admin),
             "response_styles": get_config("response_styles", admin),
+            "pricing": DatabaseService.get_pricing(),
         },
         "categories": get_knowledge_categories(admin),
         "entries": get_knowledge_entries(None, admin),
@@ -694,6 +703,14 @@ def admin_reset_usage(user_id: str, request: Request, admin: str = Depends(get_c
 def admin_get_settings(admin: str = Depends(get_current_admin)):
     s = DatabaseService.get_app_settings()
     return s
+
+@admin_router.post("/users/sync-local")
+def admin_sync_local_users(request: Request, admin: str = Depends(get_current_admin)):
+    """Dorong user yang hanya ada di JSON lokal ke Supabase (mis. akun Google yang
+    gagal tersimpan sebelumnya). Idempoten: user yang sudah ada dilewati."""
+    created = DatabaseService.sync_local_users_to_supabase()
+    audit_log(admin, "users_sync_local", detail=f"created={created}", ip=get_client_ip(request))
+    return {"status": "success", "created": created}
 
 @router.get("/trial")
 def trial_info_public(request: Request):

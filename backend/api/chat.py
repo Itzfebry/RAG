@@ -22,8 +22,10 @@ except ImportError:
 
 try:
     from backend.agent.agent import AgentOrchestrator, _resolve_base_url, _resolve_api_key, _resolve_default_model
+    from backend.agent.commands import parse_command, list_commands, list_command_details
 except ImportError:
     from agent.agent import AgentOrchestrator, _resolve_base_url, _resolve_api_key, _resolve_default_model # type: ignore
+    from agent.commands import parse_command, list_commands, list_command_details # type: ignore
 
 router = APIRouter(prefix="/api", tags=["Chat"])
 v1_router = APIRouter(prefix="/v1", tags=["OpenAI Compatible"])
@@ -179,9 +181,44 @@ class ChatRequest(BaseModel):
             raise ValueError("Invalid model ID")
         return v
 
+def _commands_help_text(unknown: Optional[str] = None) -> str:
+    lines = []
+    if unknown:
+        lines.append(f"Command `{unknown}` tidak dikenal. Daftar command yang tersedia:")
+    else:
+        lines.append("Daftar command yang tersedia:")
+    lines.append("")
+    for c in list_commands():
+        lines.append(f"- `/{c['name']}`: {c['purpose']} Contoh: `{c['example']}`")
+    lines.append("")
+    lines.append("Gunakan command di awal pesan, misalnya `/explain REST API`. Maksimal 2 command per pesan.")
+    lines.append("Dokumentasi lengkap: `/docs`.")
+    return "\n".join(lines)
+
+
+async def _help_stream(text: str):
+    yield f"data: {json.dumps({'content': text})}\n\n"
+    yield f"data: {json.dumps({'answered': True})}\n\n"
+    yield "data: [DONE]\n\n"
+
+
+@router.get("/commands")
+def get_commands():
+    return {"commands": list_command_details()}
+
+
 @router.post("/chat")
 async def stream_chat(payload: ChatRequest, request: Request):
     ip = get_client_ip(request)
+    command_names, clean_message, unknown_command = parse_command(payload.message)
+    if unknown_command or (command_names and not clean_message):
+        return StreamingResponse(
+            _help_stream(_commands_help_text(unknown_command)),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no", "X-Command-Mode": "static"},
+        )
+    if command_names:
+        payload.message = clean_message
     user = get_current_chat_user_optional(request)
     if user is not None:
         allowed, retry = check_rate_limit(f"chat:{user.get('id')}:{ip}", 30, 60)
@@ -228,7 +265,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
 
     async def generate():
         answered = False
-        async for chunk in agent_orchestrator.stream_chat_response(payload.message, history_dicts, model_override=payload.model, user_profile=user_profile):
+        async for chunk in agent_orchestrator.stream_chat_response(payload.message, history_dicts, model_override=payload.model, user_profile=user_profile, command_names=command_names or None):
             # event token usage dari agent -> catat, jangan diteruskan ke client
             if chunk.startswith("data: ") and '"usage"' in chunk:
                 try:

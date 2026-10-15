@@ -64,6 +64,7 @@ import {
   Lock,
   ArrowRight,
   CalendarDays,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -92,9 +93,10 @@ import { PersonalityTab } from "./tabs/PersonalityTab";
 import { CommunicationTab } from "./tabs/CommunicationTab";
 import { InstructionsTab } from "./tabs/InstructionsTab";
 import { StylesTab } from "./tabs/StylesTab";
+import { PricingTab } from "./tabs/PricingTab";
 import { SectionHeader } from "./SectionHeader";
 
-type TabType = "dashboard" | "users" | "identity" | "personal" | "knowledge" | "personality" | "communication" | "instructions" | "models" | "styles";
+type TabType = "dashboard" | "users" | "identity" | "personal" | "knowledge" | "personality" | "communication" | "instructions" | "models" | "styles" | "pricing";
 
 type RealStats = {
   totalRequests: number; totalUsers: number; activeUsers: number; disabledUsers: number;
@@ -250,6 +252,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const [commData, setCommData] = useState({ primary_language: "", tone: "", response_length: "", formatting_preference: "", technical_depth: "", explanation_style: "" });
   const [sysData, setSysData] = useState({ behavioral_rules: "", response_rules: "", safety_rules: "", knowledge_priority: "", reasoning_constraints: "", formatting_rules: "" });
   const [stylesData, setStylesData] = useState<{ styles: { id: string; name: string; description: string; prompt: string }[] }>({ styles: [] });
+  const [pricingData, setPricingData] = useState<{ plans: { id: string; label: string; prompts: number; amount: number; popular: boolean }[]; payment_qris: string; payment_instructions: string; contact: string; order_note: string }>({
+    plans: [],
+    payment_qris: "",
+    payment_instructions: "",
+    contact: "",
+    order_note: "",
+  });
 
   const [modelConfig, setModelConfig] = useState({
     active_model: "",
@@ -278,6 +287,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
   const [users, setUsers] = useState<any[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [syncingUsers, setSyncingUsers] = useState(false);
   const [appSettings, setAppSettings] = useState<{ user_token_expiry_hours: number; trial_prompts: number; rag_match_count_short: number; rag_match_count_long: number; rag_match_threshold: number | null }>({ user_token_expiry_hours: 24, trial_prompts: 3, rag_match_count_short: 6, rag_match_count_long: 8, rag_match_threshold: null });
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -472,6 +482,26 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     setUsersLoading(false);
   };
 
+  const handleSyncLocalUsers = async () => {
+    setSyncingUsers(true);
+    try {
+      const res = await fetch("/api/python/admin/users/sync-local", { method: "POST" });
+      if (authExpired(res.status)) return;
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const n = Number(j.created || 0);
+        pushToast(n > 0 ? "success" : "info", n > 0 ? `${n} user disinkronkan` : "Tidak ada user baru", n > 0 ? "User lokal yang belum ada di database sudah dibuat." : "Semua user lokal sudah ada di database.");
+        loadUsersAndSettings();
+      } else {
+        pushToast("error", "Gagal sinkron", typeof j.detail === "string" ? j.detail : `HTTP ${res.status}`);
+      }
+    } catch {
+      pushToast("error", "Gagal sinkron", "Tidak bisa menghubungi backend");
+    } finally {
+      setSyncingUsers(false);
+    }
+  };
+
   const handleCreateOrUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const isEdit = Boolean(editingUserId);
@@ -532,6 +562,15 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       if (c.communication) setCommData(c.communication);
       if (c.system) setSysData(c.system);
       if (Array.isArray(c.response_styles?.styles)) setStylesData({ styles: c.response_styles.styles });
+      if (c.pricing) {
+        setPricingData({
+          plans: Array.isArray(c.pricing.plans) ? c.pricing.plans : [],
+          payment_qris: c.pricing.payment_qris || "",
+          payment_instructions: c.pricing.payment_instructions || "",
+          contact: c.pricing.contact || "",
+          order_note: c.pricing.order_note || "",
+        });
+      }
 
       const cats = Array.isArray(b.categories) ? b.categories : [];
       const entries = Array.isArray(b.entries) ? b.entries : [];
@@ -729,6 +768,39 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       const msg = err.message || "Error saving configuration";
       setErrorMessage(msg);
       pushToast("error", "Gagal simpan", msg.slice(0, 120));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSavePricing = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/python/admin/pricing", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pricingData),
+      });
+      if (res.ok) {
+        const j = await res.json().catch(() => ({}));
+        if (j.pricing) {
+          setPricingData({
+            plans: Array.isArray(j.pricing.plans) ? j.pricing.plans : [],
+            payment_qris: j.pricing.payment_qris || "",
+            payment_instructions: j.pricing.payment_instructions || "",
+            contact: j.pricing.contact || "",
+            order_note: j.pricing.order_note || "",
+          });
+        }
+        pushToast("success", "Tersimpan", "Harga & paket diperbarui.");
+      } else {
+        if (authExpired(res.status)) return;
+        const d = await res.json().catch(() => ({}));
+        const str = typeof d.detail === "string" ? d.detail : `Gagal menyimpan (HTTP ${res.status})`;
+        pushToast("error", "Gagal simpan", str.slice(0, 160));
+      }
+    } catch {
+      pushToast("error", "Gagal simpan", "Tidak bisa menghubungi backend");
     } finally {
       setSaving(false);
     }
@@ -1059,6 +1131,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                 group: "Pengguna",
                 items: [
                   { id: "users", label: "Users", icon: User },
+                  { id: "pricing", label: "Harga & Paket", icon: Coins },
                 ],
               },
               {
@@ -1804,7 +1877,12 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
               <div className="flex items-center justify-between">
                 <h3 className={tSub}>Daftar Pengguna</h3>
-                <Button onClick={() => { setEditingUserId(null); setUserForm({ username: "", password: "", display_name: "", max_prompts: 50, is_active: true }); setUserModalOpen(true); }} className="h-9 bg-white text-black hover:bg-zinc-100 gap-1.5 text-[16px] font-medium"><Plus className="h-4 w-4" /> Tambah User</Button>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={handleSyncLocalUsers} disabled={syncingUsers} className="h-9 border-white/10 bg-white/[0.04] text-[14px] text-zinc-300 gap-1.5">
+                    {syncingUsers ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Sinkron user lokal
+                  </Button>
+                  <Button onClick={() => { setEditingUserId(null); setUserForm({ username: "", password: "", display_name: "", max_prompts: 50, is_active: true }); setUserModalOpen(true); }} className="h-9 bg-white text-black hover:bg-zinc-100 gap-1.5 text-[16px] font-medium"><Plus className="h-4 w-4" /> Tambah User</Button>
+                </div>
               </div>
 
               <Card className={`${cardBase} overflow-hidden`}>
@@ -1938,7 +2016,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           )}
 
           {/* Bulk JSON toolbar */}
-          {activeTab !== "models" && activeTab !== "dashboard" && activeTab !== "users" && (
+          {activeTab !== "models" && activeTab !== "dashboard" && activeTab !== "users" && activeTab !== "pricing" && (
             <Card className={cardBase}>
               <CardContent className="flex flex-wrap items-center gap-2 p-5">
                 <span className="flex items-center gap-2 text-[14px] font-medium tracking-[0.06em] text-zinc-400 uppercase">
@@ -2174,6 +2252,17 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               onChange={(styles) => setStylesData({ styles })}
               onSave={() => handleSaveConfig("styles")}
               saving={saving}
+            />
+          )}
+
+          {/* PRICING (Harga & Paket) */}
+          {activeTab === "pricing" && (
+            <PricingTab
+              pricing={pricingData}
+              onChange={setPricingData}
+              onSave={handleSavePricing}
+              saving={saving}
+              pushToast={pushToast}
             />
           )}
 

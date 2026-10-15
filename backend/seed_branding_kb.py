@@ -102,11 +102,11 @@ ENTRIES = [
      ["paket 1000", "500000", "intensif"]),
 
     ("pricing_subscription", "Cara berlangganan ITZ AI",
-     "Cara berlangganan ITZ AI: pilih paket yang diinginkan (100, 200, atau 1000 "
-     "prompt), lakukan pemesanan kepada admin ITZ AI, lalu tunggu kuota diaktifkan di "
-     "akun Anda. Setelah aktif, kuota langsung bisa dipakai untuk chat. Informasi "
-     "pembayaran dan pemesanan diberikan admin saat pemesanan.",
-     ["cara beli", "daftar", "order", "admin"]),
+     "Cara berlangganan ITZ AI: buka halaman /pricing, pilih paket yang diinginkan "
+     "(100, 200, atau 1000 prompt), klik Ambil paket untuk membuat order, lalu bayar "
+     "via QRIS atau sesuai instruksi admin. Kirim bukti bayar ke admin ITZ AI. Setelah "
+     "admin mengonfirmasi, kuota prompt otomatis ditambahkan ke akun Anda.",
+     ["cara beli", "daftar", "order", "admin", "qris", "harga"]),
 
     ("pricing_subscription", "Cara pakai kuota prompt",
      "Satu prompt ITZ AI sama dengan satu pertanyaan yang dikirim pengguna dan dijawab "
@@ -114,6 +114,14 @@ ENTRIES = [
      "dilihat di menu info (ikon i) pada halaman chat. Tambahan kuota bisa dibeli "
      "kapan saja lewat paket langganan.",
      ["kuota", "sisa prompt", "ikon info"]),
+
+    ("pricing_subscription", "Pembayaran QRIS ITZ AI",
+     "Pembayaran paket ITZ AI bisa lewat QRIS. Setelah membuat order di halaman "
+     "/pricing, scan QRIS yang ditampilkan, bayar dengan nominal yang sama persis, "
+     "lalu kirim bukti bayar ke admin. Kuota aktif setelah admin mengonfirmasi "
+     "pembayaran. Jika QRIS belum tersedia, ikuti instruksi pembayaran yang diberikan "
+     "admin.",
+     ["qris", "pembayaran", "transfer", "bayar"]),
 ]
 
 

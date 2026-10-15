@@ -4,14 +4,17 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowUpRight, Check, Copy, LogIn, X } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 
 export type QuotaOfferVariant = "quota" | "trial" | "login";
 
 const PACKAGES = [
-  { prompts: 100, price: "Rp30.000", popular: false },
-  { prompts: 200, price: "Rp50.000", popular: true },
-  { prompts: 1000, price: "Rp500.000", popular: false },
+  { id: "100", prompts: 100, price: "Rp30.000", popular: false },
+  { id: "200", prompts: 200, price: "Rp50.000", popular: true },
+  { id: "1000", prompts: 1000, price: "Rp500.000", popular: false },
 ];
+
+const rupiah = (n: number) => `Rp${Number(n || 0).toLocaleString("id-ID")}`;
 
 const SPRING = { type: "spring" as const, stiffness: 420, damping: 26 };
 
@@ -52,11 +55,27 @@ export default function QuotaOfferModal({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const [selected, setSelected] = useState<number>(200);
+  const [selected, setSelected] = useState<string>("200");
+  const [packages, setPackages] = useState(PACKAGES);
   const t = COPY[variant];
-  const chosen = PACKAGES.find((p) => p.prompts === selected) ?? PACKAGES[1];
+  const chosen = packages.find((p) => p.id === selected) ?? packages[0] ?? PACKAGES[1];
   const hasCount = typeof used === "number" && typeof max === "number" && max > 0;
   const pct = hasCount ? Math.min(100, Math.round((used! / max!) * 100)) : 100;
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/python/pricing")
+      .then(async (r) => {
+        if (!r.ok) return;
+        const j = await r.json();
+        const plans = Array.isArray(j.plans) ? j.plans : [];
+        if (!plans.length) return;
+        const mapped = plans.map((p: any) => ({ id: String(p.id), prompts: Number(p.prompts), price: rupiah(Number(p.amount)), popular: Boolean(p.popular) }));
+        setPackages(mapped);
+        setSelected((prev) => (mapped.some((p: any) => p.id === prev) ? prev : (mapped.find((p: any) => p.popular)?.id ?? mapped[0].id)));
+      })
+      .catch(() => {});
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -171,15 +190,15 @@ export default function QuotaOfferModal({
               {/* paket */}
               {variant !== "login" && (
                 <motion.div variants={item} role="radiogroup" aria-label="Pilih paket" className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                  {PACKAGES.map((p) => {
-                    const active = selected === p.prompts;
+                  {packages.map((p) => {
+                    const active = selected === p.id;
                     return (
                       <motion.button
-                        key={p.prompts}
+                        key={p.id}
                         type="button"
                         role="radio"
                         aria-checked={active}
-                        onClick={() => setSelected(p.prompts)}
+                        onClick={() => setSelected(p.id)}
                         whileHover={{ y: -2 }}
                         whileTap={{ scale: 0.97 }}
                         transition={SPRING}
@@ -221,29 +240,45 @@ export default function QuotaOfferModal({
               {/* CTA */}
               <motion.div variants={item} className="mt-5 space-y-2.5">
                 {variant === "login" ? (
-                  <a
-                    href="/login"
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-[15px] font-semibold text-black transition-colors hover:bg-zinc-200"
-                  >
-                    <LogIn className="h-4 w-4" /> {t.cta}
-                  </a>
+                  <>
+                    <Link
+                      href="/login"
+                      className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-[15px] font-semibold text-black transition-colors hover:bg-zinc-200"
+                    >
+                      <LogIn className="h-4 w-4" /> {t.cta}
+                    </Link>
+                    <Link
+                      href="/pricing"
+                      className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] text-[14px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05]"
+                    >
+                      Lihat harga paket
+                    </Link>
+                  </>
                 ) : (
-                  <button
-                    onClick={handleContact}
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-[15px] font-semibold text-black transition-colors hover:bg-zinc-200"
-                  >
-                    <AnimatePresence mode="wait" initial={false}>
-                      {copied ? (
-                        <motion.span key="ok" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="flex items-center gap-2">
-                          <Check className="h-4 w-4" /> Tersalin, kirim ke admin
-                        </motion.span>
-                      ) : (
-                        <motion.span key="cta" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="flex items-center gap-2">
-                          <Copy className="h-4 w-4" /> {t.cta}
-                        </motion.span>
-                      )}
-                    </AnimatePresence>
-                  </button>
+                  <>
+                    <Link
+                      href="/pricing"
+                      className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-[15px] font-semibold text-black transition-colors hover:bg-zinc-200"
+                    >
+                      <ArrowUpRight className="h-4 w-4" /> Lihat & ambil paket
+                    </Link>
+                    <button
+                      onClick={handleContact}
+                      className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] text-[14px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05]"
+                    >
+                      <AnimatePresence mode="wait" initial={false}>
+                        {copied ? (
+                          <motion.span key="ok" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="flex items-center gap-2">
+                            <Check className="h-4 w-4" /> Tersalin, kirim ke admin
+                          </motion.span>
+                        ) : (
+                          <motion.span key="cta" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="flex items-center gap-2">
+                            <Copy className="h-4 w-4" /> {t.cta}
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
+                    </button>
+                  </>
                 )}
 
                 {variant === "trial" && (
@@ -269,6 +304,11 @@ export default function QuotaOfferModal({
               <motion.p variants={item} className="mt-4 text-center text-[12px] leading-relaxed text-zinc-600">
                 Aktivasi manual oleh admin setelah pembayaran. Sisa kuota dicek lewat ikon info di halaman chat.
               </motion.p>
+              <motion.div variants={item} className="mt-2 flex justify-center">
+                <Link href="/pricing" className="text-[12.5px] font-medium text-zinc-400 underline-offset-2 transition-colors hover:text-zinc-200 hover:underline">
+                  Buka halaman harga & paket
+                </Link>
+              </motion.div>
             </motion.div>
           </motion.div>
         </motion.div>

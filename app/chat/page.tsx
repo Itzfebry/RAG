@@ -16,6 +16,8 @@ interface Message {
   durationMs?: number;
 }
 
+const MAX_HISTORY_MESSAGES = 20;
+
 const SUGGESTION_POOL = [
   "Ringkas knowledge base saya",
   "Buatkan outline artikel futuristik",
@@ -314,6 +316,9 @@ export default function ChatPage() {
     if (isLoading) return;
     const idx = messages.map((m) => m.role).lastIndexOf("user");
     if (idx < 0) return;
+    if (userInfo && activeChatId) {
+      await fetch(`/api/python/user/chats/${activeChatId}/truncate-last-turn`, { method: "POST" }).catch(() => {});
+    }
     await runChat(String(messages[idx].content), messages.slice(0, idx));
   };
 
@@ -363,7 +368,7 @@ export default function ChatPage() {
       const res = await fetch("/api/python/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage, history: next.slice(0, -1) }),
+        body: JSON.stringify({ message: userMessage, history: next.slice(0, -1).slice(-MAX_HISTORY_MESSAGES) }),
       });
       if (!res.ok) {
         let msg = `Server ${res.status}`;
@@ -380,6 +385,7 @@ export default function ChatPage() {
         if (res.status === 503) { setQuotaAlert(msg); throw new Error(msg); }
         throw new Error(msg);
       }
+      const isStatic = res.headers.get("X-Command-Mode") === "static";
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       if (!reader) throw new Error("No reader");
@@ -412,7 +418,7 @@ export default function ChatPage() {
       }
       if (userInfo) fetch("/api/python/user/me").then(async (r) => { if (r.ok) { const j = await r.json(); setUserInfo(j); if (j.remaining === 0) { setQuotaOut("quota"); setQuotaNoticeHidden(false); } } }).catch(() => {});
       else fetch("/api/python/trial").then((x) => x.json()).then(setTrialInfo).catch(() => {});
-      if (userInfo && acc.trim()) {
+      if (userInfo && acc.trim() && !isStatic) {
         void saveTurn(userMessage, acc);
       }
       const dur = Date.now() - started;
@@ -523,6 +529,15 @@ export default function ChatPage() {
               <span className="hidden sm:inline">Riwayat</span>
             </button>
           )}
+          <a
+            href="/pricing"
+            title="Harga & paket"
+            aria-label="Harga dan paket"
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
+          >
+            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/></svg>
+            <span className="hidden sm:inline">Harga</span>
+          </a>
           <button 
             onClick={() => { startNewChat(); setSuggestions(pickSuggestions()); refreshSuggestions(); }}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"

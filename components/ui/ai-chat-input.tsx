@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ArrowUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { activeCommandsFromInput, suggestCommands } from "@/lib/chat-commands";
 
 interface Props {
   value: string;
@@ -22,6 +23,13 @@ export function AIChatInput({
   className,
 }: Props) {
   const taRef = React.useRef<HTMLTextAreaElement>(null);
+  const suggestions = React.useMemo(() => suggestCommands(value), [value]);
+  const [activeIdx, setActiveIdx] = React.useState(0);
+  const activeCmds = React.useMemo(() => activeCommandsFromInput(value), [value]);
+
+  React.useEffect(() => {
+    setActiveIdx(0);
+  }, [suggestions.length, value]);
 
   React.useEffect(() => {
     if (!taRef.current) return;
@@ -29,7 +37,34 @@ export function AIChatInput({
     taRef.current.style.height = `${Math.min(taRef.current.scrollHeight, 144)}px`;
   }, [value]);
 
+  const applySuggestion = (name: string) => {
+    onChange(`/${name} `);
+    taRef.current?.focus();
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (suggestions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveIdx((i) => (i + 1) % suggestions.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveIdx((i) => (i - 1 + suggestions.length) % suggestions.length);
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        applySuggestion(suggestions[activeIdx].name);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onChange("");
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (value.trim() && !isLoading) onSubmit();
@@ -40,6 +75,36 @@ export function AIChatInput({
 
   return (
     <div className={cn("relative w-full", className)}>
+      {suggestions.length > 0 && (
+        <ul
+          role="listbox"
+          aria-label="Daftar command"
+          className="absolute bottom-full left-0 right-0 mb-2 max-h-64 overflow-y-auto rounded-xl border border-white/[0.1] bg-[#16161c] py-1 shadow-[0_16px_48px_rgba(0,0,0,0.65)]"
+        >
+          {suggestions.map((c, i) => (
+            <li
+              key={c.name}
+              role="option"
+              aria-selected={i === activeIdx}
+              onMouseDown={(e) => { e.preventDefault(); applySuggestion(c.name); }}
+              onMouseEnter={() => setActiveIdx(i)}
+              className={cn("flex cursor-pointer items-baseline justify-between gap-3 px-3.5 py-2", i === activeIdx ? "bg-white/[0.08]" : "hover:bg-white/[0.04]")}
+            >
+              <span className="font-mono text-[13px] text-zinc-100">/{c.name}</span>
+              <span className="truncate text-[12px] text-zinc-500">{c.purpose}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {activeCmds.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Mode aktif">
+          {activeCmds.map((n) => (
+            <span key={n} className="rounded-full border border-emerald-400/25 bg-emerald-400/[0.08] px-2.5 py-0.5 font-mono text-[11.5px] text-emerald-300">
+              /{n}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="input-glow relative flex items-end gap-2.5 overflow-hidden rounded-[20px] border border-white/[0.08] bg-[#0e0e10]/98 px-4 py-3.5 shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.02)] backdrop-blur-xl">
         <div className="pointer-events-none absolute inset-0 rounded-[20px] bg-gradient-to-b from-white/[0.03] via-transparent to-transparent" />
 

@@ -187,6 +187,17 @@ class DatabaseService:
                         "prompt": "Gaya ngobrol santai seperti bicara dengan teman dekat. Gunakan bahasa kasual sehari-hari, boleh humor ringan dan opini personal. Format tetap rapi dengan **bold** untuk poin penting dan spasi antar bagian, tapi hindari heading formal. Sapa dengan akrab."
                     }
                 ]
+            },
+            "pricing_config": {
+                "plans": [
+                    {"id": "100", "label": "Paket 100 Prompt", "prompts": 100, "amount": 30000, "popular": False},
+                    {"id": "200", "label": "Paket 200 Prompt", "prompts": 200, "amount": 50000, "popular": True},
+                    {"id": "1000", "label": "Paket 1000 Prompt", "prompts": 1000, "amount": 500000, "popular": False},
+                ],
+                "payment_qris": "",
+                "payment_instructions": "",
+                "contact": "",
+                "order_note": "Aktivasi manual oleh admin setelah pembayaran dikonfirmasi.",
             }
         }.get(table_name, {})
         result = _read_local_json(f"{table_name}.json", default_data)
@@ -406,14 +417,37 @@ class DatabaseService:
 
     @staticmethod
     def list_users() -> List[Dict[str, Any]]:
+        local = _read_local_json(DatabaseService._users_file(), [])
         if supabase_client:
             try:
                 res = supabase_client.table("app_users").select("*").order("created_at", desc=True).execute()
                 if res.data is not None:
-                    return res.data
+                    supa = res.data
+                    # Gabungkan user yang hanya ada di JSON lokal (mis. hasil fallback
+                    # saat Supabase sempat gagal) supaya tidak tersembunyi di admin.
+                    seen = {str(u.get("id")) for u in supa}
+                    merged = list(supa) + [u for u in local if str(u.get("id")) not in seen]
+                    merged.sort(key=lambda u: str(u.get("created_at") or ""), reverse=True)
+                    return merged
             except Exception:
                 pass
-        return _read_local_json(DatabaseService._users_file(), [])
+        return local
+
+    @staticmethod
+    def _mirror_user_local(user: Dict[str, Any]) -> None:
+        """Sinkronkan satu user ke JSON lokal (best-effort, untuk konsistensi dev)."""
+        try:
+            users = _read_local_json(DatabaseService._users_file(), [])
+            uid = str(user.get("id"))
+            for i, u in enumerate(users):
+                if str(u.get("id")) == uid:
+                    users[i] = {**u, **user}
+                    break
+            else:
+                users.append(user)
+            _write_local_json(DatabaseService._users_file(), users)
+        except Exception:
+            pass
 
     @staticmethod
     def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
@@ -610,8 +644,143 @@ class DatabaseService:
         _write_local_json(DatabaseService._chats_file(), sessions)
 
     @staticmethod
+    def truncate_last_chat_turn(session_id: str) -> None:
+        msgs = DatabaseService.list_chat_messages(session_id)
+        user_idx = [i for i, m in enumerate(msgs) if m.get("role") == "user"]
+        if not user_idx:
+            return
+        drop = {str(m["id"]) for m in msgs[user_idx[-1]:]}
+        if supabase_client:
+            try:
+                supabase_client.table("chat_messages").delete().in_("id", list(drop)).execute()
+                return
+            except Exception as e:
+                print(f"Error truncating chat in Supabase: {e}")
+        local = _read_local_json(DatabaseService._chat_msgs_file(), [])
+        _write_local_json(DatabaseService._chat_msgs_file(), [m for m in local if str(m.get("id")) not in drop])
+
+    @staticmethod
     def count_chat_sessions(user_id: str) -> int:
         return len(DatabaseService.list_chat_sessions(user_id))
+
+    # ── Pricing: paket + order (aktivasi manual admin) ──
+
+    @staticmethod
+    def _orders_file() -> str:
+        return "orders.json"
+
+    @staticmethod
+    def get_pricing() -> Dict[str, Any]:
+        return DatabaseService.get_config_table("pricing_config")
+
+    @staticmethod
+    def update_pricing(patch: Dict[str, Any]) -> Dict[str, Any]:
+        current = DatabaseService.get_pricing()
+        current.update(patch)
+        return DatabaseService.update_config_table("pricing_config", current)
+
+    @staticmethod
+    def find_plan(plan_id: str) -> Optional[Dict[str, Any]]:
+        for p in (DatabaseService.get_pricing().get("plans") or []):
+            if isinstance(p, dict) and str(p.get("id")) == str(plan_id):
+                return p
+        return None
+
+    @staticmethod
+    def create_order(user_id: str, plan: Dict[str, Any], note: str = "", proof: str = "") -> Dict[str, Any]:
+        now = datetime.now().isoformat()
+        row = {
+            "id": str(uuid.uuid4()),
+            "user_id": str(user_id),
+            "plan_id": str(plan.get("id")),
+            "plan_label": str(plan.get("label") or plan.get("id")),
+            "prompts": int(plan.get("prompts") or 0),
+            "amount": int(plan.get("amount") or 0),
+            "status": "pending",
+            "note": note,
+            "proof": proof,
+            "created_at": now,
+            "paid_at": None,
+            "confirmed_by": None,
+            "updated_at": now,
+        }
+        if supabase_client:
+            try:
+                res = supabase_client.table("orders").insert(row).execute()
+                if res.data:
+                    return res.data[0]
+            except Exception as e:
+                print(f"Error creating order in Supabase: {e}")
+        orders = _read_local_json(DatabaseService._orders_file(), [])
+        orders.append(row)
+        _write_local_json(DatabaseService._orders_file(), orders)
+        return row
+
+    @staticmethod
+    def list_orders(user_id: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+        lim = max(1, min(500, int(limit or 100)))
+        if supabase_client:
+            try:
+                q = supabase_client.table("orders").select("*")
+                if user_id is not None:
+                    q = q.eq("user_id", str(user_id))
+                res = q.order("created_at", desc=True).limit(lim).execute()
+                if res.data is not None:
+                    return res.data
+            except Exception as e:
+                print(f"Error listing orders in Supabase: {e}")
+        rows = _read_local_json(DatabaseService._orders_file(), [])
+        if user_id is not None:
+            rows = [o for o in rows if str(o.get("user_id")) == str(user_id)]
+        rows = sorted(rows, key=lambda o: str(o.get("created_at") or ""), reverse=True)
+        return rows[:lim]
+
+    @staticmethod
+    def get_order(order_id: str) -> Optional[Dict[str, Any]]:
+        if supabase_client:
+            try:
+                res = supabase_client.table("orders").select("*").eq("id", str(order_id)).limit(1).execute()
+                if res.data:
+                    return res.data[0]
+            except Exception as e:
+                print(f"Error reading order in Supabase: {e}")
+        for o in _read_local_json(DatabaseService._orders_file(), []):
+            if str(o.get("id")) == str(order_id):
+                return o
+        return None
+
+    @staticmethod
+    def set_order_status(order_id: str, status: str, confirmed_by: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        if status not in ("pending", "paid", "cancelled"):
+            raise ValueError("invalid status")
+        now = datetime.now().isoformat()
+        patch: Dict[str, Any] = {"status": status, "updated_at": now}
+        if status == "paid":
+            patch["paid_at"] = now
+            patch["confirmed_by"] = confirmed_by
+        if supabase_client:
+            try:
+                res = supabase_client.table("orders").update(patch).eq("id", str(order_id)).execute()
+                if res.data:
+                    return res.data[0]
+            except Exception as e:
+                print(f"Error updating order in Supabase: {e}")
+        orders = _read_local_json(DatabaseService._orders_file(), [])
+        for o in orders:
+            if str(o.get("id")) == str(order_id):
+                o.update(patch)
+                _write_local_json(DatabaseService._orders_file(), orders)
+                return o
+        return None
+
+    @staticmethod
+    def count_orders_by_status() -> Dict[str, int]:
+        out = {"pending": 0, "paid": 0, "cancelled": 0}
+        for o in DatabaseService.list_orders(limit=500):
+            s = str(o.get("status") or "pending")
+            if s in out:
+                out[s] += 1
+        return out
 
     @staticmethod
     def delete_email_otps(email: str, purpose: str) -> None:
@@ -696,6 +865,7 @@ class DatabaseService:
             try:
                 res = supabase_client.table("app_users").insert(data).execute()
                 if res.data:
+                    DatabaseService._mirror_user_local(res.data[0])
                     return res.data[0]
             except Exception as e:
                 print(f"Error creating user in Supabase: {e}")
@@ -729,18 +899,51 @@ class DatabaseService:
 
     @staticmethod
     def delete_user(user_id: str) -> bool:
+        found = False
         if supabase_client:
             try:
-                supabase_client.table("app_users").delete().eq("id", user_id).execute()
-                return True
+                res = supabase_client.table("app_users").delete().eq("id", user_id).execute()
+                if res.data:
+                    found = True
             except Exception as e:
                 print(f"Error deleting user in Supabase: {e}")
         users = _read_local_json(DatabaseService._users_file(), [])
         new_users = [u for u in users if str(u.get("id")) != str(user_id)]
-        if len(new_users) == len(users):
-            return False
-        _write_local_json(DatabaseService._users_file(), new_users)
-        return True
+        if len(new_users) != len(users):
+            _write_local_json(DatabaseService._users_file(), new_users)
+            found = True
+        return found
+
+    @staticmethod
+    def sync_local_users_to_supabase() -> int:
+        """Dorong user yang hanya ada di JSON lokal ke Supabase.
+
+        Kasus: create_user sempat gagal insert ke Supabase (mis. kolom baru belum
+        ada) sehingga user hanya tercatat lokal (atau di /tmp serverless yang
+        hilang). Return jumlah user yang berhasil dibuat.
+        """
+        if not supabase_client:
+            return 0
+        local = _read_local_json(DatabaseService._users_file(), [])
+        if not local:
+            return 0
+        try:
+            res = supabase_client.table("app_users").select("id").execute()
+            existing = {str(r.get("id")) for r in (res.data or [])}
+        except Exception as e:
+            print(f"Error reading users for sync: {e}")
+            return 0
+        created = 0
+        for u in local:
+            if str(u.get("id")) in existing:
+                continue
+            try:
+                ins = supabase_client.table("app_users").insert(dict(u)).execute()
+                if ins.data:
+                    created += 1
+            except Exception as e:
+                print(f"Error syncing local user {u.get('username')}: {e}")
+        return created
 
     @staticmethod
     def increment_prompt_usage(user_id: str) -> Optional[Dict[str, Any]]:

@@ -42,6 +42,14 @@ def test_append_and_rename_first_title(db):
     assert db.get_chat_session("user-a", s["id"])["title"] == "halo"
 
 
+def test_truncate_last_turn_keeps_earlier_turns(db):
+    s = db.create_chat_session("user-a", "x")
+    db.append_chat_messages(s["id"], [{"role": "user", "content": "q1"}, {"role": "assistant", "content": "a1"}])
+    db.append_chat_messages(s["id"], [{"role": "user", "content": "q2"}, {"role": "assistant", "content": "a2"}])
+    db.truncate_last_chat_turn(s["id"])
+    assert [m["content"] for m in db.list_chat_messages(s["id"])] == ["q1", "a1"]
+
+
 def test_delete_removes_messages(db):
     s = db.create_chat_session("user-a", "x")
     db.append_chat_messages(s["id"], [{"role": "user", "content": "q"}])

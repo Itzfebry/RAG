@@ -131,11 +131,12 @@ class AgentOrchestrator:
         query: str,
         session_history: List[Dict[str, str]],
         model_override: Optional[str] = None,
-        user_profile: Optional[Dict[str, Any]] = None
+        user_profile: Optional[Dict[str, Any]] = None,
+        command_names: Optional[List[str]] = None,
     ) -> AsyncGenerator[str, None]:
         start = time.perf_counter()
         ttft_ms: Optional[int] = None
-        system_prompt = build_system_prompt(query, session_history, user_profile=user_profile)
+        system_prompt = build_system_prompt(query, session_history, user_profile=user_profile, command_names=command_names)
 
         openai_messages = [{"role": "system", "content": system_prompt}]
         for msg in session_history[-10:]:
