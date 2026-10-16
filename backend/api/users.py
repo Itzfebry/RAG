@@ -15,6 +15,7 @@ try:
         create_user_jwt,
         verify_user_jwt,
         USER_COOKIE_NAME,
+        is_valid_password,
     )
     from backend.security.rate_limiter import (
         get_client_ip, check_rate_limit, check_rate_limit_durable,
@@ -28,7 +29,7 @@ except ImportError:
     from config.config import settings  # type: ignore
     from database.db import DatabaseService  # type: ignore
     from security import otp  # type: ignore
-    from security.auth import verify_password, hash_password, create_user_jwt, verify_user_jwt, USER_COOKIE_NAME  # type: ignore
+    from security.auth import verify_password, hash_password, create_user_jwt, verify_user_jwt, USER_COOKIE_NAME, is_valid_password  # type: ignore
     from security.rate_limiter import (
         get_client_ip, check_rate_limit, check_rate_limit_durable,
         is_locked_out, is_locked_out_durable,
@@ -63,6 +64,13 @@ class UserCreateRequest(BaseModel):
             raise ValueError("Invalid username")
         return v
 
+    @field_validator("password")
+    @classmethod
+    def check_password(cls, v: str) -> str:
+        if not is_valid_password(v):
+            raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
+        return v
+
     @field_validator("display_name")
     @classmethod
     def strip_dn(cls, v):  # type: ignore
@@ -76,6 +84,13 @@ class UserUpdateRequest(BaseModel):
     max_prompts: Optional[int] = Field(default=None, ge=0, le=100000)
     is_active: Optional[bool] = None
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+    @field_validator("password")
+    @classmethod
+    def check_password(cls, v: str) -> str:
+        if not is_valid_password(v):
+            raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
+        return v
 
     @field_validator("display_name")
     @classmethod
@@ -104,6 +119,13 @@ class UserLoginRequest(BaseModel):
 class UserPasswordChangeRequest(BaseModel):
     current_password: Optional[str] = Field(default=None, max_length=128)
     new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def check_password(cls, v: str) -> str:
+        if not is_valid_password(v):
+            raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
+        return v
 
 class AppSettingsUpdateRequest(BaseModel):
     user_token_expiry_hours: int = Field(ge=1, le=720)
@@ -203,6 +225,13 @@ class UserRegisterRequest(BaseModel):
             raise ValueError("Invalid email")
         return v
 
+    @field_validator("password")
+    @classmethod
+    def check_password(cls, v: str) -> str:
+        if not is_valid_password(v):
+            raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
+        return v
+
     @field_validator("display_name")
     @classmethod
     def strip_dn(cls, v):  # type: ignore
@@ -300,6 +329,13 @@ class PasswordResetRequest(BaseModel):
     email: str = Field(min_length=5, max_length=254)
     code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
     new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def check_password(cls, v: str) -> str:
+        if not is_valid_password(v):
+            raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
+        return v
 
     @field_validator("email")
     @classmethod
@@ -421,6 +457,13 @@ class UserProfileUpdateRequest(BaseModel):
     goal: Optional[str] = Field(default=None, max_length=300)
     style_id: Optional[str] = Field(default=None, max_length=32)
     gender: Optional[str] = Field(default=None, max_length=10)
+
+    @field_validator("password")
+    @classmethod
+    def check_password(cls, v: str) -> str:
+        if not is_valid_password(v):
+            raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
+        return v
 
     @field_validator("display_name")
     @classmethod

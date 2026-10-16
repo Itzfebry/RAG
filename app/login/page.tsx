@@ -121,6 +121,10 @@ export default function UserLoginPage() {
       setAuthError("Konfirmasi kata sandi tidak sama");
       return;
     }
+    if (!/^(?=.*[A-Z])(?=.*\d).{8,}$/.test(password)) {
+      setAuthError("Kata sandi harus minimal 8 karakter, mengandung huruf besar dan angka");
+      return;
+    }
     setIsLoading(true);
     try {
       const res = await fetch("/api/python/user/register", {
@@ -224,6 +228,10 @@ export default function UserLoginPage() {
     setAuthError("");
     if (password !== confirmPassword) {
       setAuthError("Konfirmasi kata sandi tidak sama");
+      return;
+    }
+    if (!/^(?=.*[A-Z])(?=.*\d).{8,}$/.test(password)) {
+      setAuthError("Kata sandi harus minimal 8 karakter, mengandung huruf besar dan angka");
       return;
     }
     setIsLoading(true);
@@ -511,10 +519,11 @@ export default function UserLoginPage() {
                     autoComplete="new-password"
                     minLength={8}
                     className="h-12 border-white/[0.08] bg-[#0a0a0c] text-[14px] text-zinc-100 rounded-xl"
-                    placeholder="Minimal 8 karakter"
+                    placeholder="Minimal 8 karakter, huruf besar & angka"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
+                  <p className="text-[11px] text-zinc-500 mt-1">Minimal 8 karakter, wajib ada 1 huruf besar dan 1 angka.</p>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Ulangi Kata Sandi</label>
@@ -547,7 +556,7 @@ export default function UserLoginPage() {
                 <Button
                   type="submit"
                   className="h-12 w-full bg-zinc-100 text-[13px] font-bold text-black hover:bg-white rounded-xl"
-                  disabled={isLoading || otpCode.length !== 6 || password.length < 8 || !confirmPassword}
+                  disabled={isLoading || otpCode.length !== 6 || password.length < 8 || !/^(?=.*[A-Z])(?=.*\d)/.test(password) || !confirmPassword}
                 >
                   {isLoading ? <Loader2 className="animate-spin" size={16} /> : "Atur kata sandi"}
                 </Button>
@@ -604,10 +613,13 @@ export default function UserLoginPage() {
                   autoComplete={mode === "login" ? "current-password" : "new-password"}
                   minLength={mode === "register" ? 8 : undefined}
                   className="h-12 border-white/[0.08] bg-[#0a0a0c] text-[14px] text-zinc-100 placeholder:text-zinc-700 focus:border-zinc-500 focus:bg-black/40 transition-all duration-300 rounded-xl"
-                  placeholder="••••••••"
+                  placeholder="Minimal 8 karakter, huruf besar & angka"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
+                {mode === "register" && (
+                  <p className="text-[11px] text-zinc-500 mt-1">Minimal 8 karakter, wajib ada 1 huruf besar dan 1 angka.</p>
+                )}
               </div>
 
               {mode === "register" && (
@@ -663,7 +675,7 @@ export default function UserLoginPage() {
                   isLoading ||
                   !username.trim() ||
                   !password ||
-                  (mode === "register" && (!email.trim() || password.length < 8 || !confirmPassword))
+                  (mode === "register" && (!email.trim() || password.length < 8 || !/^(?=.*[A-Z])(?=.*\d)/.test(password) || !confirmPassword))
                 }
               >
                 {isLoading ? <Loader2 className="animate-spin" size={16} /> : mode === "login" ? "Masuk" : "Daftar"}
