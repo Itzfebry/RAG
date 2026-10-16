@@ -64,13 +64,6 @@ class UserCreateRequest(BaseModel):
             raise ValueError("Invalid username")
         return v
 
-    @field_validator("password")
-    @classmethod
-    def check_password(cls, v: str) -> str:
-        if not is_valid_password(v):
-            raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
-        return v
-
     @field_validator("display_name")
     @classmethod
     def strip_dn(cls, v):  # type: ignore
@@ -84,13 +77,6 @@ class UserUpdateRequest(BaseModel):
     max_prompts: Optional[int] = Field(default=None, ge=0, le=100000)
     is_active: Optional[bool] = None
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
-
-    @field_validator("password")
-    @classmethod
-    def check_password(cls, v: str) -> str:
-        if not is_valid_password(v):
-            raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
-        return v
 
     @field_validator("display_name")
     @classmethod
@@ -223,13 +209,6 @@ class UserRegisterRequest(BaseModel):
         v = v.strip().lower()
         if not EMAIL_RE.match(v):
             raise ValueError("Invalid email")
-        return v
-
-    @field_validator("password")
-    @classmethod
-    def check_password(cls, v: str) -> str:
-        if not is_valid_password(v):
-            raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
         return v
 
     @field_validator("display_name")
@@ -457,13 +436,6 @@ class UserProfileUpdateRequest(BaseModel):
     goal: Optional[str] = Field(default=None, max_length=300)
     style_id: Optional[str] = Field(default=None, max_length=32)
     gender: Optional[str] = Field(default=None, max_length=10)
-
-    @field_validator("password")
-    @classmethod
-    def check_password(cls, v: str) -> str:
-        if not is_valid_password(v):
-            raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
-        return v
 
     @field_validator("display_name")
     @classmethod
