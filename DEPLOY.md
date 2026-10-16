@@ -7,7 +7,7 @@ Arsitektur: Next.js frontend + FastAPI sebagai file-based Python function
 
 ```
 Browser → /api/python/* → rewrite → /api/* → api/[...path].py → FastAPI
-Embedding query → HuggingFace Inference API (multilingual MiniLM, 384d)
+Embedding query → Gemini API (gemini-embedding-2, 768 dim)
 Chat LLM → Groq API
 Storage → Supabase (pgvector)
 ```
@@ -23,14 +23,24 @@ Membuat tabel yang sebelumnya cuma ada di file lokal (tidak awet di serverless):
 
 Jalankan juga migrasi fitur setelahnya (idempoten, urutan bebas):
 `supabase_migration_auth_hardening.sql`, `supabase_migration_email_otp.sql`,
-`supabase_migration_session_version.sql`, `supabase_migration_profiles_tokens.sql`,
-`supabase_migration_admin_session.sql`, `supabase_migration_pricing.sql`.
+`supabase_migration_session_version.sql`, `supabase_migration_admin_session.sql`,
+`supabase_migration_profiles_tokens.sql`, `supabase_migration_pricing.sql`,
+`supabase_migration_audit.sql`, `supabase_migration_chat_history.sql`,
+`supabase_migration_rag_settings.sql`, `supabase_migration_response_styles.sql`,
+`supabase_migration_768.sql` (384 → 768), `supabase_migration_knowledge.sql`
+(tabel knowledge + RPC `match_knowledge_entries`), `supabase_migration_rate_limits.sql`.
 
-### 2. Buat HF token (gratis)
+### 2. Siapkan API key embedding (Gemini)
 
-1. Login di https://huggingface.co
-2. https://huggingface.co/settings/tokens → Create token → role **Read**
-3. Copy token (`hf_...`)
+Vektor di Supabase sudah diindex dengan **gemini-embedding-2, 768 dimensi**.
+Maka provider embedding di produksi harus `gemini` — jangan diganti ke `hf`
+(model MiniLM 384 dimensi → query vector tidak cocok dengan kolom `vector(768)`
+dan retrieval gagal `dimension mismatch`).
+
+1. Buka https://aistudio.google.com/apikey → Create API key
+2. Copy key (`AIza...`) → dipakai sebagai `GEMINI_API_KEY`
+
+(HF_TOKEN tidak lagi dipakai kecuali `EMBEDDING_PROVIDER=hf` + reindex ulang.)
 
 ### 3. Import project ke Vercel
 
@@ -45,15 +55,16 @@ Next.js. Tanpa konfigurasi tambahan (sudah ada `vercel.json`).
 | `SUPABASE_SERVICE_ROLE_KEY` | dari `.env` lokal |
 | `SUPABASE_ANON_KEY` | dari `.env` lokal |
 | `GROQ_API_KEY` | dari `.env` lokal |
-| `HF_TOKEN` | token dari langkah 2 |
-| `EMBEDDING_PROVIDER` | `hf` |
-| `MATCH_THRESHOLD` | `0.64` (gemini). Default kode 0.25 untuk provider non-gemini |
+| `GEMINI_API_KEY` | **wajib untuk RAG**; dari langkah 2 (embedding `gemini`) |
+| `EMBEDDING_PROVIDER` | **`gemini`** — jangan `hf`; vektor di DB 768 dimensi |
+| `GEMINI_EMBEDDING_MODEL` | opsional; default kode `gemini-embedding-2` |
+| `EMBEDDING_DIM` | opsional; default kode `768` (harus sama dengan kolom vector) |
+| `MATCH_THRESHOLD` | opsional; default kode `0.64` untuk provider `gemini` (0.25 untuk non-gemini) |
 | `CRON_SECRET` | string acak; Vercel mengirim `Authorization: Bearer <CRON_SECRET>` ke `/api/cron/warmup` |
 | `CORS_ORIGIN_REGEX` | opsional, default `https://itzfebry\.vercel\.app` |
-| `ADMIN_PASSWORD_HASH` | **wajib** bcrypt hash; tidak ada default |
-| `JWT_SECRET_KEY` | **string acak kuat, min 32 karakter** (yang di `.env` lokal masih default — wajib diganti di Vercel) |
+| `ADMIN_PASSWORD_HASH` | **wajib** bcrypt hash dari `.env` lokal; tidak ada default |
+| `JWT_SECRET_KEY` | **string acak kuat, min 32 karakter, berbeda dari `.env` lokal** (semua cookie lama tidak berlaku setelah ganti) |
 | `ADMIN_USERNAME` | username admin |
-| `ADMIN_PASSWORD_HASH` | bcrypt hash dari `.env` lokal |
 | `NODE_ENV` | `production` |
 | `VERCEL_FORCE_PYTHON_STREAMING` | `1` |
 | `GOOGLE_CLIENT_ID` | opsional; dari Google Cloud Console (OAuth client) |
@@ -75,27 +86,33 @@ Semua state hidup di Supabase setelah langkah 1.
 
 Push ke branch utama (auto-deploy) atau `vercel deploy`. Setelah live:
 
-1. `https://<domain>/api/cron/warmup` → `{"status":"ok"}` = embedding HF jalan
-   (cron harian 03:00 UTC jaga model tetap hangat).
+1. `https://<domain>/api/cron/warmup` dengan header
+   `Authorization: Bearer <CRON_SECRET>` → `{"status":"ok"}` = embedding Gemini
+   jalan (cron harian 03:00 UTC juga membuang baris `rate_limits` kedaluwarsa).
 2. Login `/admin` → tab AI Models → pastikan `openai/gpt-oss-120b` / Groq tampil.
 3. Chat `/` → tanya "Berapa anggaran proyek Kalkara-7?" → harus
    "Rp 9.417.500.000" (bukti retrieval hidup di Vercel).
+4. Akun ber-email yang `email_verified=false` akan kena gate `403` di chat.
+   User bisa verifikasi sendiri lewat login → layar kode OTP.
+5. Klik **MASUK DENGAN GOOGLE** di `/login` → pastikan `redirect_uri` di
+   Google Console persis `https://<domain>/api/python/auth/google-callback`.
 
 ## Catatan teknis
 
-- **Endpoint embedding**: HF lama (`api-inference.huggingface.co`) sudah
-  dimatikan. Kode memakai `router.huggingface.co/hf-inference/...` + token.
-- **Model embedding**: `paraphrase-multilingual-MiniLM-L12-v2` (384 dimensi).
-  Vektor di Supabase sudah di-reindex dengan model ini — kompatibel HF API.
-  Ganti model = wajib reindex (`python -m backend.test_rag --reindex`).
+- **Endpoint embedding**: `gemini` → `GEMINI_EMBEDDING_MODEL`
+  (`gemini-embedding-2`), dimensi `EMBEDDING_DIM` = **768**. Fallback lain
+  (`hf` = MiniLM 384 dimensi, `local` = on-CPU) hanya cocok kalau DB ikut
+  di-reindex; kalau tidak, query vector tidak cocok dengan kolom `vector(768)`.
+- **Model embedding**: vektor di Supabase sudah diindex dengan
+  `gemini-embedding-2` (768 dim). Ganti model = wajib reindex
+  (`python -m backend.test_rag --reindex`) + sesuaikan `EMBEDDING_DIM`.
 - **Indexing knowledge**: sinkron (BackgroundTasks dibuang — serverless mati
   setelah response terkirim).
-- **Rate limit in-memory** (`middleware.ts`, `security/middleware.py`):
-  per-instance di serverless — pelonggaran teknis, bukan kebocoran.
+- **Rate limit in-memory** (`proxy.ts`, `security/middleware.py`): per-instance
+  di serverless — pelonggaran teknis, bukan kebocoran. Login, register, OTP,
+  dan reset kata sandi sudah memakai `rate_limits` (Supabase, atomik).
 - **Local dev tidak berubah**: `uvicorn backend.api.main:app` + `npm run dev`
   (rewrite dev tetap arah `localhost:8000`).
-- **Offline fallback**: `.env` lokal sengaja dibiarkan `EMBEDDING_PROVIDER=local`
-  (model multilingual yang sama jalan di CPU, tanpa HF token). Nilai `hf` untuk
-  produksi di-set di Environment Variables Vercel, bukan di `.env` (yang tidak
-  ikut ter-deploy). Ganti ke `hf` lokal butuh `HF_TOKEN` di `.env` + tidak perlu
-  reindex (satu model, vektor kompatibel).
+- **`.env` lokal**: memakai `EMBEDDING_PROVIDER=gemini` + `GEMINI_API_KEY`
+  (butuh koneksi internet). Nilai produksi di-set di Environment Variables
+  Vercel, bukan di `.env` (yang tidak ikut ter-deploy).
