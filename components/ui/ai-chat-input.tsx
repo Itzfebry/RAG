@@ -110,6 +110,7 @@ export function AIChatInput({
 
         <textarea
           ref={taRef}
+          id="itz-chat-input"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}

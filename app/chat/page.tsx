@@ -7,6 +7,7 @@ import { AIChatInput } from "@/components/ui/ai-chat-input";
 import QuotaOfferModal, { QuotaOfferVariant } from "@/components/chat/QuotaOfferModal";
 import QuotaNotice from "@/components/chat/QuotaNotice";
 import ChatHistoryPanel, { ChatSummary } from "@/components/chat/ChatHistoryPanel";
+import OnboardingTour, { TourStep } from "@/components/chat/OnboardingTour";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, Info, X } from "lucide-react";
 
@@ -35,6 +36,15 @@ function pickSuggestions(): string[] {
   const shuffled = [...SUGGESTION_POOL].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, 3);
 }
+
+// Instruksi sekali-jalan untuk akun baru: menunjuk fitur utama satu per satu.
+// Flag "sudah pernah lihat" per akun disimpan di localStorage (Lewati = permanen).
+const TOUR_STEPS: TourStep[] = [
+  { target: "itz-chat-input", title: "1. Disini tempat untuk prompt", desc: "Ketik pertanyaan atau perintah kamu di kolom ini, lalu tekan Enter untuk mengirim." },
+  { target: "itz-logo", title: "2. Riwayat chat", desc: "Klik logo ITZ di kiri atas untuk membuka chat yang tersimpan." },
+  { target: "btn-new-chat", title: "3. Chat baru", desc: "Mulai percakapan baru dari awal kapan saja." },
+  { target: "btn-profile", title: "4. Profil & pengaturan", desc: "Atur nama tampilan, tujuan pakai AI, dan cek sisa prompt lewat ikon ini." },
+];
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -65,6 +75,10 @@ export default function ChatPage() {
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
   // Riwayat chat tersimpan (hanya user login). Trial/tamu tetap state lokal.
   const [historyOpen, setHistoryOpen] = useState(false);
+  // Tour instruksi akun baru: tampil sekali per akun (flag localStorage per username).
+  const [tourOpen, setTourOpen] = useState(false);
+  const [tourSteps, setTourSteps] = useState<TourStep[]>([]);
+  const tourUserRef = useRef<string | null>(null);
   const [chatList, setChatList] = useState<ChatSummary[]>([]);
   const [chatLimit, setChatLimit] = useState(3);
   const [chatRetention, setChatRetention] = useState(7);
@@ -138,6 +152,18 @@ export default function ChatPage() {
             return;
           }
           setUserInfo(j);
+          // Instruksi sekali per akun: tampil kalau akun ini belum pernah
+          // melihat tour (flag permanen di localStorage, termasuk saat klik Lewati).
+          try {
+            const TOUR_KEY = `itz_onboarding_done:${j.username}`;
+            if (!localStorage.getItem(TOUR_KEY)) {
+              tourUserRef.current = j.username;
+              window.setTimeout(() => {
+                const valid = TOUR_STEPS.filter((s) => document.getElementById(s.target));
+                if (valid.length) { setTourSteps(valid); setTourOpen(true); }
+              }, 900);
+            }
+          } catch {}
           // sapaan selamat datang setelah login (flag dari /login atau ?welcome=1 dari OAuth Google)
           try {
             const flagged = sessionStorage.getItem("itz_welcome") === "1";
@@ -228,6 +254,14 @@ export default function ChatPage() {
     setQuotaAlert(null);
     setHistoryOpen(false);
   };
+
+  // Selesai/Lewati tour: tandai permanen agar tidak pernah tampil lagi.
+  const endTour = useCallback(() => {
+    setTourOpen(false);
+    try {
+      if (tourUserRef.current) localStorage.setItem(`itz_onboarding_done:${tourUserRef.current}`, "1");
+    } catch {}
+  }, []);
 
   const openProfile = useCallback(() => {
     if (!userInfo) return;
@@ -461,13 +495,18 @@ export default function ChatPage() {
 
       <header className="relative z-30 flex h-[56px] shrink-0 items-center justify-between border-b border-white/[0.08] bg-[rgba(14,14,19,0.13)] px-4 backdrop-blur-xl supports-[backdrop-filter]:bg-[rgba(14,14,19,0.13)] sm:px-6">
         <div className="flex items-center gap-3">
-          <motion.div
+          <motion.button
+            type="button"
+            id="itz-logo"
             whileHover={{ rotate: [0, -8, 8, 0], scale: 1.06 }}
             transition={{ duration: 0.6, ease: "easeInOut" }}
-            className="itz-logo itz-logo-sheen relative flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-white/[0.12] bg-zinc-900 shadow-lg"
+            onClick={() => { if (!userInfo) return; setHistoryOpen(true); loadChatList(); }}
+            title={userInfo ? "Riwayat chat" : "ITZ AI"}
+            aria-label={userInfo ? "Riwayat chat" : "ITZ AI"}
+            className="itz-logo itz-logo-sheen relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-white/[0.12] bg-zinc-900 shadow-lg"
           >
             <Image src="/image/favicon.png" alt="ITZ" width={36} height={36} className="h-full w-full object-cover" priority />
-          </motion.div>
+          </motion.button>
           <span className="itz-brand text-[15.5px] font-semibold tracking-[0.14em]">ITZ AI</span>
         </div>
         <div className="flex items-center gap-2">
@@ -525,17 +564,6 @@ export default function ChatPage() {
               </div>
             )}
           </div>
-          {userInfo && (
-            <button
-              onClick={() => { setHistoryOpen(true); loadChatList(); }}
-              title="Riwayat chat"
-              aria-label="Riwayat chat"
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
-            >
-              <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
-              <span className="hidden sm:inline">Riwayat</span>
-            </button>
-          )}
           <a
             href="/pricing"
             title="Harga & paket"
@@ -546,6 +574,8 @@ export default function ChatPage() {
             <span className="hidden sm:inline">Harga</span>
           </a>
           <button 
+            type="button"
+            id="btn-new-chat"
             onClick={() => { startNewChat(); setSuggestions(pickSuggestions()); refreshSuggestions(); }}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
           >
@@ -554,7 +584,7 @@ export default function ChatPage() {
           </button>
           {userInfo ? (
             <>
-              <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.92 }} onClick={openProfile} title="Pengaturan profil" aria-label="Pengaturan profil" className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
+              <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.92 }} onClick={openProfile} id="btn-profile" title="Pengaturan profil" aria-label="Pengaturan profil" className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
                 <motion.svg whileHover={{ rotate: 90 }} transition={{ type: "spring", stiffness: 260, damping: 16 }} className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></motion.svg>
               </motion.button>
               <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.92 }} onClick={() => setConfirmLogout(true)} title="Keluar" aria-label="Keluar" className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
@@ -596,6 +626,9 @@ export default function ChatPage() {
         onDeleteChat={deleteChat}
         onNewChat={startNewChat}
       />
+
+      {/* Instruksi fitur untuk akun baru - sekali seumur akun (Lewati = permanen) */}
+      {tourOpen && tourSteps.length > 0 && <OnboardingTour steps={tourSteps} onFinish={endTour} />}
 
       {/* Konfirmasi keluar */}
       <AnimatePresence>
