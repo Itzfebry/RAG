@@ -252,7 +252,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const [commData, setCommData] = useState({ primary_language: "", tone: "", response_length: "", formatting_preference: "", technical_depth: "", explanation_style: "" });
   const [sysData, setSysData] = useState({ behavioral_rules: "", response_rules: "", safety_rules: "", knowledge_priority: "", reasoning_constraints: "", formatting_rules: "" });
   const [stylesData, setStylesData] = useState<{ styles: { id: string; name: string; description: string; prompt: string }[] }>({ styles: [] });
-  const [pricingData, setPricingData] = useState<{ plans: { id: string; label: string; prompts: number; amount: number; popular: boolean }[]; payment_qris: string; payment_instructions: string; contact: string; order_note: string }>({
+  const [pricingData, setPricingData] = useState<{ plans: { id: string; label: string; prompts: number; amount: number; popular: boolean; original_amount?: number | null }[]; payment_qris: string; payment_instructions: string; contact: string; order_note: string }>({
     plans: [],
     payment_qris: "",
     payment_instructions: "",

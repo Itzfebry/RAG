@@ -48,7 +48,15 @@ def _build_pricing_block() -> str:
         if prompts <= 0 or not str(p.get("id") or "").strip():
             continue
         label = str(p.get("label") or f"Paket {prompts} Prompt").strip()
-        plans.append(f"- {label}: {prompts} prompt, Rp{amount:,}".replace(",", "."))
+        try:
+            original = int(p.get("original_amount") or 0)
+        except Exception:
+            original = 0
+        if original > amount > 0:
+            pct = round((1 - amount / original) * 100)
+            plans.append(f"- {label}: {prompts} prompt, LAGI DISKON {pct}% dari Rp{original:,} jadi Rp{amount:,}".replace(",", "."))
+        else:
+            plans.append(f"- {label}: {prompts} prompt, Rp{amount:,}".replace(",", "."))
     if not plans:
         return ""
     lines = [
@@ -63,6 +71,13 @@ def _build_pricing_block() -> str:
     order_note = str(cfg.get("order_note") or "").strip()
     if contact:
         lines.append(f"Kontak admin: {contact}")
+        try:
+            from backend.api.pricing import wa_link
+        except ImportError:
+            from api.pricing import wa_link  # type: ignore
+        wa = wa_link(contact)
+        if wa:
+            lines.append(f"Chat admin langsung: {wa.replace('https://', '')}")
     if qris:
         lines.append("Pembayaran QRIS tersedia di halaman /pricing saat membuat order.")
     if order_note:

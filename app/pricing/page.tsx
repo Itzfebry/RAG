@@ -4,15 +4,16 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Copy, Loader2, QrCode, Sparkles, ArrowLeft, Clock, X, Receipt } from "lucide-react";
+import { Check, Copy, Loader2, QrCode, Sparkles, ArrowLeft, Clock, X, Receipt, MessageCircle } from "lucide-react";
 
-export type Plan = { id: string; label: string; prompts: number; amount: number; popular?: boolean };
+export type Plan = { id: string; label: string; prompts: number; amount: number; popular?: boolean; original_amount?: number | null; discount_percent?: number | null };
 
 export type PricingData = {
   plans: Plan[];
   payment_qris: string;
   payment_instructions: string;
   contact: string;
+  contact_wa: string;
   order_note: string;
 };
 
@@ -41,6 +42,9 @@ export default function PricingPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [showQris, setShowQris] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [order, setOrder] = useState<OrderRow | null>(null);
+  const [paying, setPaying] = useState(false);
+  const [modalNotice, setModalNotice] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/python/pricing")
@@ -79,6 +83,7 @@ export default function PricingPage() {
     if (!chosen || submitting) return;
     setSubmitting(true);
     setNotice(null);
+    setModalNotice(null);
     try {
       const r = await fetch("/api/python/user/orders", {
         method: "POST",
@@ -90,7 +95,7 @@ export default function PricingPage() {
         setNotice(typeof j.detail === "string" ? j.detail : "Gagal membuat order");
         return;
       }
-      setNotice("Order dibuat. Selesaikan pembayaran, lalu admin akan mengaktifkan kuota.");
+      setOrder((j.order as OrderRow) ?? null);
       setShowQris(true);
       loadOrders();
     } catch {
@@ -99,6 +104,35 @@ export default function PricingPage() {
       setSubmitting(false);
     }
   };
+
+  const markPaid = async () => {
+    if (!order || paying) return;
+    setPaying(true);
+    setModalNotice(null);
+    try {
+      const r = await fetch(`/api/python/user/orders/${order.id}/paid`, { method: "POST" });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setModalNotice(typeof j.detail === "string" ? j.detail : "Gagal mencatat pembayaran");
+        return;
+      }
+      setShowQris(false);
+      setOrder(null);
+      setNotice(`Pembayaran tercatat. Kuota ${chosen ? `${chosen.prompts} prompt` : "paket"} sudah aktif.`);
+      loadOrders();
+      fetch("/api/python/user/me").then(async (r) => { if (r.ok) setUser(await r.json()); }).catch(() => {});
+    } catch {
+      setModalNotice("Gagal mencatat pembayaran. Coba lagi.");
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const waHref = (msg: string) =>
+    data?.contact_wa ? `${data.contact_wa}?text=${encodeURIComponent(msg)}` : null;
+
+  const receiptMsg = `Halo admin ITZ AI, saya sudah bayar ${chosen ? `${chosen.label} (${rupiah(chosen.amount)})` : "paket prompt"}.${user?.username ? ` Username: ${user.username}` : ""}`;
+  const receiptWa = waHref(receiptMsg);
 
   const copy = async (text: string) => {
     try {
@@ -109,10 +143,10 @@ export default function PricingPage() {
   };
 
   const steps = [
-    "Pilih paket, lalu klik Ambil paket untuk membuat order.",
-    "Scan QRIS atau bayar sesuai instruksi. Nominal harus sama persis.",
-    "Salin ringkasan order dan kirim bukti bayar ke admin.",
-    "Admin konfirmasi, kuota prompt otomatis ditambahkan ke akunmu.",
+    "Pilih paket, lalu klik Ambil paket — QRIS langsung tampil.",
+    "Scan QRIS dan bayar dengan nominal persis sesuai paket.",
+    "Klik Sudah Bayar — kuota aktif otomatis dan tercatat di sistem.",
+    "Ada kendala? Chat admin langsung lewat WhatsApp.",
   ];
 
   return (
@@ -124,7 +158,7 @@ export default function PricingPage() {
           </div>
           <div>
             <h1 className="text-[22px] font-semibold tracking-tight text-zinc-50">Harga & Paket</h1>
-            <p className="mt-0.5 text-[13px] text-zinc-500">Kuota prompt ITZ AI. Aktivasi manual oleh admin setelah pembayaran.</p>
+            <p className="mt-0.5 text-[13px] text-zinc-500">Kuota prompt ITZ AI. Aktivasi otomatis setelah pembayaran dikonfirmasi.</p>
           </div>
         </div>
         <Link href="/chat" className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-1.5 text-[13px] text-zinc-300 transition-colors hover:bg-white/[0.06]">
@@ -157,6 +191,10 @@ export default function PricingPage() {
           {plans.map((p) => {
             const active = activeId === p.id;
             const perPrompt = p.prompts > 0 ? Math.round(p.amount / p.prompts) : 0;
+            // Diskon aktif hanya kalau harga coret di atas harga akhir.
+            const off =
+              typeof p.discount_percent === "number" && p.discount_percent > 0 &&
+              typeof p.original_amount === "number" && p.original_amount > p.amount;
             return (
               <motion.button
                 key={p.id}
@@ -190,12 +228,24 @@ export default function PricingPage() {
                     </motion.span>
                   )}
                 </AnimatePresence>
-                <p className="text-[13px] font-medium tracking-wide text-zinc-500">{p.label}</p>
+                <p className="flex items-center gap-2 text-[13px] font-medium tracking-wide text-zinc-500">
+                  {p.label}
+                  {off && (
+                    <span className="rounded border border-emerald-400/25 bg-emerald-400/[0.07] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-300">
+                      Hemat {p.discount_percent}%
+                    </span>
+                  )}
+                </p>
                 <p className="mt-3 text-[32px] font-semibold leading-none tracking-[-0.03em] tabular-nums text-white">
                   {p.prompts}
                   <span className="ml-1.5 text-[13px] font-normal text-zinc-500">prompt</span>
                 </p>
-                <p className="mt-3 border-t border-white/[0.07] pt-3 text-[17px] font-medium tabular-nums text-zinc-200">{rupiah(p.amount)}</p>
+                <p className="mt-3 flex items-baseline gap-2 border-t border-white/[0.07] pt-3">
+                  <span className="text-[17px] font-medium tabular-nums text-zinc-200">{rupiah(p.amount)}</span>
+                  {off && (
+                    <span className="text-[13px] tabular-nums text-zinc-600 line-through">{rupiah(p.original_amount!)}</span>
+                  )}
+                </p>
                 <p className="mt-1 text-[12px] tabular-nums text-zinc-500">
                   {perPrompt > 0 ? `≈ ${rupiah(perPrompt)} / prompt` : "Harga khusus"}
                 </p>
@@ -261,10 +311,21 @@ export default function PricingPage() {
                 </button>
               )}
               {data?.payment_instructions && <p className="whitespace-pre-wrap">{data.payment_instructions}</p>}
-              {data?.contact && (
-                <p>
-                  Kontak admin: <span className="font-medium text-zinc-200">{data.contact}</span>
-                </p>
+              {data?.contact_wa ? (
+                <a
+                  href={`${data.contact_wa}?text=${encodeURIComponent("Halo admin ITZ AI, saya mau tanya soal pembayaran paket prompt.")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex w-fit items-center gap-2 rounded-lg border border-white/[0.12] bg-white/[0.04] px-3 py-2 text-[13px] text-zinc-200 transition-colors hover:bg-white/[0.08]"
+                >
+                  <MessageCircle className="h-4 w-4" /> Chat admin via WhatsApp
+                </a>
+              ) : (
+                data?.contact && (
+                  <p>
+                    Kontak admin: <span className="font-medium text-zinc-200">{data.contact}</span>
+                  </p>
+                )
               )}
             </div>
           ) : (
@@ -303,7 +364,7 @@ export default function PricingPage() {
                         <td className="px-4 py-3 text-[13.5px] tabular-nums text-zinc-300">{rupiah(o.amount)}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${badge}`}>
-                            {o.status === "paid" ? "AKTIF" : o.status === "cancelled" ? "DIBATALKAN" : "MENUNGGU"}
+                            {o.status === "paid" ? "AKTIF" : o.status === "cancelled" ? "DIBATALKAN" : "BELUM DIBAYAR"}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-[12.5px] text-zinc-500">
@@ -370,14 +431,37 @@ export default function PricingPage() {
                   <p className="mt-4 whitespace-pre-wrap text-[13px] leading-relaxed text-zinc-400">{data.payment_instructions}</p>
                 )}
 
+                {modalNotice && (
+                  <p className="mt-4 rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-[13px] text-rose-300">{modalNotice}</p>
+                )}
+
                 <div className="mt-5 space-y-2.5">
                   <button
-                    onClick={() => copy(`Halo admin ITZ AI, saya sudah bayar ${chosen ? `${chosen.label} (${rupiah(chosen.amount)})` : "paket prompt"}.${user?.username ? ` Username: ${user.username}` : ""}`)}
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-[14.5px] font-semibold text-black transition-colors hover:bg-zinc-200"
+                    onClick={markPaid}
+                    disabled={paying || !order}
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-[15px] font-semibold text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                    {copied ? "Tersalin, kirim ke admin" : "Salin ringkasan order"}
+                    {paying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" strokeWidth={3} />}
+                    Sudah bayar, aktifkan kuota
                   </button>
+                  {receiptWa ? (
+                    <a
+                      href={receiptWa}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] text-[14px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05]"
+                    >
+                      <MessageCircle className="h-4 w-4" /> Kirim bukti ke admin (WhatsApp)
+                    </a>
+                  ) : (
+                    <button
+                      onClick={() => copy(receiptMsg)}
+                      className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] text-[14px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05]"
+                    >
+                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                      {copied ? "Tersalin, kirim ke admin" : "Salin ringkasan order"}
+                    </button>
+                  )}
                   <button onClick={() => setShowQris(false)} className="h-10 w-full rounded-xl text-[14px] font-medium text-zinc-500 transition-colors hover:bg-white/[0.04] hover:text-zinc-300">
                     Tutup
                   </button>
@@ -385,7 +469,7 @@ export default function PricingPage() {
 
                 <p className="mt-4 flex items-start gap-2 text-[12px] leading-relaxed text-zinc-600">
                   <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  Kuota aktif setelah admin mengonfirmasi pembayaran. Simpan bukti transfer sampai kuota bertambah.
+                  Pembayaran tercatat otomatis di sistem. Simpan bukti transfer sampai kuota bertambah.
                 </p>
               </div>
               </motion.div>

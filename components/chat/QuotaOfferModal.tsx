@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowUpRight, Check, Copy, LogIn, X } from "lucide-react";
+import { ArrowUpRight, Check, Copy, LogIn, MessageCircle, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
 export type QuotaOfferVariant = "quota" | "trial" | "login";
 
-const PACKAGES = [
+type Pkg = { id: string; prompts: number; price: string; popular: boolean; original?: string | null; percent?: number | null };
+
+const PACKAGES: Pkg[] = [
   { id: "100", prompts: 100, price: "Rp30.000", popular: false },
   { id: "200", prompts: 200, price: "Rp50.000", popular: true },
   { id: "1000", prompts: 1000, price: "Rp500.000", popular: false },
@@ -57,6 +59,7 @@ export default function QuotaOfferModal({
   const [copied, setCopied] = useState(false);
   const [selected, setSelected] = useState<string>("200");
   const [packages, setPackages] = useState(PACKAGES);
+  const [contactWa, setContactWa] = useState("");
   const t = COPY[variant];
   const chosen = packages.find((p) => p.id === selected) ?? packages[0] ?? PACKAGES[1];
   const hasCount = typeof used === "number" && typeof max === "number" && max > 0;
@@ -70,9 +73,18 @@ export default function QuotaOfferModal({
         const j = await r.json();
         const plans = Array.isArray(j.plans) ? j.plans : [];
         if (!plans.length) return;
-        const mapped = plans.map((p: any) => ({ id: String(p.id), prompts: Number(p.prompts), price: rupiah(Number(p.amount)), popular: Boolean(p.popular) }));
+        const mapped = plans.map((p: any) => ({
+          id: String(p.id),
+          prompts: Number(p.prompts),
+          price: rupiah(Number(p.amount)),
+          popular: Boolean(p.popular),
+          // Harga coret hanya kalau backend menandai diskon aktif.
+          original: p.original_amount && Number(p.discount_percent || 0) > 0 ? rupiah(Number(p.original_amount)) : null,
+          percent: Number(p.discount_percent || 0) > 0 ? Number(p.discount_percent) : null,
+        }));
         setPackages(mapped);
         setSelected((prev) => (mapped.some((p: any) => p.id === prev) ? prev : (mapped.find((p: any) => p.popular)?.id ?? mapped[0].id)));
+        setContactWa(String(j.contact_wa || ""));
       })
       .catch(() => {});
   }, [open]);
@@ -95,13 +107,14 @@ export default function QuotaOfferModal({
     return () => clearTimeout(id);
   }, [copied]);
 
+  const contactMsg = `Halo admin ITZ AI, saya mau ambil paket ${chosen.prompts} prompt (${chosen.price}).${username ? ` Username: ${username}` : ""}`;
+
   const handleContact = async () => {
-    const text = `Halo admin ITZ AI, saya mau ambil paket ${chosen.prompts} prompt (${chosen.price}).${username ? ` Username: ${username}` : ""}`;
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(contactMsg);
       setCopied(true);
     } catch {
-      window.prompt("Salin pesan ini dan kirim ke admin ITZ AI:", text);
+      window.prompt("Salin pesan ini dan kirim ke admin ITZ AI:", contactMsg);
     }
   };
 
@@ -216,8 +229,16 @@ export default function QuotaOfferModal({
                         <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
                           prompt
                         </div>
-                        <div className="mt-3 border-t border-white/[0.07] pt-3 text-[15px] font-medium tabular-nums text-zinc-200">
+                        <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t border-white/[0.07] pt-3 text-[15px] font-medium tabular-nums text-zinc-200">
                           {p.price}
+                          {p.original && (
+                            <span className="text-[12px] font-normal text-zinc-600 line-through">{p.original}</span>
+                          )}
+                          {typeof p.percent === "number" && p.percent > 0 && (
+                            <span className="rounded border border-emerald-400/25 bg-emerald-400/[0.07] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-300">
+                              Hemat {p.percent}%
+                            </span>
+                          )}
                         </div>
                         <motion.span
                           aria-hidden
@@ -264,22 +285,33 @@ export default function QuotaOfferModal({
                     >
                       <ArrowUpRight className="h-4 w-4" /> Lihat & ambil paket
                     </Link>
-                    <button
-                      onClick={handleContact}
-                      className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] text-[14px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05]"
-                    >
-                      <AnimatePresence mode="wait" initial={false}>
-                        {copied ? (
-                          <motion.span key="ok" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="flex items-center gap-2">
-                            <Check className="h-4 w-4" /> Tersalin, kirim ke admin
-                          </motion.span>
-                        ) : (
-                          <motion.span key="cta" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="flex items-center gap-2">
-                            <Copy className="h-4 w-4" /> {t.cta}
-                          </motion.span>
-                        )}
-                      </AnimatePresence>
-                    </button>
+                    {contactWa ? (
+                      <a
+                        href={`${contactWa}?text=${encodeURIComponent(contactMsg)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] text-[14px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05]"
+                      >
+                        <MessageCircle className="h-4 w-4" /> {t.cta} (WhatsApp)
+                      </a>
+                    ) : (
+                      <button
+                        onClick={handleContact}
+                        className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] text-[14px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05]"
+                      >
+                        <AnimatePresence mode="wait" initial={false}>
+                          {copied ? (
+                            <motion.span key="ok" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="flex items-center gap-2">
+                              <Check className="h-4 w-4" /> Tersalin, kirim ke admin
+                            </motion.span>
+                          ) : (
+                            <motion.span key="cta" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} className="flex items-center gap-2">
+                              <Copy className="h-4 w-4" /> {t.cta}
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                      </button>
+                    )}
                   </>
                 )}
 
@@ -304,7 +336,7 @@ export default function QuotaOfferModal({
               </motion.div>
 
               <motion.p variants={item} className="mt-4 text-center text-[12px] leading-relaxed text-zinc-600">
-                Aktivasi manual oleh admin setelah pembayaran. Sisa kuota dicek lewat ikon info di halaman chat.
+                Pembayaran lewat QRIS, kuota aktif otomatis begitu kamu klik Sudah Bayar di halaman paket. Sisa kuota dicek lewat ikon info di halaman chat.
               </motion.p>
               <motion.div variants={item} className="mt-2 flex justify-center">
                 <Link href="/pricing" className="text-[12.5px] font-medium text-zinc-400 underline-offset-2 transition-colors hover:text-zinc-200 hover:underline">

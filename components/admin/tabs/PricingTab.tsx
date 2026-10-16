@@ -14,7 +14,7 @@ import {
   inputCls, textareaCls,
 } from "../adminStyles";
 
-export type PlanRow = { id: string; label: string; prompts: number; amount: number; popular: boolean };
+export type PlanRow = { id: string; label: string; prompts: number; amount: number; popular: boolean; original_amount?: number | null };
 
 const MAX_PLANS = 12;
 const MAX_QRIS_CHARS = 600_000;
@@ -98,6 +98,11 @@ export function PricingTab({
       if (!/^[A-Za-z0-9_-]+$/.test(pid)) return `Paket #${i + 1}: ID hanya boleh huruf, angka, tanda hubung (-), dan garis bawah (_).`;
       if (!Number.isFinite(Number(p.prompts)) || Number(p.prompts) <= 0) return `Paket #${i + 1}: jumlah prompt harus lebih dari 0.`;
       if (!Number.isFinite(Number(p.amount)) || Number(p.amount) < 0) return `Paket #${i + 1}: harga tidak valid.`;
+      const orig = p.original_amount;
+      if (orig !== null && orig !== undefined && orig !== ("" as any)) {
+        if (!Number.isFinite(Number(orig)) || Number(orig) <= 0) return `Paket #${i + 1}: harga coret harus angka lebih dari 0 (atau dikosongkan).`;
+        if (Number(orig) <= Number(p.amount)) return `Paket #${i + 1}: harga coret harus lebih besar dari harga akhir (diskon baru terasa).`;
+      }
       seen.add(pid);
     }
     return null;
@@ -152,7 +157,7 @@ export function PricingTab({
     onChange({ ...pricing, plans: pricing.plans.map((p, i) => (i === idx ? { ...p, ...patch } : p)) });
 
   const addPlan = () =>
-    onChange({ ...pricing, plans: [...pricing.plans, { id: "", label: "", prompts: 100, amount: 30000, popular: false }] });
+    onChange({ ...pricing, plans: [...pricing.plans, { id: "", label: "", prompts: 100, amount: 30000, popular: false, original_amount: null }] });
 
   const removePlan = (idx: number) =>
     onChange({ ...pricing, plans: pricing.plans.filter((_, i) => i !== idx) });
@@ -161,7 +166,7 @@ export function PricingTab({
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <SectionHeader title="Harga & Paket" desc="Atur paket prompt, info pembayaran, dan konfirmasi order. Kuota user ditambah otomatis saat order dikonfirmasi." />
+      <SectionHeader title="Harga & Paket" desc="Atur paket prompt dan info pembayaran. Order baru tercatat otomatis begitu user klik Sudah Bayar - tanpa konfirmasi manual. Pantau lewat log pembayaran di bawah." />
 
       {/* Paket */}
       <Card className={cardBase}>
@@ -191,10 +196,30 @@ export function PricingTab({
                   <Input type="number" min={1} value={p.prompts} onChange={(e) => updatePlan(idx, { prompts: Number(e.target.value) })} className={inputCls} />
                 </div>
               </div>
-              <div className="mt-3 grid grid-cols-1 items-end gap-3 sm:grid-cols-4">
+              <div className="mt-3 grid grid-cols-1 items-end gap-3 sm:grid-cols-5">
                 <div className="space-y-1.5">
                   <Label className={tLabel}>Harga (Rp)</Label>
                   <Input type="number" min={0} step={1000} value={p.amount} onChange={(e) => updatePlan(idx, { amount: Number(e.target.value) })} className={inputCls} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className={tLabel}>Harga coret (opsional)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1000}
+                    value={p.original_amount ?? ""}
+                    onChange={(e) => updatePlan(idx, { original_amount: e.target.value === "" ? null : Number(e.target.value) })}
+                    placeholder="tanpa diskon"
+                    className={inputCls}
+                  />
+                  {(() => {
+                    const orig = Number(p.original_amount || 0);
+                    const amt = Number(p.amount || 0);
+                    if (orig > amt && amt > 0) {
+                      return <p className="text-[11px] tabular-nums text-emerald-400">hemat {Math.round((1 - amt / orig) * 100)}% ({rupiah(orig - amt)})</p>;
+                    }
+                    return <p className="text-[11px] text-zinc-600">biarkan kosong bila tanpa diskon</p>;
+                  })()}
                 </div>
                 <div className="flex items-center gap-2 pb-1">
                   <input type="checkbox" id={`pop-${idx}`} checked={p.popular} onChange={(e) => updatePlan(idx, { popular: e.target.checked })} className="h-4 w-4 accent-white" />
@@ -292,7 +317,7 @@ export function PricingTab({
       <Card className={cardBase}>
         <CardHeader className={cardHeaderCls}>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle className={`${tCard} flex items-center gap-2`}><Receipt className="h-3.5 w-3.5 text-sky-400" />Order Masuk</CardTitle>
+            <CardTitle className={`${tCard} flex items-center gap-2`}><Receipt className="h-3.5 w-3.5 text-sky-400" />Log Pembayaran</CardTitle>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1">
                 {(["pending", "paid", "cancelled", "all"] as const).map((f) => (
@@ -312,6 +337,11 @@ export function PricingTab({
           </div>
         </CardHeader>
         <CardContent className="p-0">
+          {counts.pending > 0 && (
+            <p className="px-5 pt-4 text-[12.5px] leading-relaxed text-zinc-500">
+              {counts.pending} order <span className="font-medium text-amber-300">Menunggu</span> - user sudah buka QRIS tapi belum klik Sudah Bayar. Konfirmasi manual hanya untuk kasus user sudah bayar namun belum sempat klik; batalkan bila menggantung.
+            </p>
+          )}
           {visible.length === 0 ? (
             <div className="p-6 text-[14px] text-zinc-500">Tidak ada order pada filter ini.</div>
           ) : (
@@ -354,7 +384,7 @@ export function PricingTab({
                             </Button>
                           </div>
                         ) : (
-                          <div className="text-right text-[12.5px] text-zinc-500">{o.paid_at ? `Dikonfirmasi ${new Date(o.paid_at).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })}` : "-"}</div>
+                          <div className="text-right text-[12.5px] text-zinc-500">{o.paid_at ? `Dibayar ${new Date(o.paid_at).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })}` : "-"}</div>
                         )}
                       </td>
                     </tr>

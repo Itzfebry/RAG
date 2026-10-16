@@ -259,6 +259,125 @@ def test_pricing_block_empty_when_no_plans(monkeypatch):
     assert cb._build_pricing_block() == ""
 
 
+# ── alur bayar otomatis (self-paid) + tautan WhatsApp ──
+
+def test_wa_link_normalizes_contact():
+    from backend.api.pricing import wa_link
+
+    assert wa_link("087776445013") == "https://wa.me/6287776445013"
+    assert wa_link("62 877-7644-5013") == "https://wa.me/6287776445013"
+    assert wa_link("87776445013") == "https://wa.me/6287776445013"
+    assert wa_link("+62 877 7644 5013") == "https://wa.me/6287776445013"
+    # Bukan nomor ID yang valid: email, teks acak, nomor terlalu pendek
+    assert wa_link("admin@mail.com") == ""
+    assert wa_link("WA 0800") == ""
+    assert wa_link("") == ""
+
+
+def test_public_pricing_exposes_contact_wa(db, monkeypatch):
+    from backend.api import pricing as pricing_api
+
+    monkeypatch.setattr(pricing_api.DatabaseService, "get_pricing", staticmethod(lambda: {
+        "plans": [{"id": "ok", "label": "Valid", "prompts": 50, "amount": 10000}],
+        "payment_qris": "",
+        "payment_instructions": "",
+        "contact": "087776445013",
+        "order_note": "",
+    }))
+    out = pricing_api._public_pricing()
+    assert out["contact_wa"] == "https://wa.me/6287776445013"
+
+
+def test_user_mark_paid_activates_quota_and_is_idempotent(db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend.api.users import get_current_user
+    from backend.api.main import app
+
+    db.update_pricing({"plans": DEFAULT_PLANS})
+    user = db.create_user({"username": "selfbuyer", "password_hash": "x", "max_prompts": 10, "prompts_used": 5, "is_active": True})
+    order = db.create_order(str(user["id"]), db.find_plan("100"))
+
+    app.dependency_overrides[get_current_user] = lambda: {"id": str(user["id"]), "username": "selfbuyer"}
+    try:
+        client = TestClient(app)
+        res = client.post(f"/api/user/orders/{order['id']}/paid")
+        assert res.status_code == 200
+        assert res.json()["max_prompts"] == 110
+        assert db.get_user_by_id(str(user["id"]))["max_prompts"] == 110
+        assert db.get_order(order["id"])["status"] == "paid"
+
+        # Klik kedua ditolak, kuota tidak dobel
+        res2 = client.post(f"/api/user/orders/{order['id']}/paid")
+        assert res2.status_code == 409
+        assert db.get_user_by_id(str(user["id"]))["max_prompts"] == 110
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_user_mark_paid_unlimited_user_does_not_add(db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend.api.users import get_current_user
+    from backend.api.main import app
+
+    db.update_pricing({"plans": DEFAULT_PLANS})
+    user = db.create_user({"username": "unlim2", "password_hash": "x", "max_prompts": 0, "prompts_used": 0, "is_active": True})
+    order = db.create_order(str(user["id"]), db.find_plan("100"))
+
+    app.dependency_overrides[get_current_user] = lambda: {"id": str(user["id"]), "username": "unlim2"}
+    try:
+        client = TestClient(app)
+        res = client.post(f"/api/user/orders/{order['id']}/paid")
+        assert res.status_code == 200
+        assert res.json()["max_prompts"] == 0
+        assert db.get_order(order["id"])["status"] == "paid"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_user_mark_paid_cannot_touch_other_users_order(db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend.api.users import get_current_user
+    from backend.api.main import app
+
+    db.update_pricing({"plans": DEFAULT_PLANS})
+    owner = db.create_user({"username": "owner1", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
+    intruder = db.create_user({"username": "intruder", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
+    order = db.create_order(str(owner["id"]), db.find_plan("100"))
+
+    app.dependency_overrides[get_current_user] = lambda: {"id": str(intruder["id"]), "username": "intruder"}
+    try:
+        client = TestClient(app)
+        res = client.post(f"/api/user/orders/{order['id']}/paid")
+        assert res.status_code == 404
+        assert db.get_order(order["id"])["status"] == "pending"
+        assert db.get_user_by_id(str(owner["id"]))["max_prompts"] == 10
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_create_order_clears_stale_pending_instead_of_409(db, monkeypatch):
+    """Order baru menggantikan pending lama (user tutup tab sebelum klik Sudah Bayar)."""
+    from fastapi.testclient import TestClient
+    from backend.api.users import get_current_user
+    from backend.api.main import app
+
+    db.update_pricing({"plans": DEFAULT_PLANS})
+    user = db.create_user({"username": "replacer", "password_hash": "x", "max_prompts": 5, "prompts_used": 0, "is_active": True})
+
+    app.dependency_overrides[get_current_user] = lambda: {"id": str(user["id"]), "username": "replacer"}
+    try:
+        client = TestClient(app)
+        res1 = client.post("/api/user/orders", json={"plan_id": "100"})
+        assert res1.status_code == 200
+        res2 = client.post("/api/user/orders", json={"plan_id": "200"})
+        assert res2.status_code == 200
+        items = client.get("/api/user/orders").json()["items"]
+        statuses = sorted(o["status"] for o in items)
+        assert statuses == ["cancelled", "pending"]
+    finally:
+        app.dependency_overrides.clear()
+
+
 # ── user list merge + local sync ──
 
 def test_list_users_merges_local_only_users(db):

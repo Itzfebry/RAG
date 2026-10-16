@@ -1,9 +1,13 @@
 """
-Pricing & orders: paket prompt, pembayaran (QRIS/instruksi), aktivasi manual admin.
+Pricing & orders: paket prompt, pembayaran (QRIS), aktivasi otomatis.
 
-Alur: user pilih paket -> buat order (pending) -> bayar -> admin konfirmasi (paid) ->
-kuota user ditambah (max_prompts += prompts). Tanpa payment gateway otomatis.
+Alur: user pilih paket -> buat order -> QRIS tampil -> user bayar -> klik "Sudah Bayar"
+-> order paid + kuota ditambah otomatis (tanpa acc admin). Orders = log pembayaran
+yang dipantau admin. Admin endpoint confirm/cancel tetap ada untuk kasus luar biasa
+(user bayar tapi lupa klik, order menggantung, koreksi).
 """
+import re
+
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
@@ -31,6 +35,24 @@ MAX_PLANS = 12
 MAX_QRIS_CHARS = 600_000
 
 
+def wa_link(contact: str) -> str:
+    """Tautan WhatsApp dari field kontak admin.
+
+    Terima: 08xx, 8xx, 628xx, +62 8xx, teks campur ("WA 08xx"). Nomor non-ID
+    atau terlalu pendek dianggap bukan nomor (mis. email) -> "" (fallback teks).
+    """
+    digits = re.sub(r"\D", "", str(contact or ""))
+    if digits.startswith("00"):
+        digits = digits[2:]
+    if digits.startswith("0"):
+        digits = "62" + digits[1:]
+    elif digits.startswith("8"):
+        digits = "62" + digits
+    if not digits.startswith("62") or not (9 <= len(digits) <= 15):
+        return ""
+    return f"https://wa.me/{digits}"
+
+
 def _public_pricing() -> Dict[str, Any]:
     cfg = DatabaseService.get_pricing()
     plans = []
@@ -44,18 +66,28 @@ def _public_pricing() -> Dict[str, Any]:
             continue
         if prompts <= 0 or not str(p.get("id") or "").strip():
             continue
+        try:
+            original = int(p.get("original_amount") or 0)
+        except Exception:
+            original = 0
+        # Diskon aktif hanya kalau harga coret benar-benar di atas harga akhir.
+        discounted = original > amount > 0
         plans.append({
             "id": str(p.get("id")),
             "label": str(p.get("label") or f"Paket {prompts} Prompt"),
             "prompts": prompts,
             "amount": amount,
             "popular": bool(p.get("popular")),
+            "original_amount": original if discounted else None,
+            "discount_percent": round((1 - amount / original) * 100) if discounted else None,
         })
+    contact = str(cfg.get("contact") or "").strip()
     return {
         "plans": plans,
         "payment_qris": str(cfg.get("payment_qris") or ""),
         "payment_instructions": str(cfg.get("payment_instructions") or ""),
-        "contact": str(cfg.get("contact") or ""),
+        "contact": contact,
+        "contact_wa": wa_link(contact),
         "order_note": str(cfg.get("order_note") or ""),
     }
 
@@ -65,6 +97,21 @@ def _public_pricing() -> Dict[str, Any]:
 class OrderCreate(BaseModel):
     plan_id: str = Field(min_length=1, max_length=64)
     note: Optional[str] = Field(default=None, max_length=500)
+
+
+def _grant_order_quota(order: Dict[str, Any], user_row: Dict[str, Any], confirmed_by: str) -> int:
+    """Satu-satunya jalur aktivasi: tambah kuota user dari order + tandai paid.
+
+    max_prompts 0 = unlimited: jangan tambah, cukup tandai paid. Return max_prompts baru.
+    """
+    prompts = int(order.get("prompts") or 0)
+    current_max = int(user_row.get("max_prompts", 0) or 0)
+    # 0 = unlimited: jangan tambah, cukup tandai paid
+    new_max = current_max if current_max == 0 else current_max + prompts
+    if current_max != 0:
+        DatabaseService.update_user(str(user_row["id"]), {"max_prompts": new_max})
+    DatabaseService.set_order_status(str(order["id"]), "paid", confirmed_by=confirmed_by)
+    return new_max
 
 
 @router.get("/pricing")
@@ -90,10 +137,10 @@ def user_create_order(payload: OrderCreate, request: Request, user: dict = Depen
     if prompts <= 0 or amount < 0:
         raise HTTPException(status_code=400, detail="Paket tidak valid")
 
-    # Tolak order pending ganda untuk paket yang sama
+    # Order lama yang belum dikonfirmasi diganti order baru - tak menumpuk, tak macet409.
     for o in DatabaseService.list_orders(str(user["id"]), limit=50):
-        if str(o.get("status")) == "pending" and str(o.get("plan_id")) == str(payload.plan_id):
-            raise HTTPException(status_code=409, detail="Sudah ada order paket ini yang menunggu konfirmasi admin.")
+        if str(o.get("status")) == "pending":
+            DatabaseService.set_order_status(str(o.get("id")), "cancelled")
 
     order = DatabaseService.create_order(str(user["id"]), plan, note=(payload.note or "").strip())
     return {"status": "success", "order": order}
@@ -118,6 +165,34 @@ def user_list_orders(user: dict = Depends(get_current_user)):
             for o in rows
         ]
     }
+
+
+@router.post("/user/orders/{order_id}/paid")
+def user_mark_order_paid(order_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """User menandai 'Sudah Bayar' setelah QRIS tampil: kuota aktif otomatis, tanpa acc admin."""
+    ip = get_client_ip(request)
+    allowed, retry = check_rate_limit(f"orderpaid:{user.get('id')}:{ip}", 10, 60)
+    if not allowed:
+        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+
+    order = DatabaseService.get_order(order_id)
+    if order is None or str(order.get("user_id")) != str(user.get("id")):
+        raise HTTPException(status_code=404, detail="Order tidak ditemukan")
+    status = str(order.get("status"))
+    if status == "paid":
+        raise HTTPException(status_code=409, detail="Order ini sudah tercatat sebagai dibayar")
+    if status == "cancelled":
+        raise HTTPException(status_code=409, detail="Order ini sudah dibatalkan. Buat order baru.")
+
+    user_row = DatabaseService.get_user_by_id(str(user["id"]))
+    if user_row is None:
+        raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
+
+    who = str(user.get("username") or user.get("id"))
+    new_max = _grant_order_quota(order, user_row, confirmed_by=who)
+    audit_log(who, "order_paid_self",
+              detail=f"order={order_id} prompts={order.get('prompts')} max_prompts={new_max}", ip=ip)
+    return {"status": "success", "max_prompts": new_max}
 
 
 # ── admin endpoints ──
@@ -155,8 +230,20 @@ def _clean_plans(plans: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             raise HTTPException(status_code=400, detail=f"jumlah prompt tidak valid: {pid}")
         if amount < 0 or amount > MAX_AMOUNT:
             raise HTTPException(status_code=400, detail=f"harga tidak valid: {pid}")
+        # Harga coret (diskon): opsional, harus angka dan di atas harga akhir.
+        raw_original = p.get("original_amount")
+        original: Optional[int] = None
+        if raw_original not in (None, "", 0, "0"):
+            try:
+                original = int(raw_original)
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"harga coret harus angka: {pid}")
+            if original <= amount:
+                raise HTTPException(status_code=400, detail=f"harga coret harus lebih besar dari harga akhir ({amount}): {pid}")
+            if original > MAX_AMOUNT:
+                raise HTTPException(status_code=400, detail=f"harga coret terlalu besar: {pid}")
         seen.add(pid)
-        out.append({"id": pid, "label": label, "prompts": prompts, "amount": amount, "popular": bool(p.get("popular"))})
+        out.append({"id": pid, "label": label, "prompts": prompts, "amount": amount, "popular": bool(p.get("popular")), "original_amount": original})
     return out
 
 
@@ -220,15 +307,9 @@ def admin_confirm_order(order_id: str, request: Request, admin: str = Depends(ge
         raise HTTPException(status_code=404, detail="User pemilik order tidak ditemukan")
 
     prompts = int(order.get("prompts") or 0)
-    current_max = int(user.get("max_prompts", 0) or 0)
-    # 0 = unlimited: jangan tambah, cukup tandai paid
-    new_max = current_max if current_max == 0 else current_max + prompts
-    if current_max != 0:
-        DatabaseService.update_user(str(user["id"]), {"max_prompts": new_max})
-
-    updated = DatabaseService.set_order_status(order_id, "paid", confirmed_by=admin)
+    new_max = _grant_order_quota(order, user, confirmed_by=admin)
     audit_log(admin, "order_confirm", detail=f"order={order_id} user={user.get('username')} prompts={prompts}", ip=ip)
-    return {"status": "success", "order": updated, "max_prompts": new_max}
+    return {"status": "success", "order": DatabaseService.get_order(order_id), "max_prompts": new_max}
 
 
 @admin_router.post("/orders/{order_id}/cancel")
