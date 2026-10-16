@@ -61,7 +61,7 @@ Push ke branch utama (auto-deploy) atau `vercel deploy`. Setelah live:
 
 1. `https://<domain>/api/cron/warmup` → `{"status":"ok"}` = embedding HF jalan
    (cron harian 03:00 UTC jaga model tetap hangat).
-2. Login `/admin` → tab AI Models → pastikan `openai/gpt-oss-20b` / Groq tampil.
+2. Login `/admin` → tab AI Models → pastikan `openai/gpt-oss-120b` / Groq tampil.
 3. Chat `/` → tanya "Berapa anggaran proyek Kalkara-7?" → harus
    "Rp 9.417.500.000" (bukti retrieval hidup di Vercel).
 

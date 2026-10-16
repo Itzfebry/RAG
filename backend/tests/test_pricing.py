@@ -22,7 +22,7 @@ def db(tmp_path, monkeypatch):
 
     monkeypatch.setattr(m, "supabase_client", None)
     monkeypatch.setattr(m, "LOCAL_DATA_DIR", str(tmp_path))
-    m.config_cache.invalidate_all() if hasattr(m.config_cache, "invalidate_all") else None
+    m.config_cache.clear()
     return m.DatabaseService
 
 

@@ -133,7 +133,7 @@ def main() -> None:
         except Exception as ex:
             print(f"  Q {neg!r} ERROR: {str(ex)[:180]}")
 
-    header("5. E2E via agent (RAG context -> Groq openai/gpt-oss-20b)")
+    header("5. E2E via agent (RAG context -> Groq openai/gpt-oss-120b)")
     kb_q = f"Ceritakan detail tentang: {entries[0].get('title')}" if entries else "halo"
     print(f"  Q (positif): {kb_q}")
     ans = run_chat(kb_q)
