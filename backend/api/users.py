@@ -16,7 +16,12 @@ try:
         verify_user_jwt,
         USER_COOKIE_NAME,
     )
-    from backend.security.rate_limiter import get_client_ip, check_rate_limit, is_locked_out, record_failed_login, clear_failed_login
+    from backend.security.rate_limiter import (
+        get_client_ip, check_rate_limit, check_rate_limit_durable,
+        is_locked_out, is_locked_out_durable,
+        record_failed_login, record_failed_login_durable,
+        clear_failed_login, clear_failed_login_durable,
+    )
     from backend.security.audit import log_action as audit_log
     from backend.api.admin import get_current_admin, get_config, get_knowledge_categories, get_knowledge_entries, admin_list_models
 except ImportError:
@@ -24,7 +29,12 @@ except ImportError:
     from database.db import DatabaseService  # type: ignore
     from security import otp  # type: ignore
     from security.auth import verify_password, hash_password, create_user_jwt, verify_user_jwt, USER_COOKIE_NAME  # type: ignore
-    from security.rate_limiter import get_client_ip, check_rate_limit, is_locked_out, record_failed_login, clear_failed_login  # type: ignore
+    from security.rate_limiter import (
+        get_client_ip, check_rate_limit, check_rate_limit_durable,
+        is_locked_out, is_locked_out_durable,
+        record_failed_login, record_failed_login_durable,
+        clear_failed_login, clear_failed_login_durable,
+    )  # type: ignore
     from security.audit import log_action as audit_log  # type: ignore
     from api.admin import get_current_admin, get_config, get_knowledge_categories, get_knowledge_entries, admin_list_models  # type: ignore
 
@@ -139,14 +149,14 @@ def user_login(payload: UserLoginRequest, request: Request, response: Response):
         user = DatabaseService.get_user_by_username(payload.username)
     # kunci lockout = akun + IP, supaya satu IP tidak mengunci akun lain
     lock_key = f"user:{(user or {}).get('username') or payload.username}:{ip}"
-    locked, retry = is_locked_out(lock_key)
+    locked, retry = is_locked_out_durable(lock_key)
     if locked:
         raise HTTPException(status_code=429, detail=f"Account locked. Retry after {retry}s", headers={"Retry-After": str(retry)})
-    allowed, retry = check_rate_limit(f"user:login:{ip}", 10, 60)
+    allowed, retry = check_rate_limit_durable(f"user:login:{ip}", 10, 60)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Too many login attempts. Retry after {retry}s", headers={"Retry-After": str(retry)})
     if not user or not verify_password(payload.password, user.get("password_hash") or ""):
-        record_failed_login(lock_key)
+        record_failed_login_durable(lock_key)
         audit_log(payload.username, "user_login_failed", target="user", detail="unknown user" if not user else "wrong password", ip=ip)
         if user and user.get("provider") == "google" and not user.get("password_hash"):
             raise HTTPException(status_code=401, detail="Akun ini daftar lewat Google. Atur kata sandi dulu lewat Lupa kata sandi.")
@@ -154,7 +164,7 @@ def user_login(payload: UserLoginRequest, request: Request, response: Response):
     if not bool(user.get("is_active", True)):
         audit_log(payload.username, "user_login_failed", target="user", detail="account disabled", ip=ip)
         raise HTTPException(status_code=403, detail="Account disabled - hubungi admin")
-    clear_failed_login(lock_key)
+    clear_failed_login_durable(lock_key)
     audit_log(user["username"], "user_login_success", target="user", ip=ip)
     # expiry from app settings
     app_s = DatabaseService.get_app_settings()
@@ -228,7 +238,7 @@ def _set_user_cookie(response: Response, user: Dict[str, Any]) -> None:
 @router.post("/user/register", status_code=201)
 def user_register(payload: UserRegisterRequest, request: Request, response: Response):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"user:register:{ip}", 5, 600)
+    allowed, retry = check_rate_limit_durable(f"user:register:{ip}", 5, 600)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Terlalu banyak pendaftaran. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
     if DatabaseService.get_user_by_username(payload.username):
@@ -316,7 +326,7 @@ def _check_otp(email: str, purpose: str, code: str) -> None:
 @router.post("/user/verify-email/send")
 def user_send_verify(request: Request, user: dict = Depends(get_current_user)):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"user:otp_send:{ip}", 3, 600)
+    allowed, retry = check_rate_limit_durable(f"user:otp_send:{ip}", 3, 600)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Terlalu sering meminta kode. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
     if user.get("email_verified"):
@@ -330,7 +340,7 @@ def user_send_verify(request: Request, user: dict = Depends(get_current_user)):
 @router.post("/user/verify-email")
 def user_verify_email(payload: OtpVerifyRequest, request: Request, user: dict = Depends(get_current_user)):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"user:otp_verify:{ip}", 10, 600)
+    allowed, retry = check_rate_limit_durable(f"user:otp_verify:{ip}", 10, 600)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
     if not user.get("email") or str(user["email"]).lower() != payload.email:
@@ -343,7 +353,7 @@ def user_verify_email(payload: OtpVerifyRequest, request: Request, user: dict = 
 @router.post("/user/password/forgot")
 def user_password_forgot(payload: EmailOnlyRequest, request: Request):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"user:reset_send:{ip}", 3, 600)
+    allowed, retry = check_rate_limit_durable(f"user:reset_send:{ip}", 3, 600)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Terlalu sering meminta kode. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
     # Respons selalu sama agar tidak membocorkan email terdaftar atau tidak.
@@ -358,7 +368,7 @@ def user_password_forgot(payload: EmailOnlyRequest, request: Request):
 @router.post("/user/password/reset")
 def user_password_reset(payload: PasswordResetRequest, request: Request, response: Response):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"user:reset_verify:{ip}", 10, 600)
+    allowed, retry = check_rate_limit_durable(f"user:reset_verify:{ip}", 10, 600)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
     user = DatabaseService.get_user_by_email(payload.email)
@@ -478,7 +488,7 @@ def user_list_styles(user: dict = Depends(get_current_user)):
 @router.put("/user/password")
 def user_change_password(payload: UserPasswordChangeRequest, request: Request, response: Response, user: dict = Depends(get_current_user)):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"user:password:{ip}", 5, 300)
+    allowed, retry = check_rate_limit_durable(f"user:password:{ip}", 5, 300)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
 

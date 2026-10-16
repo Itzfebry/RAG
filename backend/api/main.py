@@ -132,10 +132,17 @@ def cron_warmup(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
         from backend.knowledge.knowledge_service import KnowledgeService
+        from backend.database.db import DatabaseService
     except ImportError:
         from knowledge.knowledge_service import KnowledgeService
+        from database.db import DatabaseService  # type: ignore
     vec = KnowledgeService.get_embedding("warmup")
     is_dummy = not vec or all(x == 0.0 for x in vec[:20])
+    # bersihkan baris rate limit yang sudah kedaluwarsa (sekali sehari)
+    try:
+        DatabaseService.prune_rate_limits()
+    except Exception:
+        pass
     return {"status": "ok" if not is_dummy else "embedding-fallback"}
 
 if __name__ == "__main__":

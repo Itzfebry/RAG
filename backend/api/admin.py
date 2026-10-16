@@ -12,7 +12,7 @@ try:
     from backend.database.db import DatabaseService
     from backend.knowledge.knowledge_service import KnowledgeService
     from backend.security.auth import verify_password, create_jwt, verify_jwt, COOKIE_NAME, settings, is_valid_username, JWT_EXPIRY_HOURS
-    from backend.security.rate_limiter import get_client_ip, is_rate_limited, is_locked_out, record_failed_login, clear_failed_login, check_rate_limit
+    from backend.security.rate_limiter import get_client_ip, is_rate_limited, is_locked_out, is_locked_out_durable, record_failed_login, record_failed_login_durable, clear_failed_login, clear_failed_login_durable, check_rate_limit, check_rate_limit_durable
     from backend.database.cache import rag_cache
     from backend.knowledge.knowledge_service import EMBEDDING_PROVIDER
     from backend.security.audit import log_action as audit_log, list_actions as list_audit
@@ -20,7 +20,7 @@ except ImportError:
     from database.db import DatabaseService
     from knowledge.knowledge_service import KnowledgeService
     from security.auth import verify_password, create_jwt, verify_jwt, COOKIE_NAME, settings, is_valid_username, JWT_EXPIRY_HOURS
-    from security.rate_limiter import get_client_ip, is_rate_limited, is_locked_out, record_failed_login, clear_failed_login, check_rate_limit
+    from security.rate_limiter import get_client_ip, is_rate_limited, is_locked_out, is_locked_out_durable, record_failed_login, record_failed_login_durable, clear_failed_login, clear_failed_login_durable, check_rate_limit, check_rate_limit_durable
     from database.cache import rag_cache
     from knowledge.knowledge_service import EMBEDDING_PROVIDER  # type: ignore
     from security.audit import log_action as audit_log, list_actions as list_audit  # type: ignore
@@ -173,25 +173,25 @@ def get_current_admin(request: Request) -> str:
 def admin_login(payload: LoginRequest, request: Request, response: Response):
     ip = get_client_ip(request)
     # lockout check first
-    locked, retry = is_locked_out(ip)
+    locked, retry = is_locked_out_durable(ip)
     if locked:
         raise HTTPException(status_code=429, detail=f"Account locked. Retry after {retry}s", headers={"Retry-After": str(retry)})
     # rate limit login: 10/min per IP
-    allowed, retry = check_rate_limit(f"admin:login:{ip}", 10, 60)
+    allowed, retry = check_rate_limit_durable(f"admin:login:{ip}", 10, 60)
     if not allowed:
         raise HTTPException(status_code=429, detail=f"Too many login attempts. Retry after {retry}s", headers={"Retry-After": str(retry)})
     # constant-time username check - still verify dummy hash to avoid timing leak
     if payload.username != settings.ADMIN_USERNAME:
         # burn same time as verify_password
         verify_password(payload.password, settings.ADMIN_PASSWORD_HASH)
-        record_failed_login(ip)
+        record_failed_login_durable(ip)
         audit_log(payload.username, "login_failed", target="admin", detail="unknown username", ip=ip)
         raise HTTPException(status_code=401, detail="Invalid username or password")
     if not verify_password(payload.password, settings.ADMIN_PASSWORD_HASH):
-        record_failed_login(ip)
+        record_failed_login_durable(ip)
         audit_log(payload.username, "login_failed", target="admin", detail="wrong password", ip=ip)
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    clear_failed_login(ip)
+    clear_failed_login_durable(ip)
     audit_log(payload.username, "login_success", target="admin", ip=ip)
     try:
         admin_sv = int(DatabaseService.get_app_settings().get("admin_session_version", 0) or 0)
