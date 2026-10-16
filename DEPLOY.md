@@ -21,6 +21,11 @@ Membuat tabel yang sebelumnya cuma ada di file lokal (tidak awet di serverless):
 `ai_model_config`, `app_settings`, `app_users` (+ seed user febry/sasha),
 `trial_usage`, `request_events`, `model_latency`. Idempoten — boleh di-run ulang.
 
+Jalankan juga migrasi fitur setelahnya (idempoten, urutan bebas):
+`supabase_migration_auth_hardening.sql`, `supabase_migration_email_otp.sql`,
+`supabase_migration_session_version.sql`, `supabase_migration_profiles_tokens.sql`,
+`supabase_migration_admin_session.sql`, `supabase_migration_pricing.sql`.
+
 ### 2. Buat HF token (gratis)
 
 1. Login di https://huggingface.co
@@ -51,8 +56,19 @@ Next.js. Tanpa konfigurasi tambahan (sudah ada `vercel.json`).
 | `ADMIN_PASSWORD_HASH` | bcrypt hash dari `.env` lokal |
 | `NODE_ENV` | `production` |
 | `VERCEL_FORCE_PYTHON_STREAMING` | `1` |
+| `GOOGLE_CLIENT_ID` | opsional; dari Google Cloud Console (OAuth client) |
+| `GOOGLE_CLIENT_SECRET` | opsional; pasangan client id |
+| `GOOGLE_REDIRECT_URI` | `https://<domain>/api/python/auth/google-callback` (harus sama persis dengan Authorized redirect URIs di Google Console) |
+| `SMTP_USER` | opsional; email Gmail pengirim OTP (mis. `bot@gmail.com`) |
+| `SMTP_PASSWORD` | App Password Gmail (tanpa spasi) |
+| `SMTP_HOST` / `SMTP_PORT` | opsional; default `smtp.gmail.com` / `587` |
+| `MAIL_FROM` | opsional; nama+email pengirim (mis. `ITZ AI <bot@gmail.com>`) |
+| `RESEND_API_KEY` | opsional; alternatif SMTP (`SMTP_*` diprioritaskan) |
+| `OTP_TTL_MINUTES` / `OTP_MAX_ATTEMPTS` | opsional; default `10` / `5` |
 
-Catatan: `data/storage/*.json` TIDAK dibawa ke Vercel (gitignored + FS ephemeral).
+Catatan: verifikasi email & reset kata sandi **wajib** salah satu provider email (`SMTP_*` atau `RESEND_API_KEY`). Tanpa itu, di produksi kirim OTP gagal dan user baru tidak bisa lolos gate verifikasi. Login Google hanya muncul kalau `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` terisi.
+
+Catatan tambahan: `data/storage/*.json` TIDAK dibawa ke Vercel (gitignored + FS ephemeral).
 Semua state hidup di Supabase setelah langkah 1.
 
 ### 5. Deploy

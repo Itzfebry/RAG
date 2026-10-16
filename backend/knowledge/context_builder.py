@@ -16,30 +16,18 @@ except ImportError:
     from database.cache import rag_cache
     from agent.commands import build_command_block
 
-# Cache system prompt components (configs don't change often)
-_prompt_cache = {}
-_cache_ttl = 300  # 5 minutes
+# Caching config ditangani DatabaseService (config_cache) yang di-invalidate saat
+# admin menyimpan perubahan, jadi tidak ada layer cache terpisah yang basi di sini.
 
 def _get_cached_configs():
-    """Get all config tables with caching."""
-    now = time.time()
-    
-    if 'configs' in _prompt_cache:
-        data, timestamp = _prompt_cache['configs']
-        if now - timestamp < _cache_ttl:
-            return data
-    
-    # Cache miss - fetch all configs
-    configs = {
+    """Ambil semua config table. Cache + invalidasi mengikuti DatabaseService/config_cache."""
+    return {
         'identity': DatabaseService.get_config_table("ai_identity"),
         'personal': DatabaseService.get_config_table("personal_information"),
         'personality': DatabaseService.get_config_table("ai_personality"),
         'comm': DatabaseService.get_config_table("communication_settings"),
         'sys_instr': DatabaseService.get_config_table("system_instructions"),
     }
-    
-    _prompt_cache['configs'] = (configs, now)
-    return configs
 
 
 def _build_pricing_block() -> str:

@@ -60,7 +60,7 @@ export default function QuotaOfferModal({
   const t = COPY[variant];
   const chosen = packages.find((p) => p.id === selected) ?? packages[0] ?? PACKAGES[1];
   const hasCount = typeof used === "number" && typeof max === "number" && max > 0;
-  const pct = hasCount ? Math.min(100, Math.round((used! / max!) * 100)) : 100;
+  const pct = hasCount ? Math.min(100, Math.round((used! / max!) * 100)) : 0;
 
   useEffect(() => {
     if (!open) return;
@@ -174,16 +174,18 @@ export default function QuotaOfferModal({
                 <motion.div variants={item} className="mt-5 rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
                   <div className="flex items-center justify-between text-[13px]">
                     <span className="text-zinc-400">Kuota terpakai</span>
-                    <span className="font-medium tabular-nums text-zinc-200">{hasCount ? `${used} / ${max} prompt` : `${pct}%`}</span>
+                    <span className="font-medium tabular-nums text-zinc-200">{hasCount ? `${used} / ${max} prompt` : "—"}</span>
                   </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
-                    <motion.div
-                      className="h-full rounded-full bg-white/70"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${pct}%` }}
-                      transition={{ duration: 0.9, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                    />
-                  </div>
+                  {hasCount && (
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
+                      <motion.div
+                        className="h-full rounded-full bg-white/70"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.9, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                      />
+                    </div>
+                  )}
                 </motion.div>
               )}
 

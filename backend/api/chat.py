@@ -61,6 +61,11 @@ def get_current_chat_user_optional(request: Request) -> Optional[Dict]:
         raise HTTPException(status_code=403, detail="Akun dinonaktifkan - hubungi admin")
     if int(payload.get("sv") or 0) != int(user.get("session_version") or 0):
         return None
+    # Enforce verifikasi email: user yang punya email tapi belum terverifikasi
+    # tidak boleh chat sampai kode 6 digit dikonfirmasi. User tanpa email
+    # (mis. dibuat admin) tidak terpengaruh.
+    if str(user.get("email") or "").strip() and not bool(user.get("email_verified", False)):
+        raise HTTPException(status_code=403, detail="Verifikasi email dulu sebelum chat - masukkan kode 6 digit yang dikirim ke email Anda")
     if DatabaseService.is_prompt_quota_exhausted(user):
         raise HTTPException(status_code=403, detail="Batas prompt habis - hubungi admin untuk menambah kuota")
     return user
@@ -255,6 +260,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
             "display_name": str(user.get("display_name") or "").strip(),
             "goal": str(prof.get("goal") or "").strip(),
             "style_id": str(prof.get("style_id") or "").strip(),
+            "gender": str(prof.get("gender") or "").strip(),
             "first_chat": len(history_dicts) == 0,
         }
     # capture model/resolved latency for analytics - non-blocking

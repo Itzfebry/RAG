@@ -2,7 +2,7 @@
 -- Jalankan di Supabase SQL Editor (project aplikasi). Aman dijalankan ulang.
 
 alter table app_users add column if not exists email text;
-alter table app_users add column if not exists email_verified boolean not null default true;
+alter table app_users add column if not exists email_verified boolean not null default false;
 
 create unique index if not exists app_users_email_key on app_users (lower(email)) where email is not null;
 

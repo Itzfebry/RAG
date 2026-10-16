@@ -41,7 +41,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [userInfo, setUserInfo] = useState<{ username: string; display_name?: string | null; max_prompts: number; prompts_used: number; remaining: number | null; has_password?: boolean; goal?: string; style_id?: string; gender?: string } | null>(null);
+  const [userInfo, setUserInfo] = useState<{ username: string; display_name?: string | null; email?: string | null; email_verified?: boolean; max_prompts: number; prompts_used: number; remaining: number | null; has_password?: boolean; goal?: string; style_id?: string; gender?: string } | null>(null);
   const [trialInfo, setTrialInfo] = useState<{ trial_prompts: number; used: number; remaining: number; allowed: boolean } | null>(null);
   const [quotaAlert, setQuotaAlert] = useState<string | null>(null);
   const [quotaOffer, setQuotaOffer] = useState<QuotaOfferVariant | null>(null);
@@ -131,6 +131,12 @@ export default function ChatPage() {
       .then(async (r) => {
         if (r.ok) {
           const j = await r.json();
+          // Gate verifikasi email: user login dengan email belum terverifikasi
+          // diarahkan ke layar verifikasi sebelum bisa chat.
+          if (j.email && j.email_verified === false) {
+            window.location.href = "/login?mode=verify";
+            return;
+          }
           setUserInfo(j);
           // sapaan selamat datang setelah login (flag dari /login atau ?welcome=1 dari OAuth Google)
           try {
@@ -380,6 +386,7 @@ export default function ChatPage() {
           throw new Error(msg);
         }
         if (res.status === 403 && msg.includes("Batas prompt habis")) { openQuotaOffer(msg); throw new Error(msg); }
+        if (res.status === 403 && msg.includes("Verifikasi email")) { window.location.href = "/login?mode=verify"; throw new Error(msg); }
         if (res.status === 401 && msg.includes("Login diperlukan")) { openQuotaOffer(msg); throw new Error(msg); }
         if (res.status === 428) { setProfileMsg(null); openProfile(); throw new Error(msg); }
         if (res.status === 503) { setQuotaAlert(msg); throw new Error(msg); }

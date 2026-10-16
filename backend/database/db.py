@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 import uuid
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -70,6 +71,11 @@ RAG_SETTING_DEFAULTS: Dict[str, Any] = {
     "rag_match_count_long": 8,
     "rag_match_threshold": None,
 }
+
+# Serialisasi read-modify-write counter (kuota prompt, trial, token) per proses.
+# Mencegah undercount saat beberapa request menyentuh counter yang sama.
+# Catatan: hanya mengamankan satu instance; multi-instance butuh atomik di DB.
+_counter_lock = threading.Lock()
 
 
 def _rag_settings_from_row(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -322,7 +328,7 @@ class DatabaseService:
 
     @staticmethod
     def get_app_settings() -> Dict[str, Any]:
-        defaults = {"user_token_expiry_hours": 24, "trial_prompts": 3, **RAG_SETTING_DEFAULTS}
+        defaults = {"user_token_expiry_hours": 24, "trial_prompts": 3, "admin_session_version": 0, **RAG_SETTING_DEFAULTS}
         if supabase_client:
             try:
                 res = supabase_client.table("app_settings").select("*").limit(1).execute()
@@ -331,6 +337,7 @@ class DatabaseService:
                     return {
                         "user_token_expiry_hours": int(row.get("user_token_expiry_hours", 24)),
                         "trial_prompts": int(row.get("trial_prompts", 3)),
+                        "admin_session_version": int(row.get("admin_session_version", 0) or 0),
                         **_rag_settings_from_row(row),
                     }
             except Exception:
@@ -341,6 +348,7 @@ class DatabaseService:
             data["trial_prompts"] = 3
         if "user_token_expiry_hours" not in data:
             data["user_token_expiry_hours"] = 24
+        data.setdefault("admin_session_version", 0)
         for k, v in RAG_SETTING_DEFAULTS.items():
             data.setdefault(k, v)
         return data
@@ -360,6 +368,10 @@ class DatabaseService:
         except Exception:
             merged["trial_prompts"] = 3
         merged = _clamp_rag_settings(merged)
+        try:
+            merged["admin_session_version"] = max(0, int(merged.get("admin_session_version", 0) or 0))
+        except Exception:
+            merged["admin_session_version"] = 0
         merged["updated_at"] = datetime.now().isoformat()
         if supabase_client:
             try:
@@ -369,6 +381,7 @@ class DatabaseService:
                     return {
                         "user_token_expiry_hours": int(res.data[0].get("user_token_expiry_hours", 24)),
                         "trial_prompts": int(res.data[0].get("trial_prompts", 3)),
+                        "admin_session_version": int(res.data[0].get("admin_session_version", 0) or 0),
                         **_rag_settings_from_row(res.data[0]),
                         "updated_at": res.data[0].get("updated_at"),
                     }
@@ -378,6 +391,7 @@ class DatabaseService:
         return {
             "user_token_expiry_hours": int(merged["user_token_expiry_hours"]),
             "trial_prompts": int(merged["trial_prompts"]),
+            "admin_session_version": int(merged.get("admin_session_version", 0) or 0),
             **{k: merged[k] for k in RAG_SETTING_DEFAULTS},
             "updated_at": merged.get("updated_at"),
         }
@@ -401,19 +415,20 @@ class DatabaseService:
 
     @staticmethod
     def increment_trial(ip: str) -> int:
-        if supabase_client:
-            try:
-                cur = DatabaseService.get_trial_used(ip)
-                nxt = cur + 1
-                supabase_client.table("trial_usage").upsert({"ip": ip, "used": nxt, "updated_at": datetime.now().isoformat()}, on_conflict="ip").execute()
-                return nxt
-            except Exception:
-                pass
-        data = _read_local_json(DatabaseService._trial_file(), {})
-        nxt = int(data.get(ip, 0) or 0) + 1
-        data[ip] = nxt
-        _write_local_json(DatabaseService._trial_file(), data)
-        return nxt
+        with _counter_lock:
+            if supabase_client:
+                try:
+                    cur = DatabaseService.get_trial_used(ip)
+                    nxt = cur + 1
+                    supabase_client.table("trial_usage").upsert({"ip": ip, "used": nxt, "updated_at": datetime.now().isoformat()}, on_conflict="ip").execute()
+                    return nxt
+                except Exception:
+                    pass
+            data = _read_local_json(DatabaseService._trial_file(), {})
+            nxt = int(data.get(ip, 0) or 0) + 1
+            data[ip] = nxt
+            _write_local_json(DatabaseService._trial_file(), data)
+            return nxt
 
     @staticmethod
     def list_users() -> List[Dict[str, Any]]:
@@ -795,8 +810,37 @@ class DatabaseService:
             _write_local_json(DatabaseService._otps_file(), kept)
 
     @staticmethod
+    def prune_email_otps(keep_hours: int = 24) -> None:
+        """Buang OTP lama (default >24 jam) agar tabel/JSON tidak menumpuk.
+        Best-effort: error tidak boleh menggagalkan alur kirim OTP."""
+        from datetime import timezone as _tz, timedelta as _td
+        cutoff = datetime.now(_tz.utc) - _td(hours=max(1, int(keep_hours)))
+        if supabase_client:
+            try:
+                supabase_client.table("email_otps").delete().lt("created_at", cutoff.isoformat()).execute()
+            except Exception as e:
+                print(f"Error pruning OTP in Supabase: {e}")
+        try:
+            rows = _read_local_json(DatabaseService._otps_file(), [])
+            kept = []
+            for r in rows:
+                try:
+                    dt = datetime.fromisoformat(str(r.get("created_at") or ""))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=_tz.utc)
+                    if dt >= cutoff:
+                        kept.append(r)
+                except Exception:
+                    pass  # buang baris tanpa created_at valid
+            if len(kept) != len(rows):
+                _write_local_json(DatabaseService._otps_file(), kept)
+        except Exception as e:
+            print(f"Error pruning OTP locally: {e}")
+
+    @staticmethod
     def create_email_otp(email: str, purpose: str, code_hash: str, expires_at: str) -> Dict[str, Any]:
         DatabaseService.delete_email_otps(email, purpose)
+        DatabaseService.prune_email_otps()
         row = {
             "id": str(uuid.uuid4()),
             "email": email,
@@ -861,6 +905,9 @@ class DatabaseService:
         data["updated_at"] = now
         data.setdefault("prompts_used", 0)
         data.setdefault("is_active", True)
+        data.setdefault("email_verified", False)
+        data.setdefault("provider", "manual")
+        data.setdefault("session_version", 0)
         if supabase_client:
             try:
                 res = supabase_client.table("app_users").insert(data).execute()
@@ -947,11 +994,12 @@ class DatabaseService:
 
     @staticmethod
     def increment_prompt_usage(user_id: str) -> Optional[Dict[str, Any]]:
-        u = DatabaseService.get_user_by_id(user_id)
-        if not u:
-            return None
-        used = int(u.get("prompts_used", 0) or 0) + 1
-        return DatabaseService.update_user(user_id, {"prompts_used": used})
+        with _counter_lock:
+            u = DatabaseService.get_user_by_id(user_id)
+            if not u:
+                return None
+            used = int(u.get("prompts_used", 0) or 0) + 1
+            return DatabaseService.update_user(user_id, {"prompts_used": used})
 
     @staticmethod
     def is_prompt_quota_exhausted(user: Dict[str, Any]) -> bool:
@@ -1042,6 +1090,11 @@ class DatabaseService:
     @staticmethod
     def record_token_usage(owner: str, prompt_tokens: int, completion_tokens: int):
         """Agregasi token per hari + per owner (Supabase token_usage, fallback JSON lokal)."""
+        with _counter_lock:
+            DatabaseService._record_token_usage_locked(owner, prompt_tokens, completion_tokens)
+
+    @staticmethod
+    def _record_token_usage_locked(owner: str, prompt_tokens: int, completion_tokens: int):
         try:
             p = max(0, int(prompt_tokens or 0))
             c = max(0, int(completion_tokens or 0))
@@ -1172,8 +1225,10 @@ class DatabaseService:
                 key = f"{day}::{model}"
                 cur = lats.get(key) or {"count": 0, "sum_ms": 0}
                 lats[key] = {"count": int(cur.get("count", 0)) + 1, "sum_ms": int(cur.get("sum_ms", 0)) + int(latency_ms)}
-                # prune 60 days
-                cutoff = (datetime.now().date().isoformat()[:8])  # keep simple: file grows slowly
+                # buang sample > 60 hari (key = "YYYY-MM-DD::model")
+                _cutoff = (datetime.now().date() - __import__("datetime").timedelta(days=60)).isoformat()
+                for _k in [k for k in lats if k.split("::", 1)[0] < _cutoff]:
+                    lats.pop(_k, None)
                 _write_local_json(DatabaseService._latency_file(), lats)
                 if supabase_client:
                     try:
@@ -1239,8 +1294,7 @@ class DatabaseService:
     @staticmethod
     def get_aggregated_latency(period: str = "day", limit: int = 14) -> List[Dict[str, Any]]:
         """Aggregate per-day latency buckets into week/month/year."""
-        daily = DatabaseService.get_model_latency(days=365)  # internal raw would recurse - use model_latency directly via daily path
-        # Re-aggregate from raw model_latency
+        # Re-aggregate dari raw model_latency
         lats_raw: Dict[str, Dict[str, Any]] = {}
         if supabase_client:
             try:

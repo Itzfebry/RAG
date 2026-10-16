@@ -35,7 +35,8 @@ admin_router = APIRouter(prefix="/api/admin", tags=["Admin Users"])
 # ── schemas ──
 
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,32}$")
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Email selalu dinormalisasi (lowercase) sebelum match, jadi regex ini cukup.
+EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$")
 
 class UserCreateRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
@@ -168,7 +169,7 @@ def user_login(payload: UserLoginRequest, request: Request, response: Response):
         max_age=hours * 3600,
         path="/",
     )
-    return {"status": "success", "username": user["username"], "display_name": user.get("display_name"), "max_prompts": user.get("max_prompts"), "prompts_used": user.get("prompts_used", 0)}
+    return {"status": "success", "username": user["username"], "display_name": user.get("display_name"), "email": user.get("email"), "email_verified": bool(user.get("email_verified", False)), "max_prompts": user.get("max_prompts"), "prompts_used": user.get("prompts_used", 0)}
 
 class UserRegisterRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
@@ -199,9 +200,6 @@ class UserRegisterRequest(BaseModel):
             return v
         v = str(v).strip()
         return v or None
-
-
-EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$")
 
 
 def _issue_otp(email: str, purpose: str) -> None:
@@ -249,15 +247,23 @@ def user_register(payload: UserRegisterRequest, request: Request, response: Resp
         "prompts_used": 0,
         "is_active": True,
     })
-    _issue_otp(payload.email, otp.PURPOSE_VERIFY)
+    # Kirim OTP best-effort: kalau layanan email belum dikonfigurasi, jangan
+    # gagalkan registrasi (akun sudah terbuat). User tetap bisa "Kirim ulang".
+    email_sent = True
+    try:
+        _issue_otp(payload.email, otp.PURPOSE_VERIFY)
+    except HTTPException:
+        email_sent = False
     _set_user_cookie(response, user)
     return {
         "status": "success",
         "username": user["username"],
         "display_name": user.get("display_name"),
+        "email": payload.email,
+        "email_verified": False,
+        "email_sent": email_sent,
         "max_prompts": user.get("max_prompts"),
         "prompts_used": 0,
-        "email_verified": False,
     }
 
 
@@ -371,7 +377,7 @@ def user_password_reset(payload: PasswordResetRequest, request: Request, respons
 @router.get("/user/verify")
 def user_verify(request: Request, user: dict = Depends(get_current_user)):
     remaining = max(0, int(user.get("max_prompts", 0)) - int(user.get("prompts_used", 0))) if int(user.get("max_prompts", 0)) > 0 else None
-    return {"status": "authenticated", "username": user["username"], "display_name": user.get("display_name"), "max_prompts": user.get("max_prompts"), "prompts_used": user.get("prompts_used", 0), "remaining": remaining}
+    return {"status": "authenticated", "username": user["username"], "display_name": user.get("display_name"), "email": user.get("email"), "email_verified": bool(user.get("email_verified", False)), "max_prompts": user.get("max_prompts"), "prompts_used": user.get("prompts_used", 0), "remaining": remaining}
 
 @router.post("/user/logout")
 def user_logout(request: Request, response: Response, user: dict = Depends(get_current_user)):
@@ -385,6 +391,8 @@ def user_me(request: Request, user: dict = Depends(get_current_user)):
     return {
         "username": user["username"],
         "display_name": user.get("display_name"),
+        "email": user.get("email"),
+        "email_verified": bool(user.get("email_verified", False)),
         "max_prompts": user.get("max_prompts"),
         "prompts_used": user.get("prompts_used", 0),
         "remaining": max(0, int(user.get("max_prompts", 0)) - int(user.get("prompts_used", 0))) if int(user.get("max_prompts", 0)) else None,
@@ -392,6 +400,7 @@ def user_me(request: Request, user: dict = Depends(get_current_user)):
         "has_password": bool(user.get("password_hash")),
         "goal": str(profile.get("goal") or "").strip(),
         "style_id": str(profile.get("style_id") or "").strip(),
+        "gender": str(profile.get("gender") or "").strip(),
     }
 
 
@@ -530,6 +539,7 @@ def user_update_profile(payload: UserProfileUpdateRequest, request: Request, use
         "display_name": user.get("display_name"),
         "goal": str(profile.get("goal") or "").strip(),
         "style_id": str(profile.get("style_id") or "").strip(),
+        "gender": str(profile.get("gender") or "").strip(),
     }
 
 

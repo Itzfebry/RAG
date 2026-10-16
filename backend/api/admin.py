@@ -160,6 +160,13 @@ def get_current_admin(request: Request) -> str:
     payload = verify_jwt(token)
     if not payload or payload.get("role") != "admin":
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid token")
+    # Sesi admin bisa dibatalkan (logout) lewat admin_session_version di app_settings.
+    try:
+        current_sv = int(DatabaseService.get_app_settings().get("admin_session_version", 0) or 0)
+    except Exception:
+        current_sv = 0
+    if int(payload.get("sv") or 0) != current_sv:
+        raise HTTPException(status_code=401, detail="Unauthorized: Session expired")
     return payload.get("sub", "admin")
 
 @router.post("/login")
@@ -186,7 +193,11 @@ def admin_login(payload: LoginRequest, request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Invalid username or password")
     clear_failed_login(ip)
     audit_log(payload.username, "login_success", target="admin", ip=ip)
-    token = create_jwt(payload.username)
+    try:
+        admin_sv = int(DatabaseService.get_app_settings().get("admin_session_version", 0) or 0)
+    except Exception:
+        admin_sv = 0
+    token = create_jwt(payload.username, role="admin", expiry_hours=JWT_EXPIRY_HOURS, extra={"sv": admin_sv})
     # max_age matches JWT_EXPIRY_HOURS (2h)
     response.set_cookie(
         key=COOKIE_NAME,
@@ -201,6 +212,12 @@ def admin_login(payload: LoginRequest, request: Request, response: Response):
 
 @router.post("/logout")
 def admin_logout(request: Request, response: Response, admin: str = Depends(get_current_admin)):
+    # Naikkan versi sesi -> semua token admin lama (termasuk yang dicuri) langsung invalid.
+    try:
+        cur = DatabaseService.get_app_settings()
+        DatabaseService.update_app_settings({"admin_session_version": int(cur.get("admin_session_version", 0) or 0) + 1})
+    except Exception as e:
+        print(f"[admin-logout] gagal invalidate sesi: {e}")
     response.delete_cookie(COOKIE_NAME, path="/")
     return {"status": "success", "message": "Logged out successfully"}
 

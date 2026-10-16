@@ -18,9 +18,11 @@ from fastapi.responses import RedirectResponse
 try:
     from backend.database.db import DatabaseService
     from backend.security.auth import create_user_jwt, USER_COOKIE_NAME, JWT_EXPIRY_HOURS
+    from backend.config.config import settings
 except ImportError:
     from database.db import DatabaseService
     from security.auth import create_user_jwt, USER_COOKIE_NAME, JWT_EXPIRY_HOURS
+    from config.config import settings  # type: ignore
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -50,6 +52,12 @@ def _new_username() -> str:
     return f"u{secrets.token_hex(6)}"
 
 
+@router.get("/google-status")
+async def google_status():
+    """Beritahu frontend apakah login Google sudah dikonfigurasi (tanpa membocorkan secret)."""
+    return {"enabled": bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)}
+
+
 @router.get("/google-login")
 async def google_login(response: Response):
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
@@ -71,7 +79,7 @@ async def google_login(response: Response):
         key=STATE_COOKIE,
         value=state,
         httponly=True,
-        secure=GOOGLE_REDIRECT_URI.startswith("https://"),
+        secure=settings.NODE_ENV == "production",
         samesite="lax",
         max_age=600,
         path="/",
@@ -144,6 +152,18 @@ async def google_callback(request: Request, code: str = "", state: str = "", err
             })
         elif user.get("is_active") is False:
             return _redirect_with_error("Akun Anda dinonaktifkan - hubungi admin")
+        else:
+            # Akun lama: Google sudah memverifikasi email ini. Lengkapi profil
+            # seperlunya agar user tidak tertahan gate verifikasi email.
+            patch = {}
+            if not bool(user.get("email_verified", False)):
+                patch["email_verified"] = True
+            if not str(user.get("display_name") or "").strip():
+                patch["display_name"] = display_name
+            if patch:
+                updated = DatabaseService.update_user(str(user["id"]), patch)
+                if updated:
+                    user = updated
     except Exception as e:
         print(f"[google-oauth] db error: {e}")
         return _redirect_with_error("Login Google gagal: gagal menyimpan akun")
@@ -154,7 +174,7 @@ async def google_callback(request: Request, code: str = "", state: str = "", err
         key=USER_COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=GOOGLE_REDIRECT_URI.startswith("https://"),
+        secure=settings.NODE_ENV == "production",
         samesite="lax",
         max_age=24 * 3600,
         path="/",
