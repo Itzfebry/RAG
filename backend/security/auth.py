@@ -13,6 +13,7 @@ COOKIE_NAME = "itz_admin_token"
 USER_COOKIE_NAME = "itz_user_token"
 JWT_EXPIRY_HOURS = 2
 JWT_ALGO = "HS256"
+USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,32}$")
 PASSWORD_RE = re.compile(r"^(?=.*[A-Z])(?=.*\d).{8,}$")
 
 def is_valid_password(password: str) -> bool:

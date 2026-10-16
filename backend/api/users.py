@@ -64,6 +64,13 @@ class UserCreateRequest(BaseModel):
             raise ValueError("Invalid username")
         return v
 
+    @field_validator("password")
+    @classmethod
+    def check_password(cls, v: str) -> str:
+        if not is_valid_password(v):
+            raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
+        return v
+
     @field_validator("display_name")
     @classmethod
     def strip_dn(cls, v):  # type: ignore
@@ -77,6 +84,15 @@ class UserUpdateRequest(BaseModel):
     max_prompts: Optional[int] = Field(default=None, ge=0, le=100000)
     is_active: Optional[bool] = None
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+    @field_validator("password")
+    @classmethod
+    def check_password(cls, v):  # type: ignore
+        if v is None:
+            return v
+        if not is_valid_password(v):
+            raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
+        return v
 
     @field_validator("display_name")
     @classmethod
@@ -194,6 +210,13 @@ class UserRegisterRequest(BaseModel):
     email: str = Field(min_length=5, max_length=254)
     password: str = Field(min_length=8, max_length=128)
     display_name: Optional[str] = Field(default=None, max_length=64)
+
+    @field_validator("password")
+    @classmethod
+    def check_password(cls, v: str) -> str:
+        if not is_valid_password(v):
+            raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
+        return v
 
     @field_validator("username")
     @classmethod
