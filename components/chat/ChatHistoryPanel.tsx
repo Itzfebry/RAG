@@ -1,7 +1,8 @@
 "use client";
 
-import React from "react";
-import { X, Trash2, Plus, Clock } from "lucide-react";
+import React, { useState } from "react";
+import { motion } from "framer-motion";
+import { X, Trash2, Plus } from "lucide-react";
 
 export interface ChatSummary {
   id: string;
@@ -39,8 +40,11 @@ export default function ChatHistoryPanel({
   onDeleteChat,
   onNewChat,
 }: Props) {
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+
   if (!open) return null;
   const full = items.length >= limit;
+  const pending = items.find((c) => c.id === confirmId) ?? null;
 
   return (
     <div className="fixed inset-0 z-[80] flex">
@@ -58,14 +62,13 @@ export default function ChatHistoryPanel({
           </button>
         </div>
 
-        <div className="space-y-2 border-b border-white/[0.07] px-4 py-3">
-          <div className="flex items-start gap-2 rounded-lg border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2 text-[12px] leading-relaxed text-amber-200/90">
-            <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>Chat otomatis dihapus setelah {retentionDays} hari. Simpan yang penting.</span>
-          </div>
-          <p className="text-[12px] text-zinc-500">
-            {items.length} / {limit} chat tersimpan
-            {full ? " - hapus salah satu untuk membuat chat baru." : ""}
+        <div className="border-b border-white/[0.07] px-4 py-3.5">
+          <p className="text-[12.5px] tabular-nums text-zinc-300">
+            {items.length} <span className="text-zinc-600">/ {limit}</span> chat tersimpan
+          </p>
+          <p className="mt-0.5 text-[11.5px] leading-relaxed text-zinc-600">
+            Chat otomatis dihapus setelah {retentionDays} hari.
+            {full ? " Hapus salah satu untuk membuat chat baru." : ""}
           </p>
         </div>
 
@@ -84,7 +87,7 @@ export default function ChatHistoryPanel({
                     <span className="block text-[11px] text-zinc-500">{fmtDate(c.updated_at)}</span>
                   </button>
                   <button
-                    onClick={() => onDeleteChat(c.id)}
+                    onClick={() => setConfirmId(c.id)}
                     aria-label={`Hapus chat ${c.title}`}
                     className="rounded-md p-1.5 text-zinc-500 opacity-70 hover:bg-red-500/10 hover:text-red-300 sm:opacity-0 sm:group-hover:opacity-100"
                   >
@@ -107,6 +110,47 @@ export default function ChatHistoryPanel({
           </button>
         </div>
       </aside>
+
+      {/* Konfirmasi hapus chat */}
+      {pending && (
+        <motion.div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.15 }}
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-[5px]" onClick={() => setConfirmId(null)} />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 340, damping: 28 }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Konfirmasi hapus chat"
+            className="relative w-full max-w-[340px] rounded-2xl border border-white/[0.1] bg-[#0c0c10] p-6 shadow-[0_32px_100px_-24px_rgba(0,0,0,0.85)]"
+          >
+            <h3 className="text-[16px] font-semibold tracking-[-0.01em] text-white">Hapus chat ini?</h3>
+            <p className="mt-1.5 text-[13.5px] leading-relaxed text-zinc-500">
+              <span className="font-medium text-zinc-300">&ldquo;{pending.title}&rdquo;</span> akan dihapus permanen dan tidak bisa dikembalikan.
+            </p>
+            <div className="mt-5 flex gap-2.5">
+              <button
+                onClick={() => setConfirmId(null)}
+                autoFocus
+                className="h-10 flex-1 rounded-xl border border-white/[0.1] text-[14px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05] hover:text-white"
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => { setConfirmId(null); onDeleteChat(pending.id); }}
+                className="h-10 flex-1 rounded-xl bg-red-500 text-[14px] font-semibold text-white transition-colors hover:bg-red-600"
+              >
+                Hapus
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   );
 }

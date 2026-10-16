@@ -39,11 +39,13 @@ function pickSuggestions(): string[] {
 
 // Instruksi sekali-jalan untuk akun baru: menunjuk fitur utama satu per satu.
 // Flag "sudah pernah lihat" per akun disimpan di localStorage (Lewati = permanen).
+// Nomor urut ditampilkan kartu ("Langkah X dari Y") - judul tanpa angka.
 const TOUR_STEPS: TourStep[] = [
-  { target: "itz-chat-input", title: "1. Disini tempat untuk prompt", desc: "Ketik pertanyaan atau perintah kamu di kolom ini, lalu tekan Enter untuk mengirim." },
-  { target: "itz-logo", title: "2. Riwayat chat", desc: "Klik logo ITZ di kiri atas untuk membuka chat yang tersimpan." },
-  { target: "btn-new-chat", title: "3. Chat baru", desc: "Mulai percakapan baru dari awal kapan saja." },
-  { target: "btn-profile", title: "4. Profil & pengaturan", desc: "Atur nama tampilan, tujuan pakai AI, dan cek sisa prompt lewat ikon ini." },
+  { target: "itz-chat-input", title: "Disini tempat untuk prompt", desc: "Ketik pertanyaan atau perintah kamu di kolom ini, lalu tekan Enter untuk mengirim." },
+  { target: "itz-chat-input", title: "Mode command", desc: "Ketik / untuk membuka daftar command: /analyze, /summarize, /code, /debug, /translate, dan lainnya (13 mode). Pilih dengan tombol panah lalu Tab atau Enter. Boleh kombinasi maksimal 2 command." },
+  { target: "itz-logo", title: "Riwayat chat", desc: "Klik logo ITZ di kiri atas untuk membuka chat yang tersimpan." },
+  { target: "btn-new-chat", title: "Chat baru", desc: "Mulai percakapan baru dari awal kapan saja." },
+  { target: "btn-profile", title: "Profil & pengaturan", desc: "Atur nama tampilan, tujuan pakai AI, dan cek sisa prompt lewat ikon ini." },
 ];
 
 export default function ChatPage() {
@@ -236,7 +238,7 @@ export default function ChatPage() {
   };
 
   const deleteChat = async (id: string) => {
-    if (!window.confirm("Hapus chat ini? Tindakan ini tidak bisa dibatalkan.")) return;
+    // Konfirmasi hapus ditangani ChatHistoryPanel (dialog sendiri).
     try {
       const r = await fetch(`/api/python/user/chats/${id}`, { method: "DELETE" });
       if (!r.ok) { setError("Gagal menghapus chat"); return; }
