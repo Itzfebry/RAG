@@ -5,7 +5,12 @@ from pathlib import Path
 # Load .env file manually (ensure it's found regardless of working directory)
 from dotenv import load_dotenv
 env_path = Path(__file__).parent.parent.parent / ".env"
-load_dotenv(env_path, override=True)
+if not os.getenv("VERCEL"):
+    # Lokal saja. Di Vercel, nilai env datang dari dashboard Environment
+    # Variables; file .env tidak boleh dibaca/menimpanya (override=True dulu
+    # menyebabkan nilai localhost dari .env lokal menimpa GOOGLE_REDIRECT_URI
+    # produksi -> redirect_uri_mismatch).
+    load_dotenv(env_path)
 
 class Settings(BaseSettings):
     # Primary keys - generic, provider-agnostic. OPENROUTER_* is canonical.

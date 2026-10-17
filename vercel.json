@@ -19,7 +19,7 @@
   "functions": {
     "api/*.py": {
       "maxDuration": 60,
-      "excludeFiles": "{node_modules/**,.next/**,data/**,docs/**,public/**,components/**,app/**,e2e/**,playwright-report/**,test-results/**,backend/tests/**,migrations/**,*.tsbuildinfo,**/__pycache__/**,**/*.pyc,**/*.map,*.md}"
+      "excludeFiles": "{node_modules/**,.next/**,data/**,docs/**,public/**,components/**,app/**,e2e/**,playwright-report/**,test-results/**,backend/tests/**,migrations/**,*.tsbuildinfo,**/__pycache__/**,**/*.pyc,**/*.map,*.md,.env,.env.*}"
     }
   }
 }
