@@ -9,7 +9,7 @@
   "functions": {
     "api/*.py": {
       "maxDuration": 60,
-      "excludeFiles": "{node_modules/**,.next/**,data/**,docs/**,public/**,components/**,app/**,e2e/**,playwright-report/**,test-results/**,**/__pycache__/**,**/*.pyc,**/*.map,*.md}"
+      "excludeFiles": "{node_modules/**,.next/**,data/**,docs/**,public/**,components/**,app/**,e2e/**,playwright-report/**,test-results/**,backend/tests/**,supabase_migration*.sql,*.tsbuildinfo,**/__pycache__/**,**/*.pyc,**/*.map,*.md}"
     }
   }
 }
