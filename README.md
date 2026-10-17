@@ -37,3 +37,12 @@ The system is designed with a modular architecture where the AI model, knowledge
    npm run dev
    ```
 5. Open `http://localhost:3000` for chat and `http://localhost:3000/admin` for the admin panel.
+
+---
+
+## 📚 Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) — system design & directory structure
+- [Deployment](docs/DEPLOY.md) — Vercel + Supabase setup, environment variables
+- [Security](docs/SECURITY.md) — auth, cookies, hardening notes
+- [Supabase schema](docs/supabase_schema.sql) — database reference (run migrations from `migrations/`)
