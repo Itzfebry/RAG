@@ -7,7 +7,7 @@ Aman untuk dijalankan berkali-kali: seluruh entry di-embed + divalidasi
 (non-zero, dimensi benar) SEBELUM database disentuh. Gagal di tengah =
 data lama tidak tersentuh.
 
-Jalankan:  python -m backend.reindex_embeddings
+Jalankan:  python -m backend.tools.reindex_embeddings
 """
 try:
     from backend.knowledge.knowledge_service import (

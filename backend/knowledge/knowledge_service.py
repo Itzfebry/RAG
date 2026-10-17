@@ -27,7 +27,7 @@ except ImportError:
 # outputs EMBEDDING_DIM vectors (default 768, skema Supabase vector(768)).
 # Vektor dari model/dimensi BERBEDA tidak comparable: ganti provider/dimensi =
 # migrasi kolom pgvector (supabase_migration_768.sql) + reindex penuh
-# (python -m backend.reindex_embeddings).
+# (python -m backend.tools.reindex_embeddings).
 EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "hf").strip().lower()
 HF_EMBEDDING_MODEL = os.getenv(
     "HF_EMBEDDING_MODEL",

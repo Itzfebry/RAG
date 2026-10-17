@@ -5,8 +5,8 @@ ON memakai EMBEDDING_PROVIDER aktif (.env) dan EMBEDDING_DIM yang sama dengan
 kolom pgvector. Jangan paksa provider lain: vektor beda dimensi tidak bisa dibandingkan.
 
 Usage:
-  python -m backend.test_retrieval_compare                     # query bawaan
-  python -m backend.test_retrieval_compare "biaya servis" "harga perbaikan"
+  python -m backend.tools.test_retrieval_compare                     # query bawaan
+  python -m backend.tools.test_retrieval_compare "biaya servis" "harga perbaikan"
 """
 import sys
 import time

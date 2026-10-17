@@ -1,8 +1,8 @@
 """RAG pipeline test - 4 layer.
 
 Usage:
-  python -m backend.test_rag             # test saja (reindex manual via --reindex)
-  python -m backend.test_rag --reindex   # reindex semua entri lalu test
+  python -m backend.tools.test_rag             # test saja (reindex manual via --reindex)
+  python -m backend.tools.test_rag --reindex   # reindex semua entri lalu test
 """
 import json
 import sys

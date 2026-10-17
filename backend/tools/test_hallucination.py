@@ -1,12 +1,12 @@
 """Uji RAG: halusinasi, typo query, fakta KB, dan format jawaban.
 
 Usage:
-  python -m backend.test_hallucination
+  python -m backend.tools.test_hallucination
 """
 import re
 import sys
 
-from backend.test_rag import run_chat
+from backend.tools.test_rag import run_chat
 
 FORBIDDEN_LEAK = ["Here's a thinking process", "Analyze User Input", "<think>", "Formulate Response"]
 FORBIDDEN_STYLE = ["\u2014", "\u2013"]

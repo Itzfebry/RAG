@@ -6,7 +6,7 @@
 --
 -- URUTAN WAJIB:
 --   1. Jalankan file ini.
---   2. python -m backend.reindex_embeddings   (embed ulang semua chunk)
+--   2. python -m backend.tools.reindex_embeddings   (embed ulang semua chunk)
 --   3. Restart backend.
 -- ============================================================================
 

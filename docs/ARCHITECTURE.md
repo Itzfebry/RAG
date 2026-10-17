@@ -27,9 +27,12 @@ project/
 │   ├── knowledge/        # Semantic search, context builder
 │   ├── database/         # Supabase client & local fallback storage
 │   ├── security/         # JWT auth, password hashing, cookies
+│   ├── tools/            # Script dev/ops (reindex, test pipeline manual)
 │   └── config/           # Pydantic settings loader
 ├── components/           # Chat UI components
 ├── docs/                 # Architecture, deployment, security, schema
-├── data/                 # admin_bulk_example.json + local fallback (storage/ gitignored)
+├── migrations/           # Skema Supabase (jalankan manual di SQL Editor)
+├── public/               # Aset statis (favicon, logo, template JSON admin)
+├── data/                 # Local fallback storage (gitignored)
 └── requirements.txt      # Python dependencies
 ```

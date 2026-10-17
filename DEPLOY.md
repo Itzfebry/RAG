@@ -14,21 +14,18 @@ Storage → Supabase (pgvector)
 
 ## checklist deploy
 
-### 1. Supabase — jalankan `supabase_migration.sql`
+### 1. Supabase — jalankan semua file migrasi di `migrations/`
 
-SQL Editor → paste seluruh isi `supabase_migration.sql` → Run.
-Membuat tabel yang sebelumnya cuma ada di file lokal (tidak awet di serverless):
-`ai_model_config`, `app_settings`, `app_users` (+ seed user febry/sasha),
-`trial_usage`, `request_events`, `model_latency`. Idempoten — boleh di-run ulang.
+SQL Editor → paste isi tiap file → Run. Membuat tabel yang sebelumnya cuma ada
+di file lokal (tidak awet di serverless): `ai_model_config`, `app_settings`,
+`app_users` (+ seed user febry/sasha), `trial_usage`, `request_events`,
+`model_latency`. Idempoten — boleh di-run ulang.
 
-Jalankan juga migrasi fitur setelahnya (idempoten, urutan bebas):
-`supabase_migration_auth_hardening.sql`, `supabase_migration_email_otp.sql`,
-`supabase_migration_session_version.sql`, `supabase_migration_admin_session.sql`,
-`supabase_migration_profiles_tokens.sql`, `supabase_migration_pricing.sql`,
-`supabase_migration_audit.sql`, `supabase_migration_chat_history.sql`,
-`supabase_migration_rag_settings.sql`, `supabase_migration_response_styles.sql`,
-`supabase_migration_768.sql` (384 → 768), `supabase_migration_knowledge.sql`
-(tabel knowledge + RPC `match_knowledge_entries`), `supabase_migration_rate_limits.sql`.
+Urutan: `migrations/supabase_migration.sql` (dasar), lalu migrasi fitur
+(idempoten, urutan bebas): auth hardening, email OTP, session version, admin
+session, profiles tokens, pricing, audit, chat history, rag settings, response
+styles, `supabase_migration_768.sql` (384 → 768), knowledge (tabel + RPC
+`match_knowledge_entries`), rate limits.
 
 ### 2. Siapkan API key embedding (Gemini)
 
@@ -108,7 +105,7 @@ Push ke branch utama (auto-deploy) atau `vercel deploy`. Setelah live:
   di-reindex; kalau tidak, query vector tidak cocok dengan kolom `vector(768)`.
 - **Model embedding**: vektor di Supabase sudah diindex dengan
   `gemini-embedding-2` (768 dim). Ganti model = wajib reindex
-  (`python -m backend.test_rag --reindex`) + sesuaikan `EMBEDDING_DIM`.
+  (`python -m backend.tools.test_rag --reindex`) + sesuaikan `EMBEDDING_DIM`.
 - **Indexing knowledge**: sinkron (BackgroundTasks dibuang — serverless mati
   setelah response terkirim).
 - **Rate limit in-memory** (`proxy.ts`, `security/middleware.py`): per-instance
