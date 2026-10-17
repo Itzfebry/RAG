@@ -2,19 +2,12 @@
 const nextConfig = {
   async rewrites() {
     if (process.env.VERCEL) {
-      // Production on Vercel: FastAPI runs as the file-based Python function
-      // at api/[...path].py, which already owns every /api/* route.
-      // Only normalize the /api/python/* prefix the frontend uses.
-      return [
-        {
-          source: '/api/python/:path*',
-          destination: '/api/:path*',
-        },
-        {
-          source: '/v1/:path*',
-          destination: '/api/v1/:path*',
-        },
-      ];
+      // Production on Vercel: ALL /api/* and /v1/* requests are routed at the
+      // platform level by vercel.json rewrites → api/app.py (FastAPI).
+      // next.config rewrites are intentionally empty in prod: a Next-level
+      // rewrite never re-enters Vercel's function filesystem, and Python
+      // functions have no catch-all support (see api/app.py docstring).
+      return [];
     }
     // Local dev: proxy everything to the FastAPI dev server.
     return [

@@ -1,16 +1,22 @@
 # Deploy ke Vercel
 
 Arsitektur: Next.js frontend + FastAPI sebagai file-based Python function
-(`api/[...path].py`) — satu project, satu domain.
+(`api/app.py`) — satu project, satu domain.
 
 ## Alur request di Vercel
 
 ```
-Browser → /api/python/* → rewrite → /api/* → api/[...path].py → FastAPI
+Browser → /api/python/* atau /api/* → vercel.json rewrite → api/app.py → FastAPI
 Embedding query → Gemini API (gemini-embedding-2, 768 dim)
 Chat LLM → Groq API
 Storage → Supabase (pgvector)
 ```
+
+Catatan routing: function Python non-Next di Vercel tidak mendukung
+catch-all `[...path]` (hanya 1 segmen dinamis). Semua request API dialihkan
+lewat rewrite platform di `vercel.json` ke endpoint statis `api/app.py`;
+path asli dipertahankan dan prefix `/api/python` dinormalisasi di
+`api/app.py`.
 
 ## checklist deploy
 
