@@ -203,7 +203,7 @@ class DatabaseService:
                 "payment_qris": "",
                 "payment_instructions": "",
                 "contact": "",
-                "order_note": "Aktivasi manual oleh admin setelah pembayaran dikonfirmasi.",
+                "order_note": "Pembayaran tercatat otomatis — kuota aktif sendiri begitu dana masuk.",
             }
         }.get(table_name, {})
         result = _read_local_json(f"{table_name}.json", default_data)
@@ -739,7 +739,7 @@ class DatabaseService:
     def count_chat_sessions(user_id: str) -> int:
         return len(DatabaseService.list_chat_sessions(user_id))
 
-    # ── Pricing: paket + order (aktivasi manual admin) ──
+    # ── Pricing: paket + order (aktivasi via callback gateway) ──
 
     @staticmethod
     def _orders_file() -> str:
@@ -834,6 +834,24 @@ class DatabaseService:
         if status == "paid":
             patch["paid_at"] = now
             patch["confirmed_by"] = confirmed_by
+        if supabase_client:
+            try:
+                res = supabase_client.table("orders").update(patch).eq("id", str(order_id)).execute()
+                if res.data:
+                    return res.data[0]
+            except Exception as e:
+                print(f"Error updating order in Supabase: {e}")
+        orders = _read_local_json(DatabaseService._orders_file(), [])
+        for o in orders:
+            if str(o.get("id")) == str(order_id):
+                o.update(patch)
+                _write_local_json(DatabaseService._orders_file(), orders)
+                return o
+        return None
+
+    @staticmethod
+    def update_order(order_id: str, patch: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Patch field order (mis. simpan reference invoice gateway di `proof`)."""
         if supabase_client:
             try:
                 res = supabase_client.table("orders").update(patch).eq("id", str(order_id)).execute()

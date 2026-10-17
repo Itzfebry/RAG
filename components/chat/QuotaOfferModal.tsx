@@ -336,7 +336,7 @@ export default function QuotaOfferModal({
               </motion.div>
 
               <motion.p variants={item} className="mt-4 text-center text-[12px] leading-relaxed text-zinc-600">
-                Pembayaran lewat QRIS, kuota aktif otomatis begitu kamu klik Sudah Bayar di halaman paket. Sisa kuota dicek lewat ikon info di halaman chat.
+                Pembayaran lewat QRIS, kuota aktif otomatis begitu pembayaran tercatat di sistem — tidak perlu klik apa pun. Sisa kuota dicek lewat ikon info di halaman chat.
               </motion.p>
               <motion.div variants={item} className="mt-2 flex justify-center">
                 <Link href="/pricing" className="text-[12.5px] font-medium text-zinc-400 underline-offset-2 transition-colors hover:text-zinc-200 hover:underline">

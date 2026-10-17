@@ -76,6 +76,9 @@ Next.js. Tanpa konfigurasi tambahan (sudah ada `vercel.json`).
 | `MAIL_FROM` | opsional; nama+email pengirim (mis. `ITZ AI <bot@gmail.com>`) |
 | `RESEND_API_KEY` | opsional; alternatif SMTP (`SMTP_*` diprioritaskan) |
 | `OTP_TTL_MINUTES` / `OTP_MAX_ATTEMPTS` | opsional; default `10` / `5` |
+| `DUITKU_MERCHANT_CODE` / `DUITKU_API_KEY` | opsional; credential proyek Duitku (passport.duitku.com/Project). Diisi = pembayaran otomatis: order dapat paymentUrl, kuota aktif sendiri lewat callback `/api/payment/duitku/callback`. Kosongkan = QRIS manual + konfirmasi admin |
+| `DUITKU_ENV` | opsional; `sandbox` untuk uji coba, default `production` |
+| `PUBLIC_BASE_URL` | wajib kalau pakai Duitku; origin publik `https://<domain>` (callback Duitku harus bisa mengakses `/api/payment/duitku/callback` dari internet) |
 
 Catatan: verifikasi email & reset kata sandi **wajib** salah satu provider email (`SMTP_*` atau `RESEND_API_KEY`). Tanpa itu, di produksi kirim OTP gagal dan user baru tidak bisa lolos gate verifikasi. Login Google hanya muncul kalau `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` terisi.
 

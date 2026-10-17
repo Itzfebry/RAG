@@ -1,4 +1,4 @@
-"""Test unit fitur pricing: paket, order, aktivasi kuota manual.
+"""Test unit fitur pricing: paket, order, aktivasi kuota via callback gateway.
 
 Tanpa Supabase / provider LLM. Jalankan:
   python -m pytest backend/tests/test_pricing.py -q
@@ -22,6 +22,9 @@ def db(tmp_path, monkeypatch):
 
     monkeypatch.setattr(m, "supabase_client", None)
     monkeypatch.setattr(m, "LOCAL_DATA_DIR", str(tmp_path))
+    # Gateway mati per default: test tidak boleh menyentuh jaringan Duitku.
+    monkeypatch.delenv("DUITKU_MERCHANT_CODE", raising=False)
+    monkeypatch.delenv("DUITKU_API_KEY", raising=False)
     m.config_cache.clear()
     return m.DatabaseService
 
@@ -259,7 +262,26 @@ def test_pricing_block_empty_when_no_plans(monkeypatch):
     assert cb._build_pricing_block() == ""
 
 
-# ── alur bayar otomatis (self-paid) + tautan WhatsApp ──
+# ── alur bayar otomatis: user tidak boleh acc, callback gateway yang aktivasi ──
+
+def _enable_gateway(monkeypatch, *, signature_ok: bool = True):
+    from backend.api import pricing as pricing_api
+
+    monkeypatch.setattr(pricing_api.duitku, "configured", lambda: True)
+    monkeypatch.setattr(pricing_api.duitku, "verify_callback_signature", lambda *a, **k: signature_ok)
+
+
+def _callback_payload(order, **over):
+    body = {
+        "merchantCode": "DTEST",
+        "amount": str(order["amount"]),
+        "merchantOrderId": str(order["id"]),
+        "resultCode": "00",
+        "reference": "REF123",
+        "signature": "ab" * 32,
+    }
+    body.update(over)
+    return body
 
 def test_wa_link_normalizes_contact():
     from backend.api.pricing import wa_link
@@ -288,7 +310,8 @@ def test_public_pricing_exposes_contact_wa(db, monkeypatch):
     assert out["contact_wa"] == "https://wa.me/6287776445013"
 
 
-def test_user_mark_paid_activates_quota_and_is_idempotent(db, monkeypatch):
+def test_user_cannot_self_mark_paid(db):
+    """Endpoint 'Sudah Bayar' dihapus: user tidak boleh acc pembayarannya sendiri."""
     from fastapi.testclient import TestClient
     from backend.api.users import get_current_user
     from backend.api.main import app
@@ -301,62 +324,166 @@ def test_user_mark_paid_activates_quota_and_is_idempotent(db, monkeypatch):
     try:
         client = TestClient(app)
         res = client.post(f"/api/user/orders/{order['id']}/paid")
+        assert res.status_code in (404, 405)
+        assert db.get_order(order["id"])["status"] == "pending"
+        assert db.get_user_by_id(str(user["id"]))["max_prompts"] == 10
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_callback_auto_activates_quota_and_is_idempotent(db, monkeypatch):
+    """Dana masuk -> callback gateway -> paid + kuota naik, tanpa acc user."""
+    from fastapi.testclient import TestClient
+    from backend.api.main import app
+
+    db.update_pricing({"plans": DEFAULT_PLANS})
+    user = db.create_user({"username": "autobuyer", "password_hash": "x", "max_prompts": 10, "prompts_used": 5, "is_active": True})
+    order = db.create_order(str(user["id"]), db.find_plan("100"))
+    _enable_gateway(monkeypatch)
+
+    try:
+        client = TestClient(app)
+        res = client.post("/api/payment/duitku/callback", data=_callback_payload(order))
         assert res.status_code == 200
         assert res.json()["max_prompts"] == 110
         assert db.get_user_by_id(str(user["id"]))["max_prompts"] == 110
-        assert db.get_order(order["id"])["status"] == "paid"
+        paid = db.get_order(order["id"])
+        assert paid["status"] == "paid"
+        assert paid["confirmed_by"] == "duitku"
 
-        # Klik kedua ditolak, kuota tidak dobel
-        res2 = client.post(f"/api/user/orders/{order['id']}/paid")
-        assert res2.status_code == 409
+        # Callback duplikat (retry gateway): kuota tidak dobel.
+        res2 = client.post("/api/payment/duitku/callback", data=_callback_payload(order))
+        assert res2.status_code == 200
+        assert res2.json().get("idempotent") is True
         assert db.get_user_by_id(str(user["id"]))["max_prompts"] == 110
     finally:
         app.dependency_overrides.clear()
 
 
-def test_user_mark_paid_unlimited_user_does_not_add(db, monkeypatch):
+def test_callback_bad_signature_rejected(db, monkeypatch):
     from fastapi.testclient import TestClient
-    from backend.api.users import get_current_user
     from backend.api.main import app
 
     db.update_pricing({"plans": DEFAULT_PLANS})
-    user = db.create_user({"username": "unlim2", "password_hash": "x", "max_prompts": 0, "prompts_used": 0, "is_active": True})
+    user = db.create_user({"username": "forged", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
+    order = db.create_order(str(user["id"]), db.find_plan("100"))
+    _enable_gateway(monkeypatch, signature_ok=False)
+
+    client = TestClient(app)
+    res = client.post("/api/payment/duitku/callback", data=_callback_payload(order))
+    assert res.status_code == 403
+    assert db.get_order(order["id"])["status"] == "pending"
+    assert db.get_user_by_id(str(user["id"]))["max_prompts"] == 10
+
+
+def test_callback_amount_mismatch_rejected(db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend.api.main import app
+
+    db.update_pricing({"plans": DEFAULT_PLANS})
+    user = db.create_user({"username": "shortpay", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
+    order = db.create_order(str(user["id"]), db.find_plan("100"))
+    _enable_gateway(monkeypatch)
+
+    client = TestClient(app)
+    res = client.post("/api/payment/duitku/callback", data=_callback_payload(order, amount="1"))
+    assert res.status_code == 403
+    assert db.get_order(order["id"])["status"] == "pending"
+    assert db.get_user_by_id(str(user["id"]))["max_prompts"] == 10
+
+
+def test_callback_unknown_order_returns_404(db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend.api.main import app
+
+    db.update_pricing({"plans": DEFAULT_PLANS})
+    _enable_gateway(monkeypatch)
+
+    client = TestClient(app)
+    res = client.post("/api/payment/duitku/callback", data=_callback_payload({"id": "00000000-0000-0000-0000-000000000000", "amount": 30000}))
+    assert res.status_code == 404
+
+
+def test_callback_failed_payment_keeps_order_pending(db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend.api.main import app
+
+    db.update_pricing({"plans": DEFAULT_PLANS})
+    user = db.create_user({"username": "failpay", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
+    order = db.create_order(str(user["id"]), db.find_plan("100"))
+    _enable_gateway(monkeypatch)
+
+    client = TestClient(app)
+    res = client.post("/api/payment/duitku/callback", data=_callback_payload(order, resultCode="01"))
+    assert res.status_code == 200
+    assert res.json()["status"] == "ignored"
+    assert db.get_order(order["id"])["status"] == "pending"
+    assert db.get_user_by_id(str(user["id"]))["max_prompts"] == 10
+
+
+def test_callback_disabled_when_gateway_unconfigured(db):
+    """Tanpa credential, callback ditolak (bukan diam-diam jadi trustless)."""
+    from fastapi.testclient import TestClient
+    from backend.api.main import app
+
+    db.update_pricing({"plans": DEFAULT_PLANS})
+    user = db.create_user({"username": "nogw", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
     order = db.create_order(str(user["id"]), db.find_plan("100"))
 
-    app.dependency_overrides[get_current_user] = lambda: {"id": str(user["id"]), "username": "unlim2"}
-    try:
-        client = TestClient(app)
-        res = client.post(f"/api/user/orders/{order['id']}/paid")
-        assert res.status_code == 200
-        assert res.json()["max_prompts"] == 0
-        assert db.get_order(order["id"])["status"] == "paid"
-    finally:
-        app.dependency_overrides.clear()
+    client = TestClient(app)
+    res = client.post("/api/payment/duitku/callback", data=_callback_payload(order))
+    assert res.status_code == 400
+    assert db.get_order(order["id"])["status"] == "pending"
 
 
-def test_user_mark_paid_cannot_touch_other_users_order(db, monkeypatch):
+def test_callback_paid_after_cancel_needs_admin(db, monkeypatch):
+    """Order diganti saat menunggu tapi dana masuk: jangan auto-aktif, lempar admin."""
     from fastapi.testclient import TestClient
-    from backend.api.users import get_current_user
     from backend.api.main import app
 
     db.update_pricing({"plans": DEFAULT_PLANS})
-    owner = db.create_user({"username": "owner1", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
-    intruder = db.create_user({"username": "intruder", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
-    order = db.create_order(str(owner["id"]), db.find_plan("100"))
+    user = db.create_user({"username": "latepay", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
+    order = db.create_order(str(user["id"]), db.find_plan("100"))
+    db.set_order_status(order["id"], "cancelled")
+    _enable_gateway(monkeypatch)
 
-    app.dependency_overrides[get_current_user] = lambda: {"id": str(intruder["id"]), "username": "intruder"}
+    client = TestClient(app)
+    res = client.post("/api/payment/duitku/callback", data=_callback_payload(order))
+    assert res.status_code == 200
+    assert res.json()["status"] == "needs_admin"
+    assert db.get_order(order["id"])["status"] == "cancelled"
+    assert db.get_user_by_id(str(user["id"]))["max_prompts"] == 10
+
+
+def test_create_order_with_gateway_returns_payment_url(db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend.api.users import get_current_user
+    from backend.api.main import app
+    from backend.api import pricing as pricing_api
+
+    db.update_pricing({"plans": DEFAULT_PLANS})
+    user = db.create_user({"username": "gwbuyer", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True, "email": "gw@example.com"})
+    monkeypatch.setattr(pricing_api.duitku, "configured", lambda: True)
+    monkeypatch.setattr(
+        pricing_api.duitku, "create_invoice",
+        lambda **kw: {"reference": "REF777", "payment_url": "https://app-sandbox.duitku.com/redirect_checkout?reference=REF777"},
+    )
+
+    app.dependency_overrides[get_current_user] = lambda: {"id": str(user["id"]), "username": "gwbuyer"}
     try:
         client = TestClient(app)
-        res = client.post(f"/api/user/orders/{order['id']}/paid")
-        assert res.status_code == 404
-        assert db.get_order(order["id"])["status"] == "pending"
-        assert db.get_user_by_id(str(owner["id"]))["max_prompts"] == 10
+        res = client.post("/api/user/orders", json={"plan_id": "100"})
+        assert res.status_code == 200
+        body = res.json()
+        assert body["payment_url"].startswith("https://")
+        assert body["order"]["status"] == "pending"
+        assert body["order"]["proof"] == "duitku:REF777"
     finally:
         app.dependency_overrides.clear()
 
 
 def test_create_order_clears_stale_pending_instead_of_409(db, monkeypatch):
-    """Order baru menggantikan pending lama (user tutup tab sebelum klik Sudah Bayar)."""
+    """Order baru menggantikan pending lama (user tutup tab sebelum bayar)."""
     from fastapi.testclient import TestClient
     from backend.api.users import get_current_user
     from backend.api.main import app

@@ -1,10 +1,12 @@
 """
 Pricing & orders: paket prompt, pembayaran (QRIS), aktivasi otomatis.
 
-Alur: user pilih paket -> buat order -> QRIS tampil -> user bayar -> klik "Sudah Bayar"
--> order paid + kuota ditambah otomatis (tanpa acc admin). Orders = log pembayaran
-yang dipantau admin. Admin endpoint confirm/cancel tetap ada untuk kasus luar biasa
-(user bayar tapi lupa klik, order menggantung, koreksi).
+Alur: user pilih paket -> order dibuat + invoice gateway (paymentUrl) -> user
+bayar di halaman gateway -> callback gateway datang begitu dana masuk -> order
+paid + kuota ditambah otomatis. User TIDAK bisa menandai sendiri: endpoint
+"Sudah Bayar" sudah dihapus (user tidak boleh acc). Orders = log pembayaran
+yang dipantau admin. Admin confirm/cancel tetap ada sebagai jaga-jaga (notifikasi
+gangguan, order nyangkut, koreksi).
 """
 import re
 
@@ -14,12 +16,14 @@ from typing import Optional, List, Dict, Any
 
 try:
     from backend.database.db import DatabaseService
+    from backend.payment import duitku
     from backend.security.rate_limiter import get_client_ip, check_rate_limit
     from backend.security.audit import log_action as audit_log
     from backend.api.users import get_current_user
     from backend.api.admin import get_current_admin
 except ImportError:
     from database.db import DatabaseService  # type: ignore
+    from payment import duitku  # type: ignore
     from security.rate_limiter import get_client_ip, check_rate_limit  # type: ignore
     from security.audit import log_action as audit_log  # type: ignore
     from api.users import get_current_user  # type: ignore
@@ -27,6 +31,7 @@ except ImportError:
 
 router = APIRouter(prefix="/api", tags=["Pricing"])
 admin_router = APIRouter(prefix="/api/admin", tags=["Admin Pricing"])
+payment_router = APIRouter(prefix="/api/payment", tags=["Payment Callback"])
 
 MAX_AMOUNT = 100_000_000
 MAX_PLANS = 12
@@ -82,13 +87,20 @@ def _public_pricing() -> Dict[str, Any]:
             "discount_percent": round((1 - amount / original) * 100) if discounted else None,
         })
     contact = str(cfg.get("contact") or "").strip()
+    note = str(cfg.get("order_note") or "")
+    # Legacy: instalasi lama masih menyimpan teks default alur manual -> tukar diam-diam.
+    if note == "Aktivasi manual oleh admin setelah pembayaran dikonfirmasi.":
+        note = "Pembayaran tercatat otomatis — kuota aktif sendiri begitu dana masuk."
     return {
         "plans": plans,
         "payment_qris": str(cfg.get("payment_qris") or ""),
         "payment_instructions": str(cfg.get("payment_instructions") or ""),
         "contact": contact,
         "contact_wa": wa_link(contact),
-        "order_note": str(cfg.get("order_note") or ""),
+        "order_note": note,
+        # True = alur bayar otomatis aktif: order dapat paymentUrl, kuota
+        # menyala sendiri lewat callback gateway begitu dana masuk.
+        "auto_checkout": duitku.configured(),
     }
 
 
@@ -143,7 +155,32 @@ def user_create_order(payload: OrderCreate, request: Request, user: dict = Depen
             DatabaseService.set_order_status(str(o.get("id")), "cancelled")
 
     order = DatabaseService.create_order(str(user["id"]), plan, note=(payload.note or "").strip())
-    return {"status": "success", "order": order}
+
+    # Invoice gateway: paymentUrl untuk user bayar. Callback-nya (bukan klik
+    # user) yang mengaktifkan kuota. Gagal bikin invoice bukan batal order —
+    # fallback QRIS manual + konfirmasi admin tetap jalan.
+    payment_url = None
+    if duitku.configured():
+        user_row = DatabaseService.get_user_by_id(str(user["id"])) or {}
+        try:
+            invoice = duitku.create_invoice(
+                merchant_order_id=str(order["id"]),
+                amount=int(order.get("amount") or 0),
+                product_details=f"{order.get('plan_label')} - {order.get('prompts')} prompt ITZ AI",
+                email=str(user_row.get("email") or ""),
+                customer_name=str(user_row.get("display_name") or user_row.get("username") or "Customer"),
+                phone_number=str(user_row.get("phone") or ""),
+            )
+            payment_url = invoice["payment_url"]
+            DatabaseService.update_order(str(order["id"]), {"proof": f"duitku:{invoice['reference']}"})
+            order = DatabaseService.get_order(str(order["id"])) or order
+            audit_log(str(user.get("username") or user.get("id")), "order_invoice_created",
+                      detail=f"order={order['id']} reference={invoice['reference']}", ip=ip)
+        except duitku.DuitkuError as exc:
+            audit_log(str(user.get("username") or user.get("id")), "order_invoice_failed",
+                      detail=f"order={order['id']} err={exc}", ip=ip)
+
+    return {"status": "success", "order": order, "payment_url": payment_url}
 
 
 @router.get("/user/orders")
@@ -167,31 +204,73 @@ def user_list_orders(user: dict = Depends(get_current_user)):
     }
 
 
-@router.post("/user/orders/{order_id}/paid")
-def user_mark_order_paid(order_id: str, request: Request, user: dict = Depends(get_current_user)):
-    """User menandai 'Sudah Bayar' setelah QRIS tampil: kuota aktif otomatis, tanpa acc admin."""
+# ── callback gateway: satu-satunya jalur aktivasi otomatis ──
+
+def _parse_form(raw: bytes) -> Dict[str, str]:
+    """Parse body x-www-form-urlencoded tanpa dependensi python-multipart."""
+    from urllib.parse import parse_qs
+
+    parsed = parse_qs(raw.decode("utf-8", errors="replace"), keep_blank_values=True)
+    return {k: (v[0] if v else "") for k, v in parsed.items()}
+
+
+@payment_router.post("/duitku/callback")
+async def duitku_payment_callback(request: Request):
+    """Notifikasi Duitku: dana masuk -> order paid + kuota aktif otomatis.
+
+    User tidak acc apa pun di sini; admin konfirmasi tetap tersedia untuk
+    kasus gangguan (endpoint /api/admin/orders/{id}/confirm).
+    """
+    form = _parse_form(await request.body())
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"orderpaid:{user.get('id')}:{ip}", 10, 60)
-    if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+
+    if not duitku.configured():
+        raise HTTPException(status_code=400, detail="Gateway pembayaran belum dikonfigurasi")
+
+    merchant_code = form.get("merchantCode", "")
+    amount = form.get("amount", "")
+    order_id = form.get("merchantOrderId", "")
+    signature = form.get("signature", "")
+    if not (merchant_code and amount and order_id and signature):
+        audit_log("gateway", "callback_bad_parameter", detail=f"order={order_id or '?'} ip={ip}", ip=ip)
+        raise HTTPException(status_code=400, detail="Parameter callback tidak lengkap")
+    if not duitku.verify_callback_signature(merchant_code, amount, order_id, signature):
+        audit_log("gateway", "callback_bad_signature", detail=f"order={order_id} ip={ip}", ip=ip)
+        raise HTTPException(status_code=403, detail="Signature tidak valid")
 
     order = DatabaseService.get_order(order_id)
-    if order is None or str(order.get("user_id")) != str(user.get("id")):
+    if order is None:
+        audit_log("gateway", "callback_unknown_order", detail=f"order={order_id} ip={ip}", ip=ip)
         raise HTTPException(status_code=404, detail="Order tidak ditemukan")
-    status = str(order.get("status"))
+
+    # Nominal wajib persis: tolak notifikasi salah tagih / salah order.
+    if int(amount or 0) != int(order.get("amount") or 0):
+        audit_log("gateway", "callback_amount_mismatch",
+                  detail=f"order={order_id} callback={amount} order_amount={order.get('amount')}", ip=ip)
+        raise HTTPException(status_code=403, detail="Nominal tidak sesuai order")
+
+    if str(form.get("resultCode") or "") != "00":
+        # Pembayaran gagal / dibatalkan di kanal bayar: order tetap pending.
+        return {"status": "ignored"}
+
+    status = str(order.get("status") or "")
     if status == "paid":
-        raise HTTPException(status_code=409, detail="Order ini sudah tercatat sebagai dibayar")
+        return {"status": "success", "idempotent": True}
     if status == "cancelled":
-        raise HTTPException(status_code=409, detail="Order ini sudah dibatalkan. Buat order baru.")
+        # Order diganti user saat menunggu, tapi dana tetap masuk. Jangan
+        # aktifkan sendiri — lempar ke admin (jaga-jaga), kuota tidak hilang.
+        audit_log("gateway", "callback_paid_after_cancel",
+                  detail=f"order={order_id} user={order.get('user_id')} amount={amount}", ip=ip)
+        return {"status": "needs_admin"}
 
-    user_row = DatabaseService.get_user_by_id(str(user["id"]))
+    user_row = DatabaseService.get_user_by_id(str(order.get("user_id")))
     if user_row is None:
-        raise HTTPException(status_code=404, detail="Akun tidak ditemukan")
+        audit_log("gateway", "callback_user_missing", detail=f"order={order_id} ip={ip}", ip=ip)
+        raise HTTPException(status_code=404, detail="User pemilik order tidak ditemukan")
 
-    who = str(user.get("username") or user.get("id"))
-    new_max = _grant_order_quota(order, user_row, confirmed_by=who)
-    audit_log(who, "order_paid_self",
-              detail=f"order={order_id} prompts={order.get('prompts')} max_prompts={new_max}", ip=ip)
+    new_max = _grant_order_quota(order, user_row, confirmed_by="duitku")
+    audit_log("gateway", "order_paid_auto",
+              detail=f"order={order_id} user={user_row.get('username')} prompts={order.get('prompts')} max_prompts={new_max}", ip=ip)
     return {"status": "success", "max_prompts": new_max}
 
 

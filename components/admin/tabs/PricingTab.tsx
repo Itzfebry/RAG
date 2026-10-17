@@ -166,7 +166,7 @@ export function PricingTab({
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <SectionHeader title="Harga & Paket" desc="Atur paket prompt dan info pembayaran. Order baru tercatat otomatis begitu user klik Sudah Bayar - tanpa konfirmasi manual. Pantau lewat log pembayaran di bawah." />
+      <SectionHeader title="Harga & Paket" desc="Atur paket prompt dan info pembayaran. Pembayaran masuk mengaktifkan kuota otomatis lewat notifikasi gateway - konfirmasi manual hanya jaga-jaga bila notifikasi gagal. Pantau lewat log pembayaran di bawah." />
 
       {/* Paket */}
       <Card className={cardBase}>
@@ -288,7 +288,7 @@ export function PricingTab({
           </div>
           <div className="space-y-2">
             <Label className={tLabel}>Instruksi pembayaran</Label>
-            <Textarea rows={3} value={pricing.payment_instructions} onChange={(e) => onChange({ ...pricing, payment_instructions: e.target.value })} placeholder="Scan QRIS, nominal harus sama persis, lalu kirim bukti ke admin." className={textareaCls} />
+            <Textarea rows={3} value={pricing.payment_instructions} onChange={(e) => onChange({ ...pricing, payment_instructions: e.target.value })} placeholder="Bayar dengan nominal persis. Kuota aktif otomatis begitu pembayaran tercatat." className={textareaCls} />
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -297,7 +297,7 @@ export function PricingTab({
             </div>
             <div className="space-y-2">
               <Label className={tLabel}>Catatan di halaman harga</Label>
-              <Input value={pricing.order_note} onChange={(e) => onChange({ ...pricing, order_note: e.target.value })} placeholder="Aktivasi manual oleh admin..." className={inputCls} />
+              <Input value={pricing.order_note} onChange={(e) => onChange({ ...pricing, order_note: e.target.value })} placeholder="Catatan untuk pembeli (opsional)..." className={inputCls} />
             </div>
           </div>
         </CardContent>
@@ -339,7 +339,7 @@ export function PricingTab({
         <CardContent className="p-0">
           {counts.pending > 0 && (
             <p className="px-5 pt-4 text-[12.5px] leading-relaxed text-zinc-500">
-              {counts.pending} order <span className="font-medium text-amber-300">Menunggu</span> - user sudah buka QRIS tapi belum klik Sudah Bayar. Konfirmasi manual hanya untuk kasus user sudah bayar namun belum sempat klik; batalkan bila menggantung.
+              {counts.pending} order <span className="font-medium text-amber-300">Menunggu</span> - dana belum tercatat masuk. Konfirmasi manual hanya jaga-jaga bila pembayaran sudah masuk tapi notifikasi gateway tidak sampai; batalkan bila menggantung.
             </p>
           )}
           {visible.length === 0 ? (

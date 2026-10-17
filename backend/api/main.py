@@ -9,7 +9,7 @@ try:
     from backend.api.chat import router as chat_router, v1_router
     from backend.api.users import router as user_router, admin_router as admin_users_router
     from backend.api.auth import router as auth_router
-    from backend.api.pricing import router as pricing_router, admin_router as admin_pricing_router
+    from backend.api.pricing import router as pricing_router, admin_router as admin_pricing_router, payment_router
     from backend.config.config import settings
     from backend.security.middleware import SecurityHeadersMiddleware, BodySizeLimitMiddleware
 except ImportError:
@@ -17,7 +17,7 @@ except ImportError:
     from api.chat import router as chat_router, v1_router
     from api.users import router as user_router, admin_router as admin_users_router  # type: ignore
     from api.auth import router as auth_router  # type: ignore
-    from api.pricing import router as pricing_router, admin_router as admin_pricing_router  # type: ignore
+    from api.pricing import router as pricing_router, admin_router as admin_pricing_router, payment_router  # type: ignore
     from config.config import settings  # type: ignore
     from security.middleware import SecurityHeadersMiddleware, BodySizeLimitMiddleware  # type: ignore
 
@@ -103,6 +103,7 @@ app.include_router(admin_router)
 app.include_router(admin_users_router)
 app.include_router(pricing_router)
 app.include_router(admin_pricing_router)
+app.include_router(payment_router)
 app.include_router(auth_router)
 
 @app.get("/")

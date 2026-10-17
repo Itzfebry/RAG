@@ -43,8 +43,8 @@ export default function PricingPage() {
   const [showQris, setShowQris] = useState(false);
   const [copied, setCopied] = useState(false);
   const [order, setOrder] = useState<OrderRow | null>(null);
-  const [paying, setPaying] = useState(false);
-  const [modalNotice, setModalNotice] = useState<string | null>(null);
+  // Halaman bayar gateway (QRIS/VA/e-wallet). Null = gateway nonaktif (QRIS manual).
+  const [payUrl, setPayUrl] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/python/pricing")
@@ -83,7 +83,6 @@ export default function PricingPage() {
     if (!chosen || submitting) return;
     setSubmitting(true);
     setNotice(null);
-    setModalNotice(null);
     try {
       const r = await fetch("/api/python/user/orders", {
         method: "POST",
@@ -96,6 +95,7 @@ export default function PricingPage() {
         return;
       }
       setOrder((j.order as OrderRow) ?? null);
+      setPayUrl(typeof j.payment_url === "string" && j.payment_url ? j.payment_url : null);
       setShowQris(true);
       loadOrders();
     } catch {
@@ -105,28 +105,30 @@ export default function PricingPage() {
     }
   };
 
-  const markPaid = async () => {
-    if (!order || paying) return;
-    setPaying(true);
-    setModalNotice(null);
-    try {
-      const r = await fetch(`/api/python/user/orders/${order.id}/paid`, { method: "POST" });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        setModalNotice(typeof j.detail === "string" ? j.detail : "Gagal mencatat pembayaran");
-        return;
-      }
-      setShowQris(false);
-      setOrder(null);
-      setNotice(`Pembayaran tercatat. Kuota ${chosen ? `${chosen.prompts} prompt` : "paket"} sudah aktif.`);
-      loadOrders();
-      fetch("/api/python/user/me").then(async (r) => { if (r.ok) setUser(await r.json()); }).catch(() => {});
-    } catch {
-      setModalNotice("Gagal mencatat pembayaran. Coba lagi.");
-    } finally {
-      setPaying(false);
-    }
-  };
+  // Aktivasi datang dari callback gateway, bukan klik user: poll status order
+  // selama modal terbuka sampai "paid" (kuota sudah ditambah backend).
+  useEffect(() => {
+    if (!showQris || !order) return;
+    const tick = () => {
+      fetch("/api/python/user/orders")
+        .then(async (r) => {
+          if (!r.ok) return;
+          const j = await r.json();
+          const row = (Array.isArray(j.items) ? j.items : []).find((o: OrderRow) => o.id === order.id);
+          if (row && row.status === "paid") {
+            setShowQris(false);
+            setOrder(null);
+            setNotice(`Pembayaran tercatat otomatis. Kuota ${chosen ? `${chosen.prompts} prompt` : "paket"} sudah aktif.`);
+            loadOrders();
+            fetch("/api/python/user/me").then(async (r2) => { if (r2.ok) setUser(await r2.json()); }).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    };
+    const t = setInterval(tick, 4000);
+    tick();
+    return () => clearInterval(t);
+  }, [showQris, order, chosen, loadOrders]);
 
   const waHref = (msg: string) =>
     data?.contact_wa ? `${data.contact_wa}?text=${encodeURIComponent(msg)}` : null;
@@ -143,10 +145,10 @@ export default function PricingPage() {
   };
 
   const steps = [
-    "Pilih paket, lalu klik Ambil paket — QRIS langsung tampil.",
-    "Scan QRIS dan bayar dengan nominal persis sesuai paket.",
-    "Klik Sudah Bayar — kuota aktif otomatis dan tercatat di sistem.",
-    "Ada kendala? Chat admin langsung lewat WhatsApp.",
+    "Pilih paket, lalu klik Ambil paket — halaman pembayaran langsung terbuka.",
+    "Bayar dengan nominal persis lewat QRIS, VA, atau e-wallet.",
+    "Tunggu sebentar — kuota aktif otomatis begitu pembayaran tercatat di sistem. Tidak perlu klik apa pun.",
+    "Ada kendala? Chat admin lewat WhatsApp. Konfirmasi admin hanya cadangan bila notifikasi gangguan.",
   ];
 
   return (
@@ -158,7 +160,7 @@ export default function PricingPage() {
           </div>
           <div>
             <h1 className="text-[22px] font-semibold tracking-tight text-zinc-50">Harga & Paket</h1>
-            <p className="mt-0.5 text-[13px] text-zinc-500">Kuota prompt ITZ AI. Aktivasi otomatis setelah pembayaran dikonfirmasi.</p>
+            <p className="mt-0.5 text-[13px] text-zinc-500">Kuota prompt ITZ AI. Kuota aktif otomatis begitu pembayaran tercatat — tanpa konfirmasi manual.</p>
           </div>
         </div>
         <Link href="/chat" className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-1.5 text-[13px] text-zinc-300 transition-colors hover:bg-white/[0.06]">
@@ -405,14 +407,18 @@ export default function PricingPage() {
               </button>
               <div className="px-6 pb-6 pt-7">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">ITZ AI · Pembayaran</p>
-                <h2 className="mt-3 text-[22px] font-semibold tracking-tight text-white">Scan untuk bayar</h2>
+                <h2 className="mt-3 text-[22px] font-semibold tracking-tight text-white">{payUrl ? "Selesaikan pembayaran" : "Scan untuk bayar"}</h2>
                 {chosen && (
                   <p className="mt-1.5 text-[14px] text-zinc-400">
                     {chosen.label} · <span className="font-medium tabular-nums text-zinc-200">{rupiah(chosen.amount)}</span>
                   </p>
                 )}
 
-                {data?.payment_qris ? (
+                {payUrl ? (
+                  <p className="mt-5 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-[13px] leading-relaxed text-emerald-200">
+                    Klik tombol di bawah untuk membuka halaman pembayaran. Kuota aktif otomatis begitu dana masuk — tidak perlu konfirmasi apa pun.
+                  </p>
+                ) : data?.payment_qris ? (
                   data.payment_qris.startsWith("data:image") || data.payment_qris.startsWith("http") ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={data.payment_qris} alt="QRIS ITZ AI" className="mx-auto mt-5 h-56 w-56 rounded-xl border border-white/[0.1] bg-white object-contain p-2" />
@@ -423,7 +429,7 @@ export default function PricingPage() {
                   )
                 ) : (
                   <p className="mt-5 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-200">
-                    QRIS belum diatur admin. Minta info pembayaran langsung ke admin.
+                    Metode pembayaran belum diatur. Minta info pembayaran langsung ke admin.
                   </p>
                 )}
 
@@ -431,19 +437,21 @@ export default function PricingPage() {
                   <p className="mt-4 whitespace-pre-wrap text-[13px] leading-relaxed text-zinc-400">{data.payment_instructions}</p>
                 )}
 
-                {modalNotice && (
-                  <p className="mt-4 rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-[13px] text-rose-300">{modalNotice}</p>
-                )}
-
                 <div className="mt-5 space-y-2.5">
-                  <button
-                    onClick={markPaid}
-                    disabled={paying || !order}
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-[15px] font-semibold text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {paying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" strokeWidth={3} />}
-                    Sudah bayar, aktifkan kuota
-                  </button>
+                  {payUrl ? (
+                    <a
+                      href={payUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-white text-[15px] font-semibold text-black transition-colors hover:bg-zinc-200"
+                    >
+                      <QrCode className="h-4 w-4" /> Bayar sekarang (QRIS, VA & e-wallet)
+                    </a>
+                  ) : (
+                    <p className="rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2.5 text-center text-[13px] leading-relaxed text-zinc-400">
+                      Bayar dengan nominal persis, lalu tunggu. Pembayaran tercatat otomatis dan kuota aktif sendiri.
+                    </p>
+                  )}
                   {receiptWa ? (
                     <a
                       href={receiptWa}
@@ -469,7 +477,7 @@ export default function PricingPage() {
 
                 <p className="mt-4 flex items-start gap-2 text-[12px] leading-relaxed text-zinc-600">
                   <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  Pembayaran tercatat otomatis di sistem. Simpan bukti transfer sampai kuota bertambah.
+                  Kuota aktif otomatis begitu pembayaran tercatat — tidak perlu klik apa pun. Simpan bukti transfer sampai kuota bertambah; admin hanya jaga-jaga bila ada gangguan.
                 </p>
               </div>
               </motion.div>
