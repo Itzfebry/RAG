@@ -90,7 +90,15 @@ Semua state hidup di Supabase setelah langkah 1.
 
 ### 5. Deploy
 
-Push ke branch utama (auto-deploy) atau `vercel deploy`. Setelah live:
+Push ke branch utama lalu deploy — dua opsi:
+
+- **Auto-deploy**: hubungkan repo di Vercel (Project → Settings → Git →
+  Connect Git Repository, branch `main`). Setiap push lalu CI hijau langsung
+  jadi deployment produksi.
+- **Manual**: `npx vercel deploy --prod` dari folder repo (butuh
+  `npx vercel link` sekali di mesin yang sudah login `vercel login`).
+
+Setelah live, verifikasi:
 
 1. `https://<domain>/api/cron/warmup` dengan header
    `Authorization: Bearer <CRON_SECRET>` → `{"status":"ok"}` = embedding Gemini
