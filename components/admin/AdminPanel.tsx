@@ -82,7 +82,7 @@ import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, Cartesia
 import { motion, AnimatePresence } from "framer-motion";
 import {
   cardBase, cardHeaderCls, cardContentCls,
-  tPage, tSub, tCard, tLabel, tBody, tSmall,
+  tPage, tSub, tCard, tLabel, tCardPlain, tLabelPlain, tBody, tSmall,
   cUser, cModel, cSky, cViolet, cAmber, cEmerald, cRose, cZinc,
   inputCls, textareaCls, sectionHeaderWrap,
 } from "./adminStyles";
@@ -95,6 +95,7 @@ import { InstructionsTab } from "./tabs/InstructionsTab";
 import { StylesTab } from "./tabs/StylesTab";
 import { PricingTab } from "./tabs/PricingTab";
 import { SectionHeader } from "./SectionHeader";
+import { FieldInfo } from "./FieldInfo";
 
 type TabType = "dashboard" | "users" | "identity" | "personal" | "knowledge" | "personality" | "communication" | "instructions" | "models" | "styles" | "pricing";
 
@@ -1845,26 +1846,41 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               <SectionHeader title="Users" desc="Kelola akun pengguna, batas prompt, dan pengaturan akses." />
 
               <Card className={cardBase}>
-                <CardHeader className={cardHeaderCls}><CardTitle className={tCard}>Pengaturan</CardTitle></CardHeader>
+                <CardHeader className={cardHeaderCls}><CardTitle className={tCardPlain}>Pengaturan</CardTitle></CardHeader>
                 <CardContent className={`${cardContentCls} flex flex-wrap items-end gap-4`}>
                   <div className="space-y-2">
-                    <Label className={tLabel}>Expiry token user (jam)</Label>
+                    <div className="flex items-center gap-1.5">
+                      <Label className={tLabelPlain}>Expiry token user (jam)</Label>
+                      <FieldInfo text="Masa berlaku token login user, dalam jam. Berlaku untuk login baru setelah disimpan." />
+                    </div>
                     <Input type="number" min={1} max={720} value={appSettings.user_token_expiry_hours} onChange={(e) => setAppSettings((p) => ({ ...p, user_token_expiry_hours: Number(e.target.value) }))} className={`${inputCls} w-32`} />
                   </div>
                   <div className="space-y-2">
-                    <Label className={tLabel}>Trial prompts (0=matikan trial)</Label>
+                    <div className="flex items-center gap-1.5">
+                      <Label className={tLabelPlain}>Trial prompts (0=matikan trial)</Label>
+                      <FieldInfo text="Jumlah prompt gratis untuk trial per IP. Setelah habis, hit berikutnya wajib login. Isi 0 untuk mematikan trial." />
+                    </div>
                     <Input type="number" min={0} max={100} value={appSettings.trial_prompts} onChange={(e) => setAppSettings((p) => ({ ...p, trial_prompts: Number(e.target.value) }))} className={`${inputCls} w-32`} />
                   </div>
                   <div className="space-y-2">
-                    <Label className={tLabel}>Jumlah chunk RAG (pertanyaan pendek)</Label>
+                    <div className="flex items-center gap-1.5">
+                      <Label className={tLabelPlain}>Jumlah chunk RAG (pertanyaan pendek)</Label>
+                      <FieldInfo text="Berapa banyak potongan knowledge base yang diambil untuk pertanyaan pendek. Berlaku pada chat berikutnya." />
+                    </div>
                     <Input type="number" min={1} max={30} value={appSettings.rag_match_count_short} onChange={(e) => setAppSettings((p) => ({ ...p, rag_match_count_short: Number(e.target.value) }))} className={`${inputCls} w-32`} />
                   </div>
                   <div className="space-y-2">
-                    <Label className={tLabel}>Jumlah chunk RAG (pertanyaan panjang)</Label>
+                    <div className="flex items-center gap-1.5">
+                      <Label className={tLabelPlain}>Jumlah chunk RAG (pertanyaan panjang)</Label>
+                      <FieldInfo text="Berapa banyak potongan knowledge base yang diambil untuk pertanyaan panjang/kompleks. Berlaku pada chat berikutnya." />
+                    </div>
                     <Input type="number" min={1} max={30} value={appSettings.rag_match_count_long} onChange={(e) => setAppSettings((p) => ({ ...p, rag_match_count_long: Number(e.target.value) }))} className={`${inputCls} w-32`} />
                   </div>
                   <div className="space-y-2">
-                    <Label className={tLabel}>Threshold similarity (kosong = default env)</Label>
+                    <div className="flex items-center gap-1.5">
+                      <Label className={tLabelPlain}>Threshold similarity (kosong = default env)</Label>
+                      <FieldInfo text="Batas kemiripan minimum (0–1) agar chunk diambil. Kosong = pakai nilai env MATCH_THRESHOLD di server." />
+                    </div>
                     <div className="flex items-center gap-2">
                       <Input type="number" step={0.01} min={0} max={1} value={appSettings.rag_match_threshold ?? ""} placeholder="env" onChange={(e) => setAppSettings((p) => ({ ...p, rag_match_threshold: e.target.value === "" ? null : Number(e.target.value) }))} className={`${inputCls} w-32`} />
                       <Button variant="outline" onClick={() => setAppSettings((p) => ({ ...p, rag_match_threshold: null }))} className="h-9 text-[14px]">Reset</Button>
@@ -1896,13 +1912,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                       <table className="w-full min-w-[900px] border-collapse text-left">
                         <thead>
                           <tr className="border-b border-white/[0.08] bg-white/[0.02]">
-                            <th className="px-5 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">User</th>
-                            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Metode</th>
-                            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Status</th>
-                            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Kuota Prompt</th>
-                            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Dibuat</th>
-                            <th className="px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Diperbarui</th>
-                            <th className="px-5 py-3 text-right text-[12px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Aksi</th>
+                            <th className="px-5 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">User</th>
+                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">Metode</th>
+                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">Status</th>
+                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">Kuota prompt</th>
+                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">Dibuat</th>
+                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">Diperbarui</th>
+                            <th className="px-5 py-3 text-right text-[12px] font-semibold tracking-[0.08em] text-zinc-500">Aksi</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/[0.06]">
@@ -1937,7 +1953,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                                       </span>
                                     )}
                                     {u.email ? (
-                                      u.email_verified ? (
+                                      isGoogle || u.email_verified ? (
                                         <span className="text-[11px] font-medium text-emerald-400">Email terverifikasi</span>
                                       ) : (
                                         <span className="text-[11px] font-medium text-amber-400">Email belum diverifikasi</span>
@@ -1949,16 +1965,16 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                                 </td>
                                 <td className="px-4 py-3.5">
                                   {!u.is_active ? (
-                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-red-300">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-red-400" /> NONAKTIF
+                                    <span className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 text-[11.5px] font-medium text-zinc-400">
+                                      <X className="h-3 w-3 text-red-500/80" strokeWidth={2.5} /> Nonaktif
                                     </span>
                                   ) : exhausted ? (
-                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-amber-300">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> KUOTA HABIS
+                                    <span className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 text-[11.5px] font-medium text-zinc-400">
+                                      <AlertCircle className="h-3 w-3 text-amber-500/80" strokeWidth={2.5} /> Kuota habis
                                     </span>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-emerald-300">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> AKTIF
+                                    <span className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 text-[11.5px] font-medium text-zinc-400">
+                                      <Check className="h-3 w-3 text-emerald-500/80" strokeWidth={2.5} /> Aktif
                                     </span>
                                   )}
                                 </td>
@@ -1998,13 +2014,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               {userModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={() => setUserModalOpen(false)}>
                   <Card className="w-full max-w-md border-white/10 bg-zinc-900 rounded-xl" onClick={(e) => e.stopPropagation()}>
-                    <CardHeader className={cardHeaderCls}><CardTitle className="text-[14px] font-semibold tracking-[0.08em] uppercase text-white">{editingUserId ? "Edit User" : "Tambah User"}</CardTitle></CardHeader>
+                    <CardHeader className={cardHeaderCls}><CardTitle className="text-[14px] font-semibold text-white">{editingUserId ? "Edit user" : "Tambah user"}</CardTitle></CardHeader>
                     <CardContent className="p-5 pt-0">
                       <form onSubmit={handleCreateOrUpdateUser} className="space-y-4">
-                        {!editingUserId && <div className="space-y-2"><Label className={tLabel}>Username</Label><Input value={userForm.username} onChange={(e) => setUserForm((p) => ({ ...p, username: e.target.value }))} required minLength={3} maxLength={32} placeholder="johndoe" className={inputCls} /></div>}
-                        <div className="space-y-2"><Label className={tLabel}>{editingUserId ? "Password baru (kosongkan jika tidak ganti)" : "Password"}</Label><Input type="password" value={userForm.password} onChange={(e) => setUserForm((p) => ({ ...p, password: e.target.value }))} required={!editingUserId} minLength={6} className={inputCls} /></div>
-                        <div className="space-y-2"><Label className={tLabel}>Display name</Label><Input value={userForm.display_name} onChange={(e) => setUserForm((p) => ({ ...p, display_name: e.target.value }))} className={inputCls} /></div>
-                        <div className="space-y-2"><Label className={tLabel}>Batas prompt (0 = unlimited)</Label><Input type="number" min={0} max={100000} value={userForm.max_prompts} onChange={(e) => setUserForm((p) => ({ ...p, max_prompts: Number(e.target.value) }))} className={inputCls} /></div>
+                        {!editingUserId && <div className="space-y-2"><Label className={tLabelPlain}>Username</Label><Input value={userForm.username} onChange={(e) => setUserForm((p) => ({ ...p, username: e.target.value }))} required minLength={3} maxLength={32} placeholder="johndoe" className={inputCls} /></div>}
+                        <div className="space-y-2"><Label className={tLabelPlain}>{editingUserId ? "Password baru (kosongkan jika tidak ganti)" : "Password"}</Label><Input type="password" value={userForm.password} onChange={(e) => setUserForm((p) => ({ ...p, password: e.target.value }))} required={!editingUserId} minLength={6} className={inputCls} /></div>
+                        <div className="space-y-2"><Label className={tLabelPlain}>Display name</Label><Input value={userForm.display_name} onChange={(e) => setUserForm((p) => ({ ...p, display_name: e.target.value }))} className={inputCls} /></div>
+                        <div className="space-y-2"><Label className={tLabelPlain}>Batas prompt (0 = unlimited)</Label><Input type="number" min={0} max={100000} value={userForm.max_prompts} onChange={(e) => setUserForm((p) => ({ ...p, max_prompts: Number(e.target.value) }))} className={inputCls} /></div>
                         <label className="flex items-center gap-2 text-[16px] text-zinc-300"><input type="checkbox" checked={userForm.is_active} onChange={(e) => setUserForm((p) => ({ ...p, is_active: e.target.checked }))} className="rounded" /> Aktif</label>
                         <div className="flex justify-end gap-2 pt-2"><Button type="button" variant="ghost" onClick={() => setUserModalOpen(false)} className="h-9 text-[16px]">Batal</Button><Button type="submit" className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px]">Simpan</Button></div>
                       </form>
@@ -2045,7 +2061,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
               <Card className={cardBase}>
                 <CardHeader className={cardHeaderCls}>
-                  <CardTitle className={`${tCard} flex items-center gap-2`}><Sparkles className="h-3.5 w-3.5 text-violet-400" />Model yang sedang dipakai</CardTitle>
+                  <CardTitle className={`${tCardPlain} flex items-center gap-2`}><Sparkles className="h-3.5 w-3.5 text-violet-400" />Model yang sedang dipakai</CardTitle>
                 </CardHeader>
                 <CardContent className={`${cardContentCls} space-y-2`}>
                   <p className={`break-all text-[16px] font-medium leading-relaxed ${cModel}`}>{modelConfig.active_model || "- belum dimuat -"}</p>
@@ -2060,13 +2076,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
               <Card className={cardBase}>
                 <CardHeader className={cardHeaderCls}>
-                  <CardTitle className={tCard}>Konfigurasi Model</CardTitle>
+                  <CardTitle className={tCardPlain}>Konfigurasi Model</CardTitle>
                   <CardDescription className="text-[16px] leading-relaxed text-zinc-500">Atur model aktif, provider, dan fallback chain</CardDescription>
                 </CardHeader>
                 <CardContent className={`${cardContentCls} grid gap-4`}>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <Label className={tLabel}><span className="flex items-center gap-1.5"><Cpu className="h-3.5 w-3.5 text-zinc-500" />ID model aktif</span></Label>
+                      <Label className={tLabelPlain}><span className="flex items-center gap-1.5"><Cpu className="h-3.5 w-3.5 text-zinc-500" />ID model aktif<FieldInfo text="Model utama yang dipakai menjawab chat. Pilih dari katalog live atau ketik ID model apa pun, format provider/nama-model." /></span></Label>
                       <Button
                         variant="outline"
                         size="sm"
@@ -2106,32 +2122,32 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label className={tLabel}><span className="flex items-center gap-1.5"><Box className="h-3.5 w-3.5 text-zinc-500" />Provider</span></Label>
+                      <Label className={tLabelPlain}><span className="flex items-center gap-1.5"><Box className="h-3.5 w-3.5 text-zinc-500" />Provider<FieldInfo text="Nama provider pada gateway OpenAI-compatible yang dipakai, mis. openrouter. Harus cocok dengan API base URL." /></span></Label>
                       <Input value={modelConfig.provider} onChange={(e) => setModelConfig({ ...modelConfig, provider: e.target.value })} placeholder="openrouter" className={inputCls} />
                     </div>
                     <div className="space-y-2">
-                      <Label className={tLabel}><span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-zinc-500" />API base URL</span></Label>
+                      <Label className={tLabelPlain}><span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-zinc-500" />API base URL<FieldInfo text="Endpoint API OpenAI-compatible tempat request model dikirim, mis. https://openrouter.ai/api/v1" /></span></Label>
                       <Input value={modelConfig.api_base_url} onChange={(e) => setModelConfig({ ...modelConfig, api_base_url: e.target.value })} placeholder="https://openrouter.ai/api/v1" className={inputCls} />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div className="space-y-2">
-                      <Label className={tLabel}><span className="flex items-center gap-1.5"><Gauge className="h-3.5 w-3.5 text-zinc-500" />Temperature (0–2)</span></Label>
+                      <Label className={tLabelPlain}><span className="flex items-center gap-1.5"><Gauge className="h-3.5 w-3.5 text-zinc-500" />Temperature (0–2)<FieldInfo text="Kreativitas jawaban. Rendah (0–0.3) = jawaban konsisten dan faktual, cocok untuk RAG. Tinggi (1–2) = lebih bervariasi tapi rawan ngawur." /></span></Label>
                       <Input type="number" min={0} max={2} step={0.1} value={modelConfig.temperature} onChange={(e) => setModelConfig({ ...modelConfig, temperature: Number(e.target.value) || 0 })} className={inputCls} />
                     </div>
                     <div className="space-y-2">
-                      <Label className={tLabel}><span className="flex items-center gap-1.5"><Box className="h-3.5 w-3.5 text-zinc-500" />Max tokens</span></Label>
-                      <Input type="number" min={256} max={131072} step={256} value={modelConfig.max_tokens} onChange={(e) => setModelConfig({ ...modelConfig, max_tokens: Number(e.target.value) || 8192 })} className={inputCls} title="Budget total token output. Model reasoning pakai sebagian ini untuk berpikir, sisa baru jadi jawaban." />
+                      <Label className={tLabelPlain}><span className="flex items-center gap-1.5"><Box className="h-3.5 w-3.5 text-zinc-500" />Max tokens<FieldInfo text="Budget total token output. Model reasoning pakai sebagian ini untuk berpikir, sisa baru jadi jawaban." /></span></Label>
+                      <Input type="number" min={256} max={131072} step={256} value={modelConfig.max_tokens} onChange={(e) => setModelConfig({ ...modelConfig, max_tokens: Number(e.target.value) || 8192 })} className={inputCls} />
                     </div>
                     <Label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.03] p-3 text-[16px] font-normal text-zinc-300">
                       <Checkbox checked={modelConfig.reasoning_enabled} onCheckedChange={(checked) => setModelConfig({ ...modelConfig, reasoning_enabled: Boolean(checked) })} />
-                      <span className="flex items-center gap-1.5"><Brain className="h-3.5 w-3.5 text-zinc-500" />Reasoning aktif</span>
+                      <span className="flex items-center gap-1.5"><Brain className="h-3.5 w-3.5 text-zinc-500" />Reasoning aktif<FieldInfo text="Mode chain-of-thought model: jawaban lebih teliti untuk soal rumit, tapi lebih lambat dan memakai sebagian Max tokens untuk berpikir." /></span>
                     </Label>
                   </div>
 
                   <div className="space-y-2">
-                    <Label className={tLabel}><span className="flex items-center gap-1.5"><Layers className="h-3.5 w-3.5 text-zinc-500" />Model fallback</span></Label>
+                    <Label className={tLabelPlain}><span className="flex items-center gap-1.5"><Layers className="h-3.5 w-3.5 text-zinc-500" />Model fallback<FieldInfo text="Daftar model cadangan, dipakai berurutan kalau model aktif error/rate-limited. Kosong = tanpa cadangan, chat gagal langsung." /></span></Label>
                     <div className="flex flex-wrap gap-2">
                       {modelConfig.fallback_models.map((mid) => (
                         <Badge key={mid} variant="secondary" className="gap-2 py-1.5 text-[14px] bg-white/10 text-zinc-300 border border-white/10">
@@ -2162,7 +2178,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                   <div className="flex flex-col gap-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <CardTitle className={tCard}>Katalog model live</CardTitle>
+                        <CardTitle className={tCardPlain}>Katalog model live</CardTitle>
                         <CardDescription className="text-[16px] leading-relaxed text-zinc-500">Sumber: katalog provider · API key & base URL katalog terpisah dari model aktif</CardDescription>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -2178,14 +2194,14 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                     </div>
                     <div className="grid gap-4 rounded-xl border border-white/[0.07] bg-white/[0.03] p-4 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <Label className="text-[13px] font-medium tracking-[0.06em] text-zinc-400 uppercase flex items-center gap-1.5"><KeyRound className="h-3 w-3" /> API Key Katalog (preview saja, tidak disimpan)</Label>
+                        <Label className="text-[13px] font-medium text-zinc-400 flex items-center gap-1.5"><KeyRound className="h-3 w-3" /> API key katalog (preview saja, tidak disimpan)</Label>
                         <div className="flex gap-1.5">
                           <Input type={showCatalogKey ? "text" : "password"} value={catalogApiKey} onChange={(e) => setCatalogApiKey(e.target.value)} placeholder="sk-... (kosong = pakai env/server)" className={`${inputCls} h-8`} />
                           <Button variant="ghost" size="icon" onClick={() => setShowCatalogKey((v) => !v)} className="h-8 w-8 shrink-0 text-zinc-400" type="button">{showCatalogKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</Button>
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-[13px] font-medium tracking-[0.06em] text-zinc-400 uppercase flex items-center gap-1.5"><Globe className="h-3 w-3" /> Base URL Katalog</Label>
+                        <Label className="text-[13px] font-medium text-zinc-400 flex items-center gap-1.5"><Globe className="h-3 w-3" /> Base URL katalog</Label>
                         <Input value={catalogBaseUrl} onChange={(e) => setCatalogBaseUrl(e.target.value)} placeholder="https://api.groq.com/openai/v1 (kosong = default)" className={`${inputCls} h-8`} />
                       </div>
                     </div>

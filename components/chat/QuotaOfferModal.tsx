@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowUpRight, Check, Copy, LogIn, MessageCircle, X } from "lucide-react";
-import Image from "next/image";
+import { ArrowUpRight, Check, Copy, Gauge, Hourglass, LogIn, MessageCircle, X } from "lucide-react";
 import Link from "next/link";
 
 export type QuotaOfferVariant = "quota" | "trial" | "login";
@@ -41,6 +40,24 @@ const COPY = {
   },
 } as const;
 
+/* Aksen warna per varian: cukup di chip ikon + garis tipis atas modal.
+   Opacity rendah (border 20%, bg 7%) supaya halus, bukan neon. */
+const VARIANT_STYLE = {
+  quota: { Icon: Gauge, tint: "text-sky-300", chip: "border-sky-400/20 bg-sky-400/[0.07]", line: "via-sky-400/40" },
+  trial: { Icon: Hourglass, tint: "text-amber-300", chip: "border-amber-400/20 bg-amber-400/[0.07]", line: "via-amber-400/40" },
+  login: { Icon: LogIn, tint: "text-violet-300", chip: "border-violet-400/20 bg-violet-400/[0.07]", line: "via-violet-400/40" },
+} as const;
+
+/* Outline card per paket: hanya aktif saat terpilih (border + ring tipis
+   senada). Inactive tetap netral. String full class agar Tailwind detect. */
+const PACKAGE_ACCENTS = [
+  "border-sky-400/60 bg-sky-400/[0.04] shadow-[0_0_0_1px_rgba(56,189,248,0.22),0_12px_32px_-14px_rgba(56,189,248,0.3)]",
+  "border-violet-400/60 bg-violet-400/[0.04] shadow-[0_0_0_1px_rgba(167,139,250,0.22),0_12px_32px_-14px_rgba(167,139,250,0.3)]",
+  "border-amber-400/60 bg-amber-400/[0.04] shadow-[0_0_0_1px_rgba(251,191,36,0.22),0_12px_32px_-14px_rgba(251,191,36,0.3)]",
+  "border-emerald-400/60 bg-emerald-400/[0.04] shadow-[0_0_0_1px_rgba(52,211,153,0.22),0_12px_32px_-14px_rgba(52,211,153,0.3)]",
+  "border-rose-400/60 bg-rose-400/[0.04] shadow-[0_0_0_1px_rgba(251,113,133,0.22),0_12px_32px_-14px_rgba(251,113,133,0.3)]",
+] as const;
+
 export default function QuotaOfferModal({
   open,
   variant,
@@ -61,6 +78,7 @@ export default function QuotaOfferModal({
   const [packages, setPackages] = useState(PACKAGES);
   const [contactWa, setContactWa] = useState("");
   const t = COPY[variant];
+  const v = VARIANT_STYLE[variant];
   const chosen = packages.find((p) => p.id === selected) ?? packages[0] ?? PACKAGES[1];
   const hasCount = typeof used === "number" && typeof max === "number" && max > 0;
   const pct = hasCount ? Math.min(100, Math.round((used! / max!) * 100)) : 0;
@@ -151,8 +169,10 @@ export default function QuotaOfferModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 12 }}
             transition={{ type: "spring", stiffness: 340, damping: 30, mass: 0.9 }}
-            className="relative w-full max-w-[560px] overflow-hidden rounded-2xl border border-white/[0.1] bg-[#0c0c10] shadow-[0_32px_100px_-24px_rgba(0,0,0,0.85)]"
+            className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-[560px] flex-col overflow-hidden rounded-2xl border border-white/[0.1] bg-[#0c0c10] shadow-[0_32px_100px_-24px_rgba(0,0,0,0.85)] sm:max-h-[85vh]"
           >
+            {/* aksen tipis di tepi atas — satu-satunya warna di badan modal */}
+            <div aria-hidden className={`pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent ${v.line} to-transparent`} />
             <button
               onClick={onClose}
               aria-label="Tutup"
@@ -165,11 +185,13 @@ export default function QuotaOfferModal({
               variants={container}
               initial="hidden"
               animate="show"
-              className="px-6 pb-6 pt-7 sm:px-8 sm:pb-7"
+              className="min-h-0 overflow-y-auto overscroll-contain px-6 pb-6 pt-7 sm:px-8 sm:pb-7"
             >
               {/* header */}
               <motion.div variants={item} className="flex items-center gap-2.5">
-                <Image src="/image/favicon.png" alt="ITZ" width={20} height={20} className="h-5 w-5 rounded object-cover" />
+                <span className={`flex h-7 w-7 items-center justify-center rounded-lg border ${v.chip}`}>
+                  <v.Icon className={`h-3.5 w-3.5 ${v.tint}`} />
+                </span>
                 <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
                   ITZ AI · {t.label}
                 </span>
@@ -205,8 +227,9 @@ export default function QuotaOfferModal({
               {/* paket */}
               {variant !== "login" && (
                 <motion.div variants={item} role="radiogroup" aria-label="Pilih paket" className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                  {packages.map((p) => {
+                  {packages.map((p, idx) => {
                     const active = selected === p.id;
+                    const accent = PACKAGE_ACCENTS[idx % PACKAGE_ACCENTS.length];
                     return (
                       <motion.button
                         key={p.id}
@@ -219,7 +242,7 @@ export default function QuotaOfferModal({
                         transition={SPRING}
                         className={`relative cursor-pointer rounded-xl border p-4 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${
                           active
-                            ? "border-white bg-white/[0.08] shadow-[0_0_0_1px_rgba(255,255,255,0.15),0_12px_32px_-12px_rgba(255,255,255,0.25)]"
+                            ? accent
                             : "border-white/[0.08] bg-transparent hover:border-white/[0.2] hover:bg-white/[0.03]"
                         }`}
                       >

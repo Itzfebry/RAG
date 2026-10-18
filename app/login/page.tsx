@@ -12,18 +12,18 @@ import { motion, AnimatePresence } from "framer-motion";
 const VALUE_POINTS = [
   {
     icon: Zap,
-    title: "Langsung bisa dipakai",
-    desc: "Tanpa setup, tanpa pengaturan. Buka dan tanya apa saja.",
+    title: "Gas langsung pake",
+    desc: "Gak perlu ribet setup. Buka, tanya, beres.",
   },
   {
     icon: MessageSquare,
-    title: "Jawaban rapi dan lugas",
-    desc: "Format terstruktur, bahasa Indonesia natural, tanpa basa-basi.",
+    title: "Jawaban singkat & jelas",
+    desc: "Rapi, to the point, pake bahasa Indonesia. Gak bertele-tele.",
   },
   {
     icon: Wallet,
-    title: "Kuota transparan",
-    desc: "Sisa kuota terlihat kapan saja. Tidak ada langganan tersembunyi.",
+    title: "Kuota transparan banget",
+    desc: "Sisa kuota keliatan kapan aja. Gak ada langganan sembunyi-sembunyi.",
   },
 ];
 
@@ -98,17 +98,17 @@ export default function UserLoginPage() {
         if (data?.email_verified === false && data?.email) {
           setEmail(String(data.email));
           setOtpCode("");
-          setInfoMsg(`Kode verifikasi dikirim ke ${data.email}.`);
+          setInfoMsg(`Kode verifikasi udah dikirim ke ${data.email}. Cek inbox ya!`);
           setMode("verify");
           return;
         }
         router.push("/chat");
         router.refresh();
       } else {
-        setAuthError(typeof data?.detail === "string" ? data.detail : "Login gagal");
+        setAuthError(typeof data?.detail === "string" ? data.detail : "Login gagal nih, cek lagi username/passwordnya");
       }
     } catch {
-      setAuthError("Gagal terhubung ke server");
+      setAuthError("Server-nya lagi ngambek, coba lagi nanti ya");
     } finally {
       setIsLoading(false);
     }
@@ -141,17 +141,17 @@ export default function UserLoginPage() {
       if (res.ok) {
         setOtpCode("");
         if (data?.email_sent === false) {
-          setAuthError("Akun dibuat, tapi email verifikasi gagal dikirim. Tekan 'Kirim ulang kode'.");
+          setAuthError("Akun udah jadi, tapi email verifikasinya gagal kekirim. Tekan 'Kirim ulang kode dong' ya.");
         } else {
-          setInfoMsg(`Kode verifikasi dikirim ke ${email.trim().toLowerCase()}.`);
+          setInfoMsg(`Kode verifikasi udah dikirim ke ${email.trim().toLowerCase()}. Cek inbox ya!`);
         }
         setMode("verify");
       } else {
         const detail = data?.detail;
-        setAuthError(typeof detail === "string" ? detail : "Pendaftaran gagal");
+        setAuthError(typeof detail === "string" ? detail : "Pendaftaran gagal nih, coba lagi ya");
       }
     } catch {
-      setAuthError("Gagal terhubung ke server");
+      setAuthError("Server-nya lagi ngambek, coba lagi nanti ya");
     } finally {
       setIsLoading(false);
     }
@@ -181,10 +181,10 @@ export default function UserLoginPage() {
         router.push("/chat?welcome=1");
         router.refresh();
       } else {
-        setAuthError(errMsg(data, "Verifikasi gagal"));
+        setAuthError(errMsg(data, "Verifikasi gagal nih, kode-nya bener gak?"));
       }
     } catch {
-      setAuthError("Gagal terhubung ke server");
+      setAuthError("Server-nya lagi ngambek, coba lagi nanti ya");
     } finally {
       setIsLoading(false);
     }
@@ -196,10 +196,10 @@ export default function UserLoginPage() {
     try {
       const res = await fetch("/api/python/user/verify-email/send", { method: "POST" });
       const data = await res.json().catch(() => ({} as any));
-      if (res.ok) setInfoMsg("Kode baru sudah dikirim.");
-      else setAuthError(errMsg(data, "Gagal mengirim ulang kode"));
+      if (res.ok) setInfoMsg("Kode barunya udah dikirim nih, cek inbox!");
+      else setAuthError(errMsg(data, "Kode gagal dikirim ulang, coba lagi bentar lagi"));
     } catch {
-      setAuthError("Gagal terhubung ke server");
+      setAuthError("Server-nya lagi ngambek, coba lagi nanti ya");
     }
   };
 
@@ -211,13 +211,13 @@ export default function UserLoginPage() {
       const { ok, data } = await postJson("/user/password/forgot", { email: email.trim().toLowerCase() });
       if (ok) {
         setOtpCode("");
-        setInfoMsg(data?.message || "Jika email terdaftar, kode reset sudah dikirim.");
+        setInfoMsg(data?.message || "Kalau email-nya terdaftar, kode reset udah dikirim nih.");
         setMode("reset");
       } else {
-        setAuthError(errMsg(data, "Gagal mengirim kode"));
+        setAuthError(errMsg(data, "Kode gagal dikirim nih, coba lagi ya"));
       }
     } catch {
-      setAuthError("Gagal terhubung ke server");
+      setAuthError("Server-nya lagi ngambek, coba lagi nanti ya");
     } finally {
       setIsLoading(false);
     }
@@ -246,10 +246,10 @@ export default function UserLoginPage() {
         router.push("/chat");
         router.refresh();
       } else {
-        setAuthError(errMsg(data, "Reset kata sandi gagal"));
+        setAuthError(errMsg(data, "Gagal ganti password, coba lagi ya"));
       }
     } catch {
-      setAuthError("Gagal terhubung ke server");
+      setAuthError("Server-nya lagi ngambek, coba lagi nanti ya");
     } finally {
       setIsLoading(false);
     }
@@ -272,10 +272,10 @@ export default function UserLoginPage() {
       if (data.url) {
         window.location.href = data.url;
       } else {
-        setAuthError(typeof data?.detail === "string" ? data.detail : "Gagal memulai login Google");
+        setAuthError(typeof data?.detail === "string" ? data.detail : "Login Google gagal start, coba lagi ya");
       }
     } catch {
-      setAuthError("Gagal terhubung ke server");
+      setAuthError("Server-nya lagi ngambek, coba lagi nanti ya");
     } finally {
       setIsGoogleLoading(false);
     }
@@ -319,9 +319,9 @@ export default function UserLoginPage() {
               transition={{ duration: 0.9, delay: 0.15, ease: EASE }}
               className="itz-shine bg-gradient-to-r from-white via-zinc-400 to-white bg-clip-text text-transparent text-[44px] font-semibold leading-[1.06] tracking-[-0.04em]"
             >
-              Tanya apa saja.
+              Tanya apa aja.
               <br />
-              Dapat jawaban lugas.
+              Jawaban to the point.
             </motion.h1>
           </div>
 
@@ -331,8 +331,8 @@ export default function UserLoginPage() {
             transition={{ duration: 0.9, delay: 0.55, ease: EASE }}
             className="mt-5 max-w-[440px] text-[15.5px] leading-relaxed text-zinc-400"
           >
-            Asisten AI yang siap menemani harimu: merangkum, menyusun ide, menjawab
-            pertanyaan. Tanpa basa-basi, tanpa perlu pengaturan apa pun.
+            Asisten AI yang nemenin harimu: ngerangkum, nyusun ide, jawab
+            pertanyaan. Gak ribet, gak basa-basi.
           </motion.p>
 
           <motion.div
@@ -377,23 +377,23 @@ export default function UserLoginPage() {
             </div>
             <h1 className="mt-3.5 text-[15px] font-semibold tracking-[0.1em] text-zinc-100">ITZ AI</h1>
             <p className="itz-shine mt-5 bg-gradient-to-r from-white via-zinc-400 to-white bg-clip-text text-transparent text-[26px] font-semibold leading-[1.15] tracking-[-0.03em]">
-              Tanya apa saja.
+              Tanya apa aja.
               <br />
-              Dapat jawaban lugas.
+              Jawaban to the point.
             </p>
           </div>
 
           <div className="rounded-2xl border border-white/[0.08] bg-[#16161c] p-6 shadow-[0_20px_50px_rgba(0,0,0,0.5)] sm:p-8">
             <h2 className="text-[20px] font-bold text-white mb-1">
-              {{ login: "Masuk", register: "Daftar", verify: "Verifikasi Email", forgot: "Lupa Kata Sandi", reset: "Atur Ulang Kata Sandi" }[mode]}
+              {{ login: "Masuk dulu", register: "Bikin akun", verify: "Verifikasi email", forgot: "Lupa password?", reset: "Ganti password" }[mode]}
             </h2>
             <p className="text-[12px] text-zinc-500 mb-8">
               {{
-                login: "Masuk dengan nama pengguna dan kata sandi",
-                register: "Buat akun baru untuk mulai memakai ITZ AI",
-                verify: "Masukkan kode 6 digit yang kami kirim ke email Anda",
-                forgot: "Masukkan email akun Anda, kami kirim kode reset",
-                reset: "Masukkan kode dan kata sandi baru",
+                login: "Login pake username sama password ya",
+                register: "Daftar akun dulu biar bisa langsung pake ITZ AI",
+                verify: "Cek inbox emailmu, masukin kode 6 digit yang kami kirim",
+                forgot: "Masukin email akunmu, nanti kami kirim kode reset",
+                reset: "Masukin kode + password baru",
               }[mode]}
             </p>
 
@@ -407,7 +407,7 @@ export default function UserLoginPage() {
               <form onSubmit={handleVerify} className="space-y-4">
                 {email && (
                   <p className="text-[12px] text-zinc-500">
-                    Kode 6 digit dikirim ke <span className="text-zinc-300">{email}</span>
+                    Kode 6 digit udah dikirim ke <span className="text-zinc-300">{email}</span>
                   </p>
                 )}
                 <div className="space-y-1.5">
@@ -443,14 +443,14 @@ export default function UserLoginPage() {
                   className="h-12 w-full bg-zinc-100 text-[13px] font-bold text-black hover:bg-white rounded-xl"
                   disabled={isLoading || otpCode.length !== 6}
                 >
-                  {isLoading ? <Loader2 className="animate-spin" size={16} /> : "Verifikasi"}
+                  {isLoading ? <Loader2 className="animate-spin" size={16} /> : "Verifikasi akun"}
                 </Button>
                 <div className="flex justify-between text-[12px] text-zinc-500">
                   <button type="button" onClick={handleResendVerify} className="hover:text-zinc-200 underline-offset-4 hover:underline">
-                    Kirim ulang kode
+                    Kirim ulang kode dong
                   </button>
                   <button type="button" onClick={() => switchMode("login")} className="hover:text-zinc-200 underline-offset-4 hover:underline">
-                    Kembali
+                    Balik aja
                   </button>
                 </div>
               </form>
@@ -490,10 +490,10 @@ export default function UserLoginPage() {
                   className="h-12 w-full bg-zinc-100 text-[13px] font-bold text-black hover:bg-white rounded-xl"
                   disabled={isLoading || !email.trim()}
                 >
-                  {isLoading ? <Loader2 className="animate-spin" size={16} /> : "Kirim kode"}
+                  {isLoading ? <Loader2 className="animate-spin" size={16} /> : "Kirim kode verification"}
                 </Button>
                 <button type="button" onClick={() => switchMode("login")} className="w-full text-center text-[12px] text-zinc-500 hover:text-zinc-200">
-                  Kembali ke masuk
+                  Balik ke login
                 </button>
               </form>
             )}
@@ -513,7 +513,7 @@ export default function UserLoginPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Kata Sandi Baru</label>
+                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Password Baru</label>
                   <Input
                     type="password"
                     autoComplete="new-password"
@@ -526,7 +526,7 @@ export default function UserLoginPage() {
                   <p className="text-[11px] text-zinc-500 mt-1">Minimal 8 karakter, wajib ada 1 huruf besar dan 1 angka.</p>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Ulangi Kata Sandi</label>
+                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Ulangi Password</label>
                   <Input
                     type="password"
                     autoComplete="new-password"
@@ -558,10 +558,10 @@ export default function UserLoginPage() {
                   className="h-12 w-full bg-zinc-100 text-[13px] font-bold text-black hover:bg-white rounded-xl"
                   disabled={isLoading || otpCode.length !== 6 || password.length < 8 || !/^(?=.*[A-Z])(?=.*\d)/.test(password) || !confirmPassword}
                 >
-                  {isLoading ? <Loader2 className="animate-spin" size={16} /> : "Atur kata sandi"}
+                  {isLoading ? <Loader2 className="animate-spin" size={16} /> : "Ganti password"}
                 </Button>
                 <button type="button" onClick={() => switchMode("login")} className="w-full text-center text-[12px] text-zinc-500 hover:text-zinc-200">
-                  Kembali ke masuk
+                  Balik ke login
                 </button>
               </form>
             )}
@@ -582,7 +582,7 @@ export default function UserLoginPage() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Nama Tampilan (opsional)</label>
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Nama Panggilan (opsional)</label>
                     <Input
                       autoComplete="nickname"
                       maxLength={64}
@@ -596,7 +596,7 @@ export default function UserLoginPage() {
               )}
 
               <div className="space-y-1.5">
-                <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{mode === "login" ? "Nama Pengguna atau Email" : "Nama Pengguna"}</label>
+                <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{mode === "login" ? "Username / Email" : "Username"}</label>
                 <Input
                   autoComplete="username"
                   className="h-12 border-white/[0.08] bg-[#0a0a0c] text-[14px] text-zinc-100 placeholder:text-zinc-700 focus:border-zinc-500 focus:bg-black/40 transition-all duration-300 rounded-xl"
@@ -607,7 +607,7 @@ export default function UserLoginPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Kata Sandi</label>
+                <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Password</label>
                 <Input
                   type="password"
                   autoComplete={mode === "login" ? "current-password" : "new-password"}
@@ -624,7 +624,7 @@ export default function UserLoginPage() {
 
               {mode === "register" && (
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Ulangi Kata Sandi</label>
+                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">Ulangi Password</label>
                   <Input
                     type="password"
                     autoComplete="new-password"
@@ -645,7 +645,7 @@ export default function UserLoginPage() {
                     onChange={(e) => setRememberMe(e.target.checked)}
                     className="h-3.5 w-3.5 accent-white"
                   />
-                  Ingat akun ini
+                  Ingat aku di sini
                 </label>
               )}
 
@@ -678,7 +678,7 @@ export default function UserLoginPage() {
                   (mode === "register" && (!email.trim() || password.length < 8 || !/^(?=.*[A-Z])(?=.*\d)/.test(password) || !confirmPassword))
                 }
               >
-                {isLoading ? <Loader2 className="animate-spin" size={16} /> : mode === "login" ? "Masuk" : "Daftar"}
+                {isLoading ? <Loader2 className="animate-spin" size={16} /> : mode === "login" ? "Gas masuk" : "Bikin akun"}
               </Button>
             </form>
             )}
@@ -689,19 +689,19 @@ export default function UserLoginPage() {
                 onClick={() => switchMode("forgot")}
                 className="mt-3 w-full text-center text-[12px] text-zinc-500 hover:text-zinc-200"
               >
-                Lupa kata sandi?
+                Lupa password?
               </button>
             )}
 
             {(mode === "login" || mode === "register") && (
               <p className="mt-5 text-center text-[12px] text-zinc-500">
-                {mode === "login" ? "Belum punya akun? " : "Sudah punya akun? "}
+                {mode === "login" ? "Belum punya akun? " : "Udah punya akun? "}
                 <button
                   type="button"
                   onClick={() => switchMode(mode === "login" ? "register" : "login")}
                   className="font-medium text-zinc-200 underline-offset-4 hover:underline"
                 >
-                  {mode === "login" ? "Daftar" : "Masuk"}
+                  {mode === "login" ? "Daftar dulu" : "Login dulu"}
                 </button>
               </p>
             )}
@@ -734,7 +734,7 @@ export default function UserLoginPage() {
                       <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                     </svg>
                   )}
-                  MASUK DENGAN GOOGLE
+                  Masuk pakai Google
                 </Button>
               </>
             )}
@@ -744,11 +744,11 @@ export default function UserLoginPage() {
             href="/chat"
             className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] bg-white/[0.03] text-[14px] font-medium text-zinc-300 transition-colors hover:border-white/[0.2] hover:bg-white/[0.06] hover:text-white"
           >
-            Coba trial gratis
+            Coba gratis dulu
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </a>
           <p className="mt-2.5 text-center text-[11.5px] text-zinc-600">
-            Tanpa daftar, langsung ngobrol dengan ITZ AI
+            Gak perlu daftar, langsung ngobrol sama ITZ AI
           </p>
         </motion.div>
       </div>

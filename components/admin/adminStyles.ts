@@ -9,7 +9,10 @@ export const rowCls = "px-5 py-4";
 export const tPage = "text-[26px] font-semibold tracking-tight text-white leading-none";
 export const tSub = "text-[18px] font-semibold tracking-tight text-zinc-100";
 export const tCard = "text-[15px] font-semibold tracking-[0.08em] uppercase text-zinc-300";
+export const tCardPlain = "text-[15px] font-semibold text-zinc-300";
 export const tLabel = "text-[14px] font-medium tracking-[0.06em] text-zinc-400 uppercase";
+/* varian tanpa uppercase: teks ditulis normal, huruf awal kapital saja */
+export const tLabelPlain = "text-[14px] font-medium text-zinc-400";
 export const tBody = "text-[16px] leading-relaxed text-zinc-300";
 export const tSmall = "text-[15px] leading-relaxed text-zinc-500";
 export const tMono = "font-mono text-[15px]";

@@ -97,9 +97,10 @@ export function AIChatInput({
         </ul>
       )}
       {activeCmds.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Mode aktif">
+        <div className="mb-2 flex flex-wrap items-center gap-1.5" aria-label="Mode aktif">
+          <span className="text-[11.5px] text-zinc-500">Mode:</span>
           {activeCmds.map((n) => (
-            <span key={n} className="rounded-full border border-emerald-400/25 bg-emerald-400/[0.08] px-2.5 py-0.5 font-mono text-[11.5px] text-emerald-300">
+            <span key={n} className="rounded-md border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11.5px] text-zinc-300">
               /{n}
             </span>
           ))}
