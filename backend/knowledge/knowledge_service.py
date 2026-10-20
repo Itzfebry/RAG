@@ -341,6 +341,11 @@ class KnowledgeService:
                 result = [float(x) for x in embedding.tolist()]
             else:
                 result = _hf_embed(text)
+            # Cache dipagari agar tidak membengkak tanpa batas (teks unik =
+            # entry baru tiap kali): hapus key tertua (insertion order) saat
+            # melewati batas.
+            if len(_embedding_cache) >= 2000:
+                _embedding_cache.pop(next(iter(_embedding_cache)))
             _embedding_cache[cache_key] = result
             return result
         except Exception as e:
@@ -357,10 +362,14 @@ class KnowledgeService:
             return 0
 
         # Import lazy: langchain_text_splitters menarik sentence_transformers
-        # + torch (~40s import cost) walau hanya memakai CharacterTextSplitter.
-        from langchain_text_splitters import CharacterTextSplitter
+        # + torch (~40s import cost) walau hanya memakai splitter.
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-        splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+        # CharacterTextSplitter cuma split pada "\n\n" - teks tanpa paragraf
+        # (satu blok 2000+ char) tidak pernah dipotong dan bikin chunk besar
+        # di luar budget embedding. Recursive splitter memotong per karakter
+        # saat separator habis.
+        splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         chunks = splitter.split_text(content)
 
         rows = []

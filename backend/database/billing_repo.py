@@ -101,6 +101,50 @@ class BillingMixin:
         return None
 
     @staticmethod
+    def set_order_status_paid(order_id: str, confirmed_by: str | None = None) -> bool:
+        """Transisi kondisional pending -> paid; True hanya jika transisi terjadi.
+
+        Guard `.eq("status", "pending")` mencegah double-grant kuota saat dua
+        jalur (callback gateway dan admin confirm) memproses order yang sama
+        hampir bersamaan: hanya jalur yang berhasil meng-update yang boleh
+        menambah kuota (lihat _grant_order_quota di api/pricing.py).
+        """
+        from backend.database.core import _read_local_json, _write_local_json
+        from backend.database.db import DatabaseService, logger, supabase_client
+
+        now = datetime.now().isoformat()
+        patch: dict[str, Any] = {
+            "status": "paid",
+            "paid_at": now,
+            "confirmed_by": confirmed_by,
+            "updated_at": now,
+        }
+        if supabase_client:
+            try:
+                res = (
+                    supabase_client.table("orders")
+                    .update(patch)
+                    .eq("id", str(order_id))
+                    .eq("status", "pending")
+                    .execute()
+                )
+                # Supabase mengembalikan baris yang kena update; kosong = order
+                # bukan pending lagi (sudah paid/cancelled oleh jalur lain).
+                return bool(res.data)
+            except Exception as e:
+                logger.warning(f"Error updating order in Supabase: {e}")
+        # Fallback dev (tanpa Supabase): transisi menang bila masih pending.
+        orders = _read_local_json(DatabaseService._orders_file(), [])
+        for o in orders:
+            if str(o.get("id")) == str(order_id):
+                if str(o.get("status") or "") != "pending":
+                    return False
+                o.update(patch)
+                _write_local_json(DatabaseService._orders_file(), orders)
+                return True
+        return False
+
+    @staticmethod
     def set_order_status(order_id: str, status: str, confirmed_by: str | None = None) -> dict[str, Any] | None:
         from backend.database.db import DatabaseService, _read_local_json, _write_local_json, logger, supabase_client
 

@@ -44,6 +44,8 @@ export function useAdminKnowledge({ authExpired, pushToast, getBootstrap }: Admi
   const [knowledgeEntries, setKnowledgeEntries] = useState<KnowledgeEntry[]>([]);
   const [selectedCategorySlug, setSelectedCategorySlug] = useState<string>("technical_knowledge");
   const [newEntryModal, setNewEntryModal] = useState(false);
+  // Double-submit guard: matikan tombol simpan sampai request selesai.
+  const [entrySaving, setEntrySaving] = useState(false);
   const [entryForm, setEntryForm] = useState({ id: "", title: "", content: "", category_id: "" });
 
   /* Blok knowledge dari loadAllData lama (pindah utuh). */
@@ -98,8 +100,10 @@ export function useAdminKnowledge({ authExpired, pushToast, getBootstrap }: Admi
 
   const handleSaveKnowledgeEntry = async (e: FormEvent) => {
     e.preventDefault();
+    if (entrySaving) return;
     const cat = knowledgeCategories.find((c) => c.slug === selectedCategorySlug);
     if (!cat) return;
+    setEntrySaving(true);
     try {
       await fetchApi("/api/python/admin/knowledge/entries", {
         method: "POST",
@@ -129,6 +133,8 @@ export function useAdminKnowledge({ authExpired, pushToast, getBootstrap }: Admi
         const err = e as { message?: string };
         pushToast("error", "Gagal simpan", err.message?.slice(0, 120) || "Error");
       }
+    } finally {
+      setEntrySaving(false);
     }
   };
 
@@ -160,6 +166,7 @@ export function useAdminKnowledge({ authExpired, pushToast, getBootstrap }: Admi
     setSelectedCategorySlug,
     newEntryModal,
     setNewEntryModal,
+    entrySaving,
     entryForm,
     setEntryForm,
     categoryData,

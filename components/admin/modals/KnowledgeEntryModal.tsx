@@ -38,6 +38,7 @@ type KnowledgeEntryModalProps = {
   categories: KnowledgeCategory[];
   selectedCategorySlug: string;
   setSelectedCategorySlug: (slug: string) => void;
+  saving?: boolean;
 };
 
 export function KnowledgeEntryModal({
@@ -49,6 +50,7 @@ export function KnowledgeEntryModal({
   categories,
   selectedCategorySlug,
   setSelectedCategorySlug,
+  saving = false,
 }: KnowledgeEntryModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -113,9 +115,10 @@ export function KnowledgeEntryModal({
           </Button>
           <Button
             onClick={(e) => onSave(e)}
-            className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium"
+            disabled={saving}
+            className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium disabled:opacity-50"
           >
-            Simpan &amp; Generate Embedding
+            {saving ? "Menyimpan…" : "Simpan & Generate Embedding"}
           </Button>
         </DialogFooter>
       </DialogContent>

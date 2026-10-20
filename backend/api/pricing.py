@@ -116,18 +116,23 @@ class OrderCreate(BaseModel):
     note: str | None = Field(default=None, max_length=500)
 
 
-def _grant_order_quota(order: dict[str, Any], user_row: dict[str, Any], confirmed_by: str) -> int:
-    """Satu-satunya jalur aktivasi: tambah kuota user dari order + tandai paid.
+def _grant_order_quota(order: dict[str, Any], user_row: dict[str, Any], confirmed_by: str) -> int | None:
+    """Satu-satunya jalur aktivasi: tandai paid (transisi kondisional) + tambah kuota.
 
-    max_prompts 0 = unlimited: jangan tambah, cukup tandai paid. Return max_prompts baru.
+    Transisi pending->paid dilakukan DULUAN via set_order_status_paid; kuota
+    HANYA ditambah oleh jalur yang berhasil menang transisi (mencegah double
+    grant saat callback gateway dan admin confirm balapan). Return max_prompts
+    baru, atau None bila transisi tidak terjadi (order sudah diproses jalur lain).
     """
     prompts = int(order.get("prompts") or 0)
     current_max = int(user_row.get("max_prompts", 0) or 0)
     # 0 = unlimited: jangan tambah, cukup tandai paid
     new_max = current_max if current_max == 0 else current_max + prompts
+    transitioned = DatabaseService.set_order_status_paid(str(order["id"]), confirmed_by=confirmed_by)
+    if not transitioned:
+        return None
     if current_max != 0:
         DatabaseService.update_user(str(user_row["id"]), {"max_prompts": new_max})
-    DatabaseService.set_order_status(str(order["id"]), "paid", confirmed_by=confirmed_by)
     return new_max
 
 
@@ -288,7 +293,12 @@ async def duitku_payment_callback(request: Request):
         audit_log("gateway", "callback_user_missing", detail=f"order={order_id} ip={ip}", ip=ip)
         raise HTTPException(status_code=404, detail="User pemilik order tidak ditemukan")
 
-    new_max = _grant_order_quota(order, user_row, confirmed_by="duitku")
+    transitioned = _grant_order_quota(order, user_row, confirmed_by="duitku")
+    if transitioned is None:
+        # Order bukan pending lagi saat update (jalur lain sudah menang):
+        # dana masuk dua kali dianggap idempotent, tanpa grant ganda.
+        return {"status": "success", "idempotent": True}
+    new_max = transitioned
     audit_log(
         "gateway",
         "order_paid_auto",
@@ -437,6 +447,9 @@ def admin_confirm_order(order_id: str, request: Request, admin: str = Depends(ge
 
     prompts = int(order.get("prompts") or 0)
     new_max = _grant_order_quota(order, user, confirmed_by=admin)
+    if new_max is None:
+        # Race dengan callback/instance lain: order sudah bukan pending.
+        raise HTTPException(status_code=409, detail="Order ini sudah dikonfirmasi sebelumnya")
     audit_log(admin, "order_confirm", detail=f"order={order_id} user={user.get('username')} prompts={prompts}", ip=ip)
     return {"status": "success", "order": DatabaseService.get_order(order_id), "max_prompts": new_max}
 

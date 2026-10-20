@@ -253,6 +253,22 @@ async def _help_stream(text: str):
     yield "data: [DONE]\n\n"
 
 
+def _parse_sse_event(chunk: str) -> dict | None:
+    """Parse payload JSON dari event SSE "data: {...}".
+
+    None bila chunk bukan data-event JSON (mis. [DONE]) atau payload tidak
+    valid. Dipakai untuk dispatch berdasarkan top-level key agar konten
+    streaming yang kebetulan mengandung kata "usage"/"answered" tidak salah rute.
+    """
+    if not chunk.startswith("data: "):
+        return None
+    try:
+        ev = json.loads(chunk[6:])
+    except (ValueError, TypeError):
+        return None
+    return ev if isinstance(ev, dict) else None
+
+
 @router.get("/commands")
 def get_commands():
     return {"commands": list_command_details()}
@@ -277,7 +293,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
         payload.message = clean_message
     user = get_current_chat_user_optional(request)
     if user is not None:
-        enforce_rate_limit(f"chat:{user.get('id')}:{ip}", 30, 60)
+        enforce_rate_limit(f"chat:{user.get('id')}:{ip}", 30, 60, durable=True)
         fresh = DatabaseService.get_user_by_id(str(user.get("id")))
         if fresh and DatabaseService.is_prompt_quota_exhausted(fresh):
             raise HTTPException(status_code=403, detail="Batas prompt habis - hubungi admin untuk menambah kuota")
@@ -285,7 +301,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
             raise HTTPException(status_code=428, detail="Isi nama tampilan di profil sebelum chat")
     else:
         # trial gate - soft setting trial_prompts (0 = trial disabled => require login)
-        enforce_rate_limit(f"chat:trial:{ip}", 30, 60)
+        enforce_rate_limit(f"chat:trial:{ip}", 30, 60, durable=True)
         s = DatabaseService.get_app_settings()
         limit = max(0, int(s.get("trial_prompts", 3)))
         if limit == 0:
@@ -326,12 +342,12 @@ async def stream_chat(payload: ChatRequest, request: Request):
             user_profile=user_profile,
             command_names=command_names or None,
         ):
-            # event token usage dari agent -> catat, jangan diteruskan ke client
-            if chunk.startswith("data: ") and '"usage"' in chunk:
+            # dispatch berdasarkan top-level key event (bukan substring di
+            # dalam konten streaming - konten chat bisa mengandung "usage")
+            ev = _parse_sse_event(chunk)
+            if ev is not None and "usage" in ev:
                 try:
-                    import json as _json
-
-                    u = _json.loads(chunk[6:].strip()).get("usage") or {}
+                    u = ev.get("usage") or {}
                     DatabaseService.record_token_usage(
                         usage_owner,
                         int(u.get("prompt_tokens", 0) or 0),
@@ -341,7 +357,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
                     pass
                 continue
             # event penanda dari agent: jawaban asli dari provider (bukan fallback error)
-            if chunk.startswith("data: ") and '"answered"' in chunk:
+            if ev is not None and "answered" in ev:
                 answered = True
                 continue
             yield chunk
@@ -466,9 +482,19 @@ async def upload_knowledge_file(
         entry = DatabaseService.create_or_update_knowledge_entry(entry_data)
 
         # Trigger indexing
-        KnowledgeService.index_entry(entry["id"], content)
+        try:
+            KnowledgeService.index_entry(entry["id"], content)
+        except Exception as e_idx:
+            # Entry baru sudah terlanjur dibuat; agar tidak jadi orphan di DB,
+            # hapus best-effort lalu laporkan gagal indeks ke admin.
+            with contextlib.suppress(Exception):
+                DatabaseService.delete_knowledge_entry(entry["id"])
+            logger.warning(f"[upload] gagal mengindeks entry {entry.get('id')}: {e_idx}")
+            raise HTTPException(status_code=502, detail=f"Gagal mengindeks: {e_idx}") from e_idx
 
         return {"status": "success", "entry_id": entry["id"], "chars": len(content)}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.warning(f"[upload] gagal memproses file: {e}")
-        raise HTTPException(status_code=500, detail="Gagal memproses file. Cek log server.")
+        raise HTTPException(status_code=500, detail="Gagal memproses file. Cek log server.") from e

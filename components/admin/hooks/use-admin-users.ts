@@ -53,6 +53,9 @@ export function useAdminUsers({ authExpired, pushToast }: AdminUsersDeps) {
     rag_match_threshold: null,
   });
   const [userModalOpen, setUserModalOpen] = useState(false);
+  // Double-submit guard: matikan tombol submit sampai request selesai.
+  const [savingUser, setSavingUser] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [userForm, setUserForm] = useState({
     username: "",
@@ -110,6 +113,8 @@ export function useAdminUsers({ authExpired, pushToast }: AdminUsersDeps) {
 
   const handleCreateOrUpdateUser = async (e: FormEvent) => {
     e.preventDefault();
+    if (savingUser) return;
+    setSavingUser(true);
     const isEdit = Boolean(editingUserId);
     const url = isEdit ? `/api/python/admin/users/${editingUserId}` : "/api/python/admin/users";
     const method = isEdit ? "PUT" : "POST";
@@ -148,6 +153,8 @@ export function useAdminUsers({ authExpired, pushToast }: AdminUsersDeps) {
         "Gagal simpan user",
         typeof d.detail === "string" ? d.detail : JSON.stringify(d).slice(0, 140),
       );
+    } finally {
+      setSavingUser(false);
     }
   };
 
@@ -175,6 +182,8 @@ export function useAdminUsers({ authExpired, pushToast }: AdminUsersDeps) {
   };
 
   const handleSaveSettings = async () => {
+    if (savingSettings) return;
+    setSavingSettings(true);
     const body: Record<string, number | null> = {
       user_token_expiry_hours: Number(appSettings.user_token_expiry_hours),
       trial_prompts: Number(appSettings.trial_prompts),
@@ -201,6 +210,8 @@ export function useAdminUsers({ authExpired, pushToast }: AdminUsersDeps) {
         const msg = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail || d);
         pushToast("error", "Gagal simpan", msg.slice(0, 120));
       }
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -214,6 +225,8 @@ export function useAdminUsers({ authExpired, pushToast }: AdminUsersDeps) {
     setAppSettings,
     userModalOpen,
     setUserModalOpen,
+    savingUser,
+    savingSettings,
     editingUserId,
     setEditingUserId,
     userForm,

@@ -185,6 +185,15 @@ export default function ChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isEmpty = messages.length === 0;
   const startedAtRef = useRef<number>(0);
+  // AbortController per runChat: di-abort saat buka chat baru / ganti chat /
+  // unmount, supaya stream SSE tidak menyisakan update state setelah unmount.
+  const chatAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      chatAbortRef.current?.abort();
+    };
+  }, []);
   const [nowTick, setNowTick] = useState(0);
 
   useEffect(() => {
@@ -269,6 +278,7 @@ export default function ChatPage() {
   }, [userInfo, loadChatList]);
 
   const openChat = async (id: string) => {
+    chatAbortRef.current?.abort();
     if (isLoading) return;
     try {
       const j = await fetchApi<{
@@ -301,6 +311,7 @@ export default function ChatPage() {
   };
 
   const startNewChat = () => {
+    chatAbortRef.current?.abort();
     setActiveChatId(null);
     setMessages([]);
     setError(null);
@@ -486,9 +497,12 @@ export default function ChatPage() {
     try {
       // Streaming SSE: respons dibaca bertahap lewat body reader, karena itu
       // endpoint ini tidak lewat fetchApi (yang mem-parse JSON sekaligus).
+      const controller = new AbortController();
+      chatAbortRef.current = controller;
       const res = await fetch("/api/python/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           message: userMessage,
           history: next.slice(0, -1).slice(-MAX_HISTORY_MESSAGES),
@@ -536,11 +550,16 @@ export default function ChatPage() {
       const decoder = new TextDecoder();
       if (!reader) throw new Error("No reader");
       let acc = "";
+      // Line buffer: chunk TCP bisa memotong di tengah baris "data: ...",
+      // jadi simpan sisa baris di buf dan hanya proses baris utuh.
+      let buf = "";
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split("\n")) {
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
           const s = line.replace("data: ", "").trim();
           if (s === "[DONE]") break;
@@ -558,6 +577,23 @@ export default function ChatPage() {
               const em = String(p.error);
               if (em.includes("Batas prompt") || em.includes("Trial")) openQuotaOffer(em);
               else if (!em.includes("Login diperlukan")) setError(p.error);
+            }
+          } catch {}
+        }
+      }
+      // Sisa buffer terakhir (tanpa newline di ujung) masih bisa berisi frame.
+      if (buf.startsWith("data: ")) {
+        const s = buf.replace("data: ", "").trim();
+        if (s && s !== "[DONE]") {
+          try {
+            const p = JSON.parse(s);
+            if (p.content) {
+              acc += p.content;
+              setMessages((prev) => {
+                const u = [...prev];
+                u[u.length - 1] = { role: "assistant", content: acc };
+                return u;
+              });
             }
           } catch {}
         }
@@ -587,6 +623,11 @@ export default function ChatPage() {
         return u;
       });
     } catch (e) {
+      // Abort (chat baru / buka chat lain / unmount): diamkan, buang placeholder.
+      if (e instanceof DOMException && e.name === "AbortError") {
+        setMessages((prev) => prev.slice(0, -1));
+        return;
+      }
       const m = (e instanceof Error ? e.message : "") || "Gagal terhubung ke backend.";
       if (
         m.includes("Batas prompt habis") ||
@@ -595,7 +636,25 @@ export default function ChatPage() {
       )
         openQuotaOffer(m);
       else setError(m);
-      setMessages((prev) => prev.slice(0, -1));
+      // F17: placeholder terakhir jangan langsung dibuang kalau sudah berisi
+      // jawaban parsial - sisakan isinya dengan suffix error; kalau masih
+      // kosong, tampilkan pesan error italic sebagai penggantinya.
+      setMessages((prev) => {
+        const u = [...prev];
+        const last = u[u.length - 1];
+        if (last?.role === "assistant") {
+          if (last.content) {
+            u[u.length - 1] = {
+              ...last,
+              content: `${last.content}\n\n_(terputus - gagal melanjutkan respons)_`,
+            };
+            return u;
+          }
+          u[u.length - 1] = { ...last, content: `_(Gagal terhubung ke backend.)_` };
+          return u;
+        }
+        return prev.slice(0, -1);
+      });
     } finally {
       setIsLoading(false);
       startedAtRef.current = 0;

@@ -204,6 +204,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     setAppSettings,
     userModalOpen,
     setUserModalOpen,
+    savingUser,
+    savingSettings,
     editingUserId,
     setEditingUserId,
     userForm,
@@ -222,6 +224,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     setSelectedCategorySlug,
     newEntryModal,
     setNewEntryModal,
+    entrySaving,
     entryForm,
     setEntryForm,
     categoryData,
@@ -565,6 +568,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               onSyncLocalUsers={handleSyncLocalUsers}
               userModalOpen={userModalOpen}
               setUserModalOpen={setUserModalOpen}
+              savingUser={savingUser}
+              savingSettings={savingSettings}
               editingUserId={editingUserId}
               setEditingUserId={setEditingUserId}
               userForm={userForm}
@@ -737,6 +742,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         entryForm={entryForm}
         setEntryForm={setEntryForm}
         onSave={handleSaveKnowledgeEntry}
+        saving={entrySaving}
         categories={knowledgeCategories}
         selectedCategorySlug={selectedCategorySlug}
         setSelectedCategorySlug={setSelectedCategorySlug}

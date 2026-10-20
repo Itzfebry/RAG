@@ -4,6 +4,7 @@ Dynamic, provider-agnostic orchestrator.
 - No hardcoded Gemini/OpenRouter model IDs. Fallback chain is fully configurable.
 """
 
+import asyncio
 import contextlib
 import json
 import os
@@ -52,6 +53,37 @@ async def _emit_words(text: str) -> AsyncGenerator[str, None]:
     """Stream teks kata-per-kata (dipakai mock & ultimate-fallback)."""
     for chunk in text.split(" "):
         yield _emit({"content": chunk + " "})
+
+
+async def _aiter_queue(iterable: Any) -> AsyncGenerator[Any, None]:
+    """Relay iterable sinkron ke async tanpa memblok event loop.
+
+    Konsumsi `iterable` dijalankan di worker thread (asyncio.to_thread); tiap
+    item direlay ke asyncio.Queue lewat call_soon_threadsafe. Exception dari
+    iterable diteruskan ke consumer (raise) sehingga fallback chain tetap
+    berperilaku sama seperti iterasi sinkron langsung.
+    """
+    loop = asyncio.get_running_loop()
+    q: asyncio.Queue = asyncio.Queue()
+    _END = object()
+
+    def _produce() -> None:
+        try:
+            for item in iterable:
+                loop.call_soon_threadsafe(q.put_nowait, item)
+        except BaseException as exc:
+            loop.call_soon_threadsafe(q.put_nowait, exc)
+        finally:
+            loop.call_soon_threadsafe(q.put_nowait, _END)
+
+    await asyncio.to_thread(_produce)
+    while True:
+        item = await q.get()
+        if item is _END:
+            return
+        if isinstance(item, BaseException):
+            raise item
+        yield item
 
 
 async def _emit_closing(
@@ -281,13 +313,13 @@ class AgentOrchestrator:
         last_error = None
 
         for current_model in runtime["models_to_try"]:
+            partial = False  # konten sudah terkirim ke client sebelum exception?
             try:
                 # Handle different client types
                 if self.client_type == "langchain_nvidia":
-                    async for event in self._stream_langchain_nvidia(openai_messages, start, ttft_holder):
-                        yield event
+                    stream = self._stream_langchain_nvidia(openai_messages, start, ttft_holder)
                 else:
-                    async for event in self._stream_openai_compat(
+                    stream = self._stream_openai_compat(
                         current_model,
                         openai_messages,
                         model_config,
@@ -296,14 +328,27 @@ class AgentOrchestrator:
                         reasoning_enabled,
                         start,
                         ttft_holder,
-                    ):
-                        yield event
+                    )
+                async for event in stream:
+                    try:
+                        if "content" in json.loads(event.removeprefix("data: ")):
+                            partial = True
+                    except (ValueError, TypeError):
+                        pass
+                    yield event
                 success = True
                 break  # Exit loop if stream completed successfully
 
             except Exception as e:
                 last_error = str(e)
                 logger.warning(f"Model '{current_model}' failed with error: {last_error}. Trying next fallback...")
+                if partial:
+                    # Jawaban parsial sudah sampai client. Menumpuk jawaban model
+                    # fallback di atasnya menghasilkan teks garbage - hentikan
+                    # di sini dan laporkan error (frontend chat merender
+                    # event {"error": ...} sebagai pesan inline).
+                    yield _emit({"error": last_error or f"Model '{current_model}' gagal"})
+                    return
                 continue
 
         if not success:
@@ -423,15 +468,27 @@ class AgentOrchestrator:
         if max_tokens < 1024:
             max_tokens = 1024
 
-        response = self.client.chat.completions.create(
-            model=current_model,
-            messages=openai_messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=True,
-            stream_options={"include_usage": True},
-            extra_body=extra_body_params if extra_body_params else None,
-        )
+        create_kwargs: dict[str, Any] = {
+            "model": current_model,
+            "messages": openai_messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if extra_body_params:
+            create_kwargs["extra_body"] = extra_body_params
+
+        client = self.client
+        if isinstance(client, OpenAI):
+            # Sync OpenAI client: create() + iterasi stream HTTP memblok event
+            # loop. create() dijalankan di worker thread, iterasi stream
+            # direlay lewat asyncio.Queue agar semua konsumsi tetap async.
+            response = await asyncio.to_thread(client.chat.completions.create, **create_kwargs)
+            response = _aiter_queue(response)
+        else:
+            # Jalur lain (client non-OpenAI): pertahankan perilaku lama.
+            response = client.chat.completions.create(**create_kwargs)
 
         # Buffer 12 chars = 2-3 kata per flush, smooth tanpa flicker. Tanpa sleep.
         buffer = ""
@@ -439,7 +496,7 @@ class AgentOrchestrator:
         usage: dict[str, Any] | None = None
         tail = ""
 
-        for chunk in response:
+        async for chunk in response:
             _u = getattr(chunk, "usage", None)
             if _u is not None:
                 usage = {

@@ -47,6 +47,8 @@ export type UsersTabProps = {
   onSyncLocalUsers: () => Promise<void>;
   userModalOpen: boolean;
   setUserModalOpen: Dispatch<SetStateAction<boolean>>;
+  savingUser: boolean;
+  savingSettings: boolean;
   editingUserId: string | null;
   setEditingUserId: Dispatch<SetStateAction<string | null>>;
   userForm: UserFormState;
@@ -66,6 +68,8 @@ export function UsersTab({
   onSyncLocalUsers: handleSyncLocalUsers,
   userModalOpen,
   setUserModalOpen,
+  savingUser,
+  savingSettings,
   editingUserId,
   setEditingUserId,
   userForm,
@@ -191,9 +195,15 @@ export function UsersTab({
           </div>
           <Button
             onClick={handleSaveSettings}
+            disabled={savingSettings}
             className="h-9 bg-white text-black hover:bg-zinc-100 gap-1.5 text-[16px] font-medium"
           >
-            <Save className="h-4 w-4" /> Simpan
+            {savingSettings ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}{" "}
+            Simpan
           </Button>
           <p className="text-[13px] leading-relaxed text-zinc-500 w-full">
             Expiry berlaku untuk login baru. Trial per IP, hit ke-
@@ -478,9 +488,10 @@ export function UsersTab({
                     value={userForm.password}
                     onChange={(e) => setUserForm((p) => ({ ...p, password: e.target.value }))}
                     required={!editingUserId}
-                    minLength={6}
+                    minLength={8}
                     className={inputCls}
                   />
+                  <p className="text-[12px] text-zinc-500">Minimal 8 karakter.</p>
                 </div>
                 <div className="space-y-2">
                   <Label className={tLabelPlain}>Display name</Label>
@@ -523,9 +534,10 @@ export function UsersTab({
                   </Button>
                   <Button
                     type="submit"
-                    className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px]"
+                    disabled={savingUser}
+                    className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] disabled:opacity-50"
                   >
-                    Simpan
+                    {savingUser ? "Menyimpan…" : "Simpan"}
                   </Button>
                 </div>
               </form>
