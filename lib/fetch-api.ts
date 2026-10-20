@@ -54,8 +54,14 @@ export async function fetchApi<T = unknown>(
       },
       ...(json !== undefined ? { body: JSON.stringify(json) } : null),
     });
-  } catch {
-    throw new ApiError(fallbackError, 0);
+  } catch (e) {
+    // Di dev, sertakan penyebab asli (mis. "Failed to fetch" / ERR_CONNECTION_REFUSED)
+    // supaya masalah jaringan tidak disembunyikan generik message.
+    const detail =
+      process.env.NODE_ENV !== "production" && e instanceof Error && e.message
+        ? `${fallbackError} (${e.message})`
+        : fallbackError;
+    throw new ApiError(detail, 0);
   }
 
   const data: unknown = await res.json().catch(() => null);
