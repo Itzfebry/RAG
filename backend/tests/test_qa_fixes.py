@@ -80,6 +80,52 @@ def test_set_order_status_paid_true_once_then_false(monkeypatch):
     assert ("status", "pending") in fake.filters
 
 
+# ------------------------------------- daily quota: expired plan must gate chat
+
+
+def test_expired_daily_plan_is_rejected_before_quota_consume(monkeypatch):
+    """Paket harian kadaluarsa (expired: True) harus ditolak 403 dan TIDAK
+    meng-konsumsi kuota harian (bug: expired user bisa chat gratis)."""
+    from fastapi.testclient import TestClient
+
+    from backend.api import chat as chat_api
+    from backend.api.main import app
+    from backend.database.db import DatabaseService
+
+    user = {"id": "u-exp", "display_name": "Tester"}
+    calls: list[str] = []
+
+    monkeypatch.setattr(chat_api, "get_current_chat_user_optional", lambda r: user)
+    monkeypatch.setattr(chat_api, "enforce_rate_limit", lambda *a, **k: calls.append("rate"))
+    monkeypatch.setattr(DatabaseService, "get_user_by_id", staticmethod(lambda _id: user))
+    monkeypatch.setattr(
+        DatabaseService,
+        "resolve_daily_plan",
+        staticmethod(
+            lambda _uid: {
+                "plan_id": "p1",
+                "plan_label": "Harian",
+                "daily_limit": 10,
+                "expired": True,
+                "expires_at": "2025-01-01T00:00:00+07:00",
+                "days_left": 0,
+            }
+        ),
+    )
+
+    def fail_consume(_uid, _limit):
+        calls.append("consume")
+        raise AssertionError("try_consume_daily_prompt tidak boleh dipanggil untuk paket expired")
+
+    monkeypatch.setattr(DatabaseService, "try_consume_daily_prompt", staticmethod(fail_consume))
+
+    client = TestClient(app)
+    res = client.post("/api/chat", json={"message": "halo", "history": []})
+    assert res.status_code == 403
+    assert "Masa aktif" in res.json().get("detail", "")
+    assert "consume" not in calls
+
+
 # ------------------------------- RecursiveCharacterTextSplitter hard-splits
 
 

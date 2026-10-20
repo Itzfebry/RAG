@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import json
 import os
@@ -312,6 +313,11 @@ async def stream_chat(payload: ChatRequest, request: Request):
                 raise HTTPException(status_code=428, detail="Isi nama tampilan di profil sebelum chat")
             plan = _active_daily_plan(fresh)
             if plan is not None:
+                if bool(plan.get("expired")):
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Masa aktif paket habis - perpanjang di halaman pricing untuk melanjutkan chat",
+                    )
                 if not DatabaseService.try_consume_daily_prompt(str(fresh["id"]), int(plan["daily_limit"])):
                     raise HTTPException(
                         status_code=403, detail="Batas prompt harian habis - hubungi admin untuk menambah kuota"
@@ -366,6 +372,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
 
     async def generate():
         answered = False
+        streamed = False  # konten sudah sampai client? (untuk keputusan refund saat cancel)
         try:
             async for chunk in agent_orchestrator.stream_chat_response(
                 payload.message,
@@ -393,7 +400,16 @@ async def stream_chat(payload: ChatRequest, request: Request):
                 if ev is not None and "answered" in ev:
                     answered = True
                     continue
+                streamed = streamed or (ev is not None and "content" in ev)
                 yield chunk
+        except asyncio.CancelledError:
+            # Client membatalkan stream: kuota harian direservasi namun belum
+            # ada konten yang sampai -> refund agar tidak hangus. Bila jawaban
+            # parsial sudah diterima, biarkan terpakai.
+            if reservation is not None and not streamed:
+                with contextlib.suppress(Exception):
+                    DatabaseService.refund_daily_prompt(str(user.get("id")))
+            raise
         except Exception:
             # Kegagalan provider (retry/timeout/cancel): kuota harian yang
             # sudah direservasi dikembalikan agar tidak terpotong ganda.
