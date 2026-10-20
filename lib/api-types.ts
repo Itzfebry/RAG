@@ -10,6 +10,18 @@ export interface LoginResponse {
   email?: string;
 }
 
+/** Status kuota dari backend (`GET /api/python/user/me#daily_quota`). */
+export interface DailyQuota {
+  mode: "daily" | "legacy";
+  plan_id?: string | null;
+  plan_label?: string | null;
+  daily_limit?: number | null;
+  used_today?: number | null;
+  remaining?: number | null;
+  quota_day?: string | null;
+  next_reset_wib?: string | null;
+}
+
 /** Response `/api/python/user/me`. */
 export interface Me {
   username: string;
@@ -19,6 +31,7 @@ export interface Me {
   max_prompts: number;
   prompts_used: number;
   remaining: number | null;
+  daily_quota?: DailyQuota | null;
   has_password?: boolean;
   goal?: string;
   style_id?: string;
@@ -171,6 +184,8 @@ export interface PricingPlan {
   id: string;
   label: string;
   prompts: number;
+  /** Masa aktif dalam hari; 0/kosong = tanpa batas waktu. */
+  days?: number | null;
   amount: number;
   popular: boolean;
   original_amount?: number | string | null;

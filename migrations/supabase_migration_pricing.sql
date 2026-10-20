@@ -39,3 +39,7 @@ create index if not exists orders_user_idx on public.orders (user_id, created_at
 create index if not exists orders_status_idx on public.orders (status, created_at desc);
 
 alter table public.orders enable row level security;
+
+-- Masa aktif paket (hari) yang di-snapshot saat order dibuat. 0 = tanpa batas
+-- waktu (order lama / paket tanpa masa aktif). Jalankan sekali di SQL Editor.
+alter table public.orders add column if not exists days int not null default 0;

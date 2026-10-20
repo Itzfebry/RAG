@@ -92,6 +92,7 @@ export default function ChatPage() {
     goal?: string;
     style_id?: string;
     gender?: string;
+    daily_quota?: Me["daily_quota"];
   } | null>(null);
   const [trialInfo, setTrialInfo] = useState<{
     trial_prompts: number;
@@ -810,6 +811,32 @@ export default function ChatPage() {
                   <p className="mt-1 text-[11.5px] text-zinc-400">
                     Status prompt: <span className={remStatus.color}>{remStatus.label}</span>
                   </p>
+                  {(() => {
+                    const dq = userInfo?.daily_quota;
+                    if (!dq || dq.mode !== "daily") return null;
+                    return (
+                      <div className="mt-3 space-y-1.5 border-t border-white/[0.07] pt-3 text-[11.5px] leading-5 text-zinc-400">
+                        <p className="text-[10.5px] font-medium uppercase tracking-wider text-zinc-500">
+                          Kuota harian
+                        </p>
+                        {dq.plan_label && (
+                          <p>
+                            Paket aktif: <span className="text-zinc-200">{dq.plan_label}</span>
+                          </p>
+                        )}
+                        <p>
+                          Dipakai hari ini:{" "}
+                          <span className="tabular-nums text-zinc-200">
+                            {dq.used_today ?? 0}
+                            {typeof dq.daily_limit === "number" ? ` / ${dq.daily_limit}` : ""}
+                          </span>
+                        </p>
+                        {dq.next_reset_wib && (
+                          <p className="text-zinc-500">Reset berikutnya: {dq.next_reset_wib}</p>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="mt-3.5 border-t border-white/[0.07] pt-3.5">
                     <p className="text-[11.5px] leading-5 text-zinc-400">
                       Sisa kuota anda sekarang

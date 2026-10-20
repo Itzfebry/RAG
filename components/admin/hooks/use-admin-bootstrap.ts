@@ -551,6 +551,7 @@ export function useAdminBootstrap({
             id: string;
             label: string;
             prompts: number;
+            days?: number | null;
             amount: number;
             popular: boolean;
             original_amount?: number | null;

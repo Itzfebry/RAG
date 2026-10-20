@@ -4,7 +4,15 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { AlertCircle, Loader2, Zap, MessageSquare, Wallet } from "lucide-react";
+import {
+  AlertCircle,
+  Loader2,
+  Zap,
+  SlidersHorizontal,
+  Wallet,
+  MousePointerClick,
+  SquareSlash,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AnimatePresence, m } from "framer-motion";
@@ -20,18 +28,28 @@ type AuthJson = { detail?: unknown; message?: string };
 const VALUE_POINTS = [
   {
     icon: Zap,
-    title: "Langsung bisa dipakai",
-    desc: "Tanpa setup, tanpa pengaturan. Buka dan tanya apa saja.",
+    title: "Cepat merespons, siap membantu",
+    desc: "Dapatkan jawaban dengan cepat, relevan, dan sesuai konteks percakapanmu.",
   },
   {
-    icon: MessageSquare,
-    title: "Jawaban rapi dan lugas",
-    desc: "Format terstruktur, bahasa Indonesia natural, tanpa basa-basi.",
+    icon: SlidersHorizontal,
+    title: "Gaya jawaban sesuai keinginanmu",
+    desc: "Pilih gaya formal atau santai, serta jawaban singkat atau mendalam. ITZ AI menyesuaikan cara menjawab dengan kebutuhanmu.",
   },
   {
     icon: Wallet,
-    title: "Kuota transparan",
-    desc: "Sisa kuota terlihat kapan saja. Tidak ada langganan tersembunyi.",
+    title: "Lebih hemat, biaya lebih transparan",
+    desc: "Pahami penggunaan kuota dan biaya dengan lebih mudah, sehingga kamu bisa mengelola pengeluaran dengan lebih terencana.",
+  },
+  {
+    icon: MousePointerClick,
+    title: "Mudah digunakan siapa saja",
+    desc: "Antarmuka sederhana dan intuitif. Mulai percakapan, cari ide, atau selesaikan tugas tanpa proses yang rumit.",
+  },
+  {
+    icon: SquareSlash,
+    title: "Slash command untuk fokus lebih cepat",
+    desc: "Gunakan perintah `/` untuk memilih topik atau mode tertentu agar percakapan lebih terarah dan sesuai kebutuhan.",
   },
 ];
 
@@ -359,9 +377,9 @@ export default function UserLoginPage() {
               transition={{ duration: 0.9, delay: 0.15, ease: EASE }}
               className="itz-shine bg-gradient-to-r from-white via-zinc-400 to-white bg-clip-text text-transparent text-[44px] font-semibold leading-[1.06] tracking-[-0.04em]"
             >
-              Tanya apa saja.
+              Pintar, cepat,
               <br />
-              Dapat jawaban lugas.
+              dan ramah di kantong.
             </motion.h1>
           </div>
 
@@ -371,8 +389,7 @@ export default function UserLoginPage() {
             transition={{ duration: 0.9, delay: 0.55, ease: EASE }}
             className="mt-5 max-w-[440px] text-[15.5px] leading-relaxed text-zinc-400"
           >
-            Asisten AI yang siap menemani harimu: merangkum, menyusun ide, menjawab pertanyaan.
-            Tanpa basa-basi, tanpa perlu pengaturan apa pun.
+            Teman AI untuk kebutuhan sehari-hari — responsif, fleksibel, dan hemat biaya.
           </motion.p>
 
           <motion.div
@@ -425,9 +442,9 @@ export default function UserLoginPage() {
               ITZ AI
             </h1>
             <p className="itz-shine mt-5 bg-gradient-to-r from-white via-zinc-400 to-white bg-clip-text text-transparent text-[26px] font-semibold leading-[1.15] tracking-[-0.03em]">
-              Tanya apa saja.
+              Pintar, cepat,
               <br />
-              Dapat jawaban lugas.
+              dan ramah di kantong.
             </p>
           </div>
 
@@ -889,7 +906,7 @@ export default function UserLoginPage() {
             href="/chat"
             className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/[0.1] bg-white/[0.03] text-[14px] font-medium text-zinc-300 transition-colors hover:border-white/[0.2] hover:bg-white/[0.06] hover:text-white"
           >
-            Coba trial gratis
+            Coba gratis, tanpa daftar
             <svg
               className="h-4 w-4"
               viewBox="0 0 24 24"
@@ -903,7 +920,7 @@ export default function UserLoginPage() {
             </svg>
           </a>
           <p className="mt-2.5 text-center text-[11.5px] text-zinc-600">
-            Tanpa daftar, langsung ngobrol dengan ITZ AI
+            Buka langsung, ngobrol sama ITZ AI tanpa daftar
           </p>
         </motion.div>
       </div>

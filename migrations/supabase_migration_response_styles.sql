@@ -1,39 +1,7 @@
--- Gaya respons (response_styles). Jalankan sekali di Supabase SQL Editor.
--- Satu baris, kolom `styles` berisi array JSON: [{id, name, description, prompt}, ...].
+-- Perbarui Gaya Respons: ringkas->Default Normal, edukatif->Formal & Kritis,
+-- santai->Gen Z, plus gaya baru "Frontal". Jalankan sekali di Supabase SQL Editor.
 -- Idempoten: aman dijalankan ulang.
 
-create table if not exists public.response_styles (
-  id          int primary key default 1,
-  styles      jsonb not null default '[]'::jsonb,
-  updated_at  text
-);
-
-insert into public.response_styles (id, styles, updated_at)
-values (
-  1,
-  '[
-    {
-      "id": "ringkas",
-      "name": "Sangat Ringkas",
-      "description": "Jawaban super singkat langsung ke inti. Bullet rapat, tanpa basa-basi.",
-      "prompt": "Balas singkat dan langsung ke inti, tanpa pembuka atau basa-basi. Tetap pakai format kaya: **bold** untuk poin kunci, numbering untuk langkah, bullet untuk daftar, dan spasi antar bagian. Batasi jumlah poin, bukan format. Tambahkan detail hanya jika user minta."
-    },
-    {
-      "id": "edukatif",
-      "name": "Guru Penjelas",
-      "description": "Penjelasan panjang, sabar, bertahap dengan analogi dan contoh.",
-      "prompt": "Gaya mengajar yang sabar dan detail. Jelaskan konsep dari dasar, gunakan analogi dan contoh nyata, pecah jadi langkah-langkah bernomor, dan ulangi poin penting dengan kalimat berbeda bila perlu. Tidak apa-apa panjang asalkan mudah dipahami pemula."
-    },
-    {
-      "id": "santai",
-      "name": "Santai & Asik",
-      "description": "Ngobrol santai seperti dengan teman, humor ringan, gaya kasual.",
-      "prompt": "Gaya ngobrol santai seperti bicara dengan teman dekat. Gunakan bahasa kasual sehari-hari, boleh humor ringan dan opini personal. Format tetap rapi dengan **bold** untuk poin penting dan spasi antar bagian, tapi hindari heading formal. Sapa dengan akrab."
-    }
-  ]'::jsonb,
-  to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS')
-)
-on conflict (id) do nothing;
-
--- Sama seperti tabel lain: hanya service role yang boleh akses.
-alter table public.response_styles enable row level security;
+update public.response_styles
+set styles = '[{"id":"ringkas","name":"Default Normal","description":"Gaya default: jelas, rapi, dan informatif. Tidak terlalu panjang, tidak terlalu singkat.","prompt":"Balas dengan gaya normal yang seimbang: langsung menjawab inti pertanyaan, detail secukupnya, dan mudah dibaca. Gunakan format kaya bila membantu: **bold** untuk poin kunci, numbering untuk langkah, bullet untuk daftar. Tidak perlu basa-basi panjang, tapi jangan mengorbankan kejelasan. Tambahkan konteks singkat bila perlu agar jawaban penuh makna."},{"id":"edukatif","name":"Formal & Kritis","description":"Bahasa formal dan terstruktur. Menganalisis problematik, menilai pro-kontra, dan menunjukkan sudut pandang kritis sebelum menyarikan.","prompt":"Gunakan bahasa Indonesia formal dan terstruktur seperti laporan profesional. Jawaban dibangun dengan analisis kritis: jabarkan konteks dan asumsi, identifikasi persoalan intinya, uraikan alternatif dan argumen pro-kontra, lalu tutup dengan penilaian yang tegas namun berimbang. Gunakan heading dan penomoran untuk struktur. Sertakan sudut pandang kritis terhadap klaim yang lemah atau asumsi yang dipertanyakan, dan tandai limitasi analisis bila ada."},{"id":"santai","name":"Gen Z","description":"Bahasa gaul Gen Z Indonesia: singkat, receh tapi tetap nyambung dan informatif.","prompt":"Balas dengan gaya bahasa Gen Z Indonesia yang relatable dan percaya diri: pakai bahasa gaul dan istilah internet yang wajar (gas, cuan, literally, real, reno, dll) tanpa paksaan. Kalimat pendek dan punchy, boleh pakai emoji secukupnya kalau situasinya cocok. Tetap informatif dan akurat: konten serius tetap serius, gayanya saja yang santai. Jangan lebay berlebihan dan jangan sampai maknanya hilang."},{"id":"frontal","name":"Frontal","description":"Blak-blakan dan tanpa basa-basi. Jujur walau tidak nyaman, tapi tetap solutif dan sopan.","prompt":"Balas secara frontal: blak-blakan, jujur, dan tanpa basa-basi. Sebut masalah dan sisi jatuhnya dengan tepat, langsung sebut apa yang salah atau kurang dari ide/pertanyaan user, tanpa dibungkus gula-gula berlebihan. Tetap hormati user dan tidak menghina, tidak mengejek, tidak membentak. Jangan berputar-putar: langsung ke inti, langsung ke solusi, dan tegas soal rekomendasi. Tenang, karena ketegasan bukan kasar."}]'::jsonb,
+    updated_at = to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS');

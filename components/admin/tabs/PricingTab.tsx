@@ -45,6 +45,8 @@ type OrderRow = {
   plan_label?: string;
   plan_id: string;
   prompts: number;
+  days?: number | null;
+  expires_in_days?: number | null;
   amount: number;
   status: string;
   username?: string;
@@ -126,6 +128,9 @@ export function PricingTab({
         return `Paket #${i + 1}: ID hanya boleh huruf, angka, tanda hubung (-), dan garis bawah (_).`;
       if (!Number.isFinite(Number(p.prompts)) || Number(p.prompts) <= 0)
         return `Paket #${i + 1}: jumlah prompt harus lebih dari 0.`;
+      const days = Number(p.days ?? 0);
+      if (!Number.isInteger(days) || days < 0 || days > 3650)
+        return `Paket #${i + 1}: masa aktif harus bilangan bulat 0-3650 hari (0 = tanpa batas waktu).`;
       if (!Number.isFinite(Number(p.amount)) || Number(p.amount) < 0)
         return `Paket #${i + 1}: harga tidak valid.`;
       const orig = p.original_amount;
@@ -206,7 +211,7 @@ export function PricingTab({
       ...pricing,
       plans: [
         ...pricing.plans,
-        { id: "", label: "", prompts: 100, amount: 30000, popular: false, original_amount: null },
+        { id: "", label: "", prompts: 100, days: 30, amount: 30000, popular: false, original_amount: null },
       ],
     });
 
@@ -219,7 +224,7 @@ export function PricingTab({
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-300 fill-mode-both">
       <SectionHeader
         title="Harga & Paket"
-        desc="Atur paket prompt dan info pembayaran. Pembayaran masuk mengaktifkan kuota otomatis lewat notifikasi gateway - konfirmasi manual hanya jaga-jaga bila notifikasi gagal. Pantau lewat log pembayaran di bawah."
+        desc="Atur paket prompt dan info pembayaran. Setiap paket punya masa aktif (hari) — 0 berarti tanpa batas waktu. Pembayaran masuk mengaktifkan kuota otomatis lewat notifikasi gateway - konfirmasi manual hanya jaga-jaga bila notifikasi gagal. Pantau lewat log pembayaran di bawah."
       />
 
       {/* Paket */}
@@ -244,7 +249,7 @@ export function PricingTab({
           )}
           {pricing.plans.map((p, idx) => (
             <div key={idx} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
                 <div className="space-y-1.5">
                   <Label className={tLabel}>ID</Label>
                   <Input
@@ -264,7 +269,7 @@ export function PricingTab({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className={tLabel}>Prompt</Label>
+                  <Label className={tLabel}>Prompt / hari</Label>
                   <Input
                     type="number"
                     min={1}
@@ -272,6 +277,24 @@ export function PricingTab({
                     onChange={(e) => updatePlan(idx, { prompts: Number(e.target.value) })}
                     className={inputCls}
                   />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className={tLabel}>Masa aktif (hari)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={p.days ?? 0}
+                    onChange={(e) =>
+                      updatePlan(idx, {
+                        days: e.target.value === "" ? 0 : Math.max(0, Number(e.target.value)),
+                      })
+                    }
+                    className={inputCls}
+                  />
+                  <p className="text-[11px] text-zinc-600">
+                    {p.days && p.days > 0 ? `≈ ${Math.round(p.days / 30 * 10) / 10} bulan` : "0 = tanpa batas waktu"}
+                  </p>
                 </div>
               </div>
               <div className="mt-3 grid grid-cols-1 items-end gap-3 sm:grid-cols-5">
@@ -582,7 +605,14 @@ export function PricingTab({
                       </td>
                       <td className="px-4 py-3.5 text-[14px] text-zinc-200">
                         {o.plan_label || o.plan_id}
-                        <div className="text-[12px] text-zinc-500">{o.prompts} prompt</div>
+                        <div className="text-[12px] text-zinc-500">
+                          {o.prompts} prompt ·{" "}
+                          {o.days && o.days > 0
+                            ? o.status === "paid"
+                              ? `${o.days} hari${o.expires_in_days !== null && o.expires_in_days !== undefined ? ` · sisa ${o.expires_in_days} hari` : ""}`
+                              : `${o.days} hari`
+                            : "tanpa batas waktu"}
+                        </div>
                       </td>
                       <td className="px-4 py-3.5 text-[14px] tabular-nums text-zinc-300">
                         {rupiah(o.amount)}

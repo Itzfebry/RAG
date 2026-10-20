@@ -480,6 +480,14 @@ def user_verify(request: Request, user: dict = Depends(get_current_user)):
         if int(user.get("max_prompts", 0)) > 0
         else None
     )
+    # Mode harian menimpa angka legacy agar konsisten dengan /user/me.
+    # Mode "expired": masa aktif paket habis -> sisa kuota dianggap 0.
+    try:
+        q = DatabaseService.get_quota_status(user)
+        if q.get("mode") in ("daily", "expired"):
+            remaining = q.get("remaining")
+    except Exception:
+        pass
     return {
         "status": "authenticated",
         "username": user["username"],
@@ -502,16 +510,32 @@ def user_logout(request: Request, response: Response, user: dict = Depends(get_c
 @router.get("/user/me")
 def user_me(request: Request, user: dict = Depends(get_current_user)):
     profile = DatabaseService.get_user_profile(str(user.get("id")))
+    # Kuota: nilai selalu dihitung backend (paket + pemakaian harian WIB).
+    try:
+        daily_quota = DatabaseService.get_quota_status(user)
+    except Exception:
+        daily_quota = None
+    max_prompts = user.get("max_prompts")
+    prompts_used = user.get("prompts_used", 0)
+    remaining = (
+        max(0, int(max_prompts) - int(prompts_used))
+        if int(max_prompts or 0)
+        else None
+    )
+    # Mode harian menimpa angka legacy agar UI menampilkan nilai aktif.
+    # Mode "expired": masa aktif paket habis -> remaining 0, bukan hitungan legacy.
+    if daily_quota and daily_quota.get("mode") in ("daily", "expired"):
+        remaining = daily_quota.get("remaining")
+        prompts_used = daily_quota.get("used_today")
     return {
         "username": user["username"],
         "display_name": user.get("display_name"),
         "email": user.get("email"),
         "email_verified": bool(user.get("email_verified", False)),
-        "max_prompts": user.get("max_prompts"),
-        "prompts_used": user.get("prompts_used", 0),
-        "remaining": max(0, int(user.get("max_prompts", 0)) - int(user.get("prompts_used", 0)))
-        if int(user.get("max_prompts", 0))
-        else None,
+        "max_prompts": max_prompts,
+        "prompts_used": prompts_used,
+        "remaining": remaining,
+        "daily_quota": daily_quota,
         "is_active": user.get("is_active", True),
         "has_password": bool(user.get("password_hash")),
         "goal": str(profile.get("goal") or "").strip(),

@@ -81,6 +81,14 @@ def get_current_chat_user_optional(request: Request) -> dict | None:
     return user
 
 
+def _active_daily_plan(user: dict) -> dict | None:
+    """Paket harian aktif user dari database (None = legacy/unlimited)."""
+    try:
+        return DatabaseService.resolve_daily_plan(str(user.get("id")))
+    except Exception:
+        return None
+
+
 @v1_router.get("/models")
 def list_models():
     model_config = {}
@@ -292,13 +300,25 @@ async def stream_chat(payload: ChatRequest, request: Request):
     if command_names:
         payload.message = clean_message
     user = get_current_chat_user_optional(request)
+    # Reservasi kuota harian dilakukan di sini (SEBELUM memanggil model) secara
+    # atomik, bukan setelah jawaban masuk — request paralel tidak bisa
+    # melewati batas. Bila provider gagal/tidak menjawab, kuota di-refund.
+    reservation: dict | None = None
     if user is not None:
         enforce_rate_limit(f"chat:{user.get('id')}:{ip}", 30, 60, durable=True)
         fresh = DatabaseService.get_user_by_id(str(user.get("id")))
-        if fresh and DatabaseService.is_prompt_quota_exhausted(fresh):
-            raise HTTPException(status_code=403, detail="Batas prompt habis - hubungi admin untuk menambah kuota")
-        if fresh and not str(fresh.get("display_name") or "").strip():
-            raise HTTPException(status_code=428, detail="Isi nama tampilan di profil sebelum chat")
+        if fresh:
+            if not str(fresh.get("display_name") or "").strip():
+                raise HTTPException(status_code=428, detail="Isi nama tampilan di profil sebelum chat")
+            plan = _active_daily_plan(fresh)
+            if plan is not None:
+                if not DatabaseService.try_consume_daily_prompt(str(fresh["id"]), int(plan["daily_limit"])):
+                    raise HTTPException(
+                        status_code=403, detail="Batas prompt harian habis - hubungi admin untuk menambah kuota"
+                    )
+                reservation = {"mode": "daily"}
+            elif DatabaseService.is_prompt_quota_exhausted(fresh):
+                raise HTTPException(status_code=403, detail="Batas prompt habis - hubungi admin untuk menambah kuota")
     else:
         # trial gate - soft setting trial_prompts (0 = trial disabled => require login)
         enforce_rate_limit(f"chat:trial:{ip}", 30, 60, durable=True)
@@ -333,54 +353,73 @@ async def stream_chat(payload: ChatRequest, request: Request):
 
     usage_owner = str(user.get("id")) if user is not None else f"trial:{ip}"
 
+    # Identifikasi model aktif untuk pencatatan token (input vs output tetap
+    # dua metrik terpisah; model hanya identifikasi tambahan).
+    model_name = ""
+    with contextlib.suppress(Exception):
+        if (payload.model or "").strip():
+            model_name = payload.model.strip()
+        else:
+            cfg = DatabaseService.get_config_table("ai_model_config")
+            model_name = (cfg.get("active_model") or "").strip() or "unknown"
+    model_name = model_name or "unknown"
+
     async def generate():
         answered = False
-        async for chunk in agent_orchestrator.stream_chat_response(
-            payload.message,
-            history_dicts,
-            model_override=payload.model,
-            user_profile=user_profile,
-            command_names=command_names or None,
-        ):
-            # dispatch berdasarkan top-level key event (bukan substring di
-            # dalam konten streaming - konten chat bisa mengandung "usage")
-            ev = _parse_sse_event(chunk)
-            if ev is not None and "usage" in ev:
-                try:
-                    u = ev.get("usage") or {}
-                    DatabaseService.record_token_usage(
-                        usage_owner,
-                        int(u.get("prompt_tokens", 0) or 0),
-                        int(u.get("completion_tokens", 0) or 0),
-                    )
-                except Exception:
-                    pass
-                continue
-            # event penanda dari agent: jawaban asli dari provider (bukan fallback error)
-            if ev is not None and "answered" in ev:
-                answered = True
-                continue
-            yield chunk
-        # Kuota/trial hanya dipotong jika jawaban asli dari provider sudah terkirim
-        if answered:
+        try:
+            async for chunk in agent_orchestrator.stream_chat_response(
+                payload.message,
+                history_dicts,
+                model_override=payload.model,
+                user_profile=user_profile,
+                command_names=command_names or None,
+            ):
+                # dispatch berdasarkan top-level key event (bukan substring di
+                # dalam konten streaming - konten chat bisa mengandung "usage")
+                ev = _parse_sse_event(chunk)
+                if ev is not None and "usage" in ev:
+                    try:
+                        u = ev.get("usage") or {}
+                        DatabaseService.record_token_usage(
+                            usage_owner,
+                            int(u.get("prompt_tokens", 0) or 0),
+                            int(u.get("completion_tokens", 0) or 0),
+                            model_name,
+                        )
+                    except Exception:
+                        pass
+                    continue
+                # event penanda dari agent: jawaban asli dari provider (bukan fallback error)
+                if ev is not None and "answered" in ev:
+                    answered = True
+                    continue
+                yield chunk
+        except Exception:
+            # Kegagalan provider (retry/timeout/cancel): kuota harian yang
+            # sudah direservasi dikembalikan agar tidak terpotong ganda.
+            if reservation is not None:
+                with contextlib.suppress(Exception):
+                    DatabaseService.refund_daily_prompt(str(user.get("id")))
+            raise
+        # Kuota dipotong saat reservasi (jalur harian) atau setelah jawaban
+        # asli provider terkirim (jalur legacy/trial) - tidak pernah dobel.
+        if not answered and reservation is not None:
+            # Provider tidak menjawab (fallback error): refund kuota harian.
+            with contextlib.suppress(Exception):
+                DatabaseService.refund_daily_prompt(str(user.get("id")))
+        elif answered and reservation is None and user is not None:
             try:
-                if user is not None:
-                    DatabaseService.increment_prompt_usage(str(user.get("id")))
-                else:
-                    DatabaseService.increment_trial(ip)
+                DatabaseService.increment_prompt_usage(str(user.get("id")))
+            except Exception as e:
+                logger.warning(f"[quota] gagal mencatat pemakaian: {e}")
+        elif answered and user is None:
+            try:
+                DatabaseService.increment_trial(ip)
             except Exception as e:
                 logger.warning(f"[quota] gagal mencatat pemakaian: {e}")
         try:
             elapsed = int((_t.perf_counter() - t0) * 1000)
-            # best-effort: use override or active config model
-            mname = (payload.model or "").strip()
-            if not mname:
-                try:
-                    cfg = DatabaseService.get_config_table("ai_model_config")
-                    mname = (cfg.get("active_model") or "").strip() or "unknown"
-                except Exception:
-                    mname = "unknown"
-            DatabaseService.record_request_event(model=mname, latency_ms=elapsed)
+            DatabaseService.record_request_event(model=model_name, latency_ms=elapsed)
         except Exception:
             with contextlib.suppress(Exception):
                 DatabaseService.record_request_event()

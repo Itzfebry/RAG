@@ -56,15 +56,18 @@ class UsageMixin:
         return _read_local_json(DatabaseService._token_file(), {})
 
     @staticmethod
-    def record_token_usage(owner: str, prompt_tokens: int, completion_tokens: int):
-        """Agregasi token per hari + per owner (Supabase token_usage, fallback JSON lokal)."""
+    def record_token_usage(owner: str, prompt_tokens: int, completion_tokens: int, model: str | None = None):
+        """Agregasi token per hari + per owner (Supabase token_usage, fallback JSON lokal).
+
+        `model` hanya identifikasi (input/output token tetap dua metrik terpisah).
+        """
         from backend.database.db import DatabaseService, _counter_lock
 
         with _counter_lock:
-            DatabaseService._record_token_usage_locked(owner, prompt_tokens, completion_tokens)
+            DatabaseService._record_token_usage_locked(owner, prompt_tokens, completion_tokens, model)
 
     @staticmethod
-    def _record_token_usage_locked(owner: str, prompt_tokens: int, completion_tokens: int):
+    def _record_token_usage_locked(owner: str, prompt_tokens: int, completion_tokens: int, model: str | None = None):
         from backend.database.db import DatabaseService, _read_local_json, _write_local_json, supabase_client
 
         try:
@@ -73,11 +76,12 @@ class UsageMixin:
             if p == 0 and c == 0:
                 return
             day = datetime.now().date().isoformat()
+            mname = (str(model) or "").strip() or None
             if supabase_client:
                 try:
                     cur = (
                         supabase_client.table("token_usage")
-                        .select("prompt,completion")
+                        .select("prompt,completion,models")
                         .eq("day", day)
                         .eq("owner", owner)
                         .limit(1)
@@ -87,8 +91,23 @@ class UsageMixin:
                     )
                     base_p = int(cur[0].get("prompt", 0) or 0) if cur else 0
                     base_c = int(cur[0].get("completion", 0) or 0) if cur else 0
+                    mods = cur[0].get("models") if cur else None
+                    if not isinstance(mods, dict):
+                        mods = {}
+                    if mname:
+                        m_cur = mods.get(mname) or {}
+                        mods[mname] = {
+                            "prompt": int(m_cur.get("prompt", 0) or 0) + p,
+                            "completion": int(m_cur.get("completion", 0) or 0) + c,
+                        }
                     supabase_client.table("token_usage").upsert(
-                        {"day": day, "owner": owner, "prompt": base_p + p, "completion": base_c + c},
+                        {
+                            "day": day,
+                            "owner": owner,
+                            "prompt": base_p + p,
+                            "completion": base_c + c,
+                            "models": mods,
+                        },
                         on_conflict="day,owner",
                     ).execute()
                     return
@@ -111,6 +130,13 @@ class UsageMixin:
             u["prompt"] = int(u.get("prompt", 0)) + p
             u["completion"] = int(u.get("completion", 0)) + c
             u["total"] = int(u.get("total", 0)) + p + c
+            if mname:
+                mods = u.setdefault("models", {})
+                mv = mods.get(mname) or {}
+                mods[mname] = {
+                    "prompt": int(mv.get("prompt", 0) or 0) + p,
+                    "completion": int(mv.get("completion", 0) or 0) + c,
+                }
             ud = u.setdefault("daily", {})
             ucur = ud.get(day) or {"prompt": 0, "completion": 0}
             unp = int(ucur.get("prompt", 0)) + p

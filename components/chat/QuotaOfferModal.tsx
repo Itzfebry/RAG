@@ -14,6 +14,7 @@ export type QuotaOfferVariant = "quota" | "trial" | "login";
 type Pkg = {
   id: string;
   prompts: number;
+  days?: number | null;
   price: string;
   popular: boolean;
   original?: string | null;
@@ -21,9 +22,9 @@ type Pkg = {
 };
 
 const PACKAGES: Pkg[] = [
-  { id: "100", prompts: 100, price: "Rp30.000", popular: false },
-  { id: "200", prompts: 200, price: "Rp50.000", popular: true },
-  { id: "1000", prompts: 1000, price: "Rp500.000", popular: false },
+  { id: "100", prompts: 100, days: 30, price: "Rp30.000", popular: false },
+  { id: "200", prompts: 200, days: 30, price: "Rp50.000", popular: true },
+  { id: "1000", prompts: 1000, days: 30, price: "Rp500.000", popular: false },
 ];
 
 const rupiah = (n: number) => `Rp${Number(n || 0).toLocaleString("id-ID")}`;
@@ -115,6 +116,7 @@ export default function QuotaOfferModal({
       plans?: {
         id: unknown;
         prompts: number;
+        days?: number | null;
         amount: number;
         popular?: boolean;
         original_amount?: number | null;
@@ -128,6 +130,7 @@ export default function QuotaOfferModal({
         const mapped = plans.map((p) => ({
           id: String(p.id),
           prompts: Number(p.prompts),
+          days: Number(p.days || 0) || null,
           price: rupiah(Number(p.amount)),
           popular: Boolean(p.popular),
           // Harga coret hanya kalau backend menandai diskon aktif.
@@ -318,7 +321,7 @@ export default function QuotaOfferModal({
                           {p.prompts}
                         </div>
                         <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
-                          prompt
+                          prompt · {p.days ? `masa aktif ${p.days} hari` : "tanpa batas waktu"}
                         </div>
                         <div className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 border-t border-white/[0.07] pt-3 text-[15px] font-medium tabular-nums text-zinc-200">
                           {p.price}

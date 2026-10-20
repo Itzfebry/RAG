@@ -10,10 +10,13 @@ gangguan, order nyangkut, koreksi).
 """
 
 import re
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+
+from backend.database.billing_repo import MAX_PLAN_DAYS, order_expiry, parse_dt
 
 try:
     from backend.api.admin import get_current_admin
@@ -24,6 +27,7 @@ try:
     from backend.security.rate_limiter import enforce_rate_limit, get_client_ip
 except ImportError:
     from database.db import DatabaseService  # type: ignore
+    from database.billing_repo import MAX_PLAN_DAYS, order_expiry, parse_dt  # type: ignore
     from payment import duitku  # type: ignore
     from security.audit import log_action as audit_log  # type: ignore
     from security.rate_limiter import enforce_rate_limit, get_client_ip  # type: ignore
@@ -69,6 +73,7 @@ def _public_pricing() -> dict[str, Any]:
         try:
             prompts = int(p.get("prompts") or 0)
             amount = int(p.get("amount") or 0)
+            days = int(p.get("days") or 0)
         except Exception:
             continue
         if prompts <= 0 or not str(p.get("id") or "").strip():
@@ -84,6 +89,8 @@ def _public_pricing() -> dict[str, Any]:
                 "id": str(p.get("id")),
                 "label": str(p.get("label") or f"Paket {prompts} Prompt"),
                 "prompts": prompts,
+                # Masa aktif paket dalam hari (0 = tanpa batas waktu).
+                "days": days,
                 "amount": amount,
                 "popular": bool(p.get("popular")),
                 "original_amount": original if discounted else None,
@@ -106,6 +113,27 @@ def _public_pricing() -> dict[str, Any]:
         # menyala sendiri lewat callback gateway begitu dana masuk.
         "auto_checkout": duitku.configured(),
     }
+
+
+def _order_expiry_fields(o: dict[str, Any]) -> dict[str, Any]:
+    """Info masa aktif order untuk UI: tanggal expired & sisa hari (paid saja)."""
+    expired, expiry = order_expiry(o)
+    out: dict[str, Any] = {"days": int(o.get("days") or 0)}
+    if expiry is None:
+        out["expires_at"] = None
+        out["expired"] = False
+        out["expires_in_days"] = None
+        return out
+    paid = parse_dt(o.get("paid_at"))
+    now_dt = datetime.now(expiry.tzinfo) if expiry.tzinfo else datetime.now()
+    if paid is not None:
+        delta = expiry - max(now_dt, paid)  # sisa hari tidak minus sejak awal
+        out["expires_in_days"] = max(0, (delta + timedelta(days=1)).days)
+    else:
+        out["expires_in_days"] = None
+    out["expires_at"] = expiry.isoformat()
+    out["expired"] = expired
+    return out
 
 
 # ── user endpoints ──
@@ -214,6 +242,7 @@ def user_list_orders(user: dict = Depends(get_current_user)):
                 "note": o.get("note"),
                 "created_at": o.get("created_at"),
                 "paid_at": o.get("paid_at"),
+                **_order_expiry_fields(o),
             }
             for o in rows
         ]
@@ -358,12 +387,24 @@ def _clean_plans(plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 )
             if original > MAX_AMOUNT:
                 raise HTTPException(status_code=400, detail=f"harga coret terlalu besar: {pid}")
+        # Masa aktif (hari): opsional. 0/kosong = tanpa batas waktu (order lama
+        # tetap kompatibel). Hanya boleh bilangan bulat 0..3650.
+        raw_days = p.get("days")
+        days = 0
+        if raw_days not in (None, "", 0, "0"):
+            try:
+                days = int(raw_days)
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"masa aktif harus angka hari: {pid}")
+            if days < 0 or days > MAX_PLAN_DAYS:
+                raise HTTPException(status_code=400, detail=f"masa aktif 0-{MAX_PLAN_DAYS} hari: {pid}")
         seen.add(pid)
         out.append(
             {
                 "id": pid,
                 "label": label,
                 "prompts": prompts,
+                "days": days,
                 "amount": amount,
                 "popular": bool(p.get("popular")),
                 "original_amount": original,
@@ -425,6 +466,7 @@ def admin_list_orders(status: str | None = None, admin: str = Depends(get_curren
                         "confirmed_by",
                     )
                 },
+                **_order_expiry_fields(o),
                 "username": u.get("username"),
                 "display_name": u.get("display_name"),
             }

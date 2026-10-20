@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { AnimatePresence, m } from "framer-motion";
@@ -15,9 +15,16 @@ import {
   Sparkles,
   ArrowLeft,
   Clock,
+  Timer,
   X,
   Receipt,
   MessageCircle,
+  Zap,
+  ShieldCheck,
+  Gem,
+  Leaf,
+  Rocket,
+  Layers,
 } from "lucide-react";
 import { ApiError, apiErrorMessage, fetchApi, tryFetch } from "@/lib/fetch-api";
 
@@ -25,6 +32,7 @@ export type Plan = {
   id: string;
   label: string;
   prompts: number;
+  days?: number | null;
   amount: number;
   popular?: boolean;
   original_amount?: number | null;
@@ -52,6 +60,9 @@ type OrderRow = {
   plan_id: string;
   plan_label?: string;
   prompts: number;
+  days?: number | null;
+  expired?: boolean;
+  expires_in_days?: number | null;
   amount: number;
   status: string;
   created_at?: string;
@@ -65,8 +76,8 @@ export default function PricingPage() {
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<UserInfo>(null);
   const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [activePlan, setActivePlan] = useState<Plan | null>(null);
+  const [submitting, setSubmitting] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showQris, setShowQris] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -107,22 +118,18 @@ export default function PricingPage() {
   }, [user, loadOrders]);
 
   const plans = data?.plans ?? [];
-  const activeId = useMemo(
-    () => selected ?? plans.find((p) => p.popular)?.id ?? plans[0]?.id ?? null,
-    [selected, plans],
-  );
-  const chosen = plans.find((p) => p.id === activeId) ?? null;
 
-  const createOrder = async () => {
-    if (!chosen || submitting) return;
-    setSubmitting(true);
+  const createOrder = async (plan: Plan) => {
+    if (submitting) return;
+    setSubmitting(plan.id);
     setNotice(null);
+    setActivePlan(plan);
     try {
       const r = await tryFetch<{
         order?: OrderRow | null;
         payment_url?: string;
         detail?: string;
-      }>("/api/python/user/orders", { json: { plan_id: chosen.id } }, "Gagal membuat order");
+      }>("/api/python/user/orders", { json: { plan_id: plan.id } }, "Gagal membuat order");
       if (!r.ok) {
         setNotice(r.error);
         return;
@@ -136,7 +143,7 @@ export default function PricingPage() {
     } catch {
       setNotice("Gagal membuat order");
     } finally {
-      setSubmitting(false);
+      setSubmitting(null);
     }
   };
 
@@ -144,6 +151,7 @@ export default function PricingPage() {
   // selama modal terbuka sampai "paid" (kuota sudah ditambah backend).
   useEffect(() => {
     if (!showQris || !order) return;
+    const plan = activePlan;
     const tick = () => {
       fetchApi<{ items?: OrderRow[] }>("/api/python/user/orders")
         .then((j) => {
@@ -152,7 +160,9 @@ export default function PricingPage() {
             setShowQris(false);
             setOrder(null);
             setNotice(
-              `Pembayaran tercatat otomatis. Kuota ${chosen ? `${chosen.prompts} prompt` : "paket"} sudah aktif.`,
+              `Pembayaran tercatat otomatis. Paket ${plan ? plan.label : ""} (${
+                plan ? `${plan.prompts} prompt/hari${plan.days ? `, ${plan.days} hari` : ""}` : "aktif"
+              }) sudah menyala.`,
             );
             loadOrders();
             fetchApi<UserInfo>("/api/python/user/me")
@@ -165,11 +175,12 @@ export default function PricingPage() {
     const t = setInterval(tick, 4000);
     tick();
     return () => clearInterval(t);
-  }, [showQris, order, chosen, loadOrders]);
+  }, [showQris, order, activePlan, loadOrders]);
 
   const waHref = (msg: string) =>
     data?.contact_wa ? `${data.contact_wa}?text=${encodeURIComponent(msg)}` : null;
 
+  const chosen = activePlan;
   const receiptMsg = `Halo admin ITZ AI, saya sudah bayar ${chosen ? `${chosen.label} (${rupiah(chosen.amount)})` : "paket prompt"}.${user?.username ? ` Username: ${user.username}` : ""}`;
   const receiptWa = waHref(receiptMsg);
 
@@ -182,15 +193,35 @@ export default function PricingPage() {
   };
 
   const steps = [
-    "Pilih paket, lalu klik Ambil paket — halaman pembayaran langsung terbuka.",
+    "Klik Langganan sekarang pada kartu pilihanmu — halaman pembayaran langsung terbuka.",
     "Bayar dengan nominal persis lewat QRIS, VA, atau e-wallet.",
     "Tunggu sebentar — kuota aktif otomatis begitu pembayaran tercatat di sistem. Tidak perlu klik apa pun.",
     "Ada kendala? Chat admin lewat WhatsApp. Konfirmasi admin hanya cadangan bila notifikasi gangguan.",
   ];
 
+  const planFeatures = (p: Plan) => {
+    const perPrompt = p.prompts > 0 ? Math.round(p.amount / p.prompts) : 0;
+    const feats: Array<{ icon: React.ElementType | null; text: string }> = [
+      { icon: Zap, text: `${p.prompts} prompt / hari` },
+    ];
+    if (perPrompt > 0) feats.push({ icon: null, text: `≈ ${rupiah(perPrompt)} / prompt` });
+    feats.push({ icon: ShieldCheck, text: "Aktivasi otomatis, tanpa konfirmasi manual" });
+    return feats;
+  };
+
   return (
-    <main className="relative mx-auto min-h-screen max-w-[1000px] px-5 py-10 text-zinc-200">
-      <header className="mb-9 flex flex-wrap items-center justify-between gap-3">
+    <main className="relative mx-auto min-h-screen max-w-[1100px] px-5 py-10 text-zinc-200">
+      {/* latar: glow radial halus + grid, senada estetika pricing LLM */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 -top-24 -z-10 h-[420px] bg-[radial-gradient(600px_240px_at_50%_0%,rgba(139,92,246,0.14),transparent_70%)]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[560px] opacity-[0.35] [background-image:linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:72px_100%] [mask-image:linear-gradient(to_bottom,black,transparent)]"
+      />
+
+      <header className="mb-12 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-white/[0.12] bg-zinc-900">
             <Image
@@ -203,11 +234,8 @@ export default function PricingPage() {
             />
           </div>
           <div>
-            <h1 className="text-[22px] font-semibold tracking-tight text-zinc-50">Harga & Paket</h1>
-            <p className="mt-0.5 text-[13px] text-zinc-500">
-              Kuota prompt ITZ AI. Kuota aktif otomatis begitu pembayaran tercatat — tanpa
-              konfirmasi manual.
-            </p>
+            <h1 className="text-[20px] font-semibold tracking-tight text-zinc-50">ITZ AI</h1>
+            <p className="mt-0.5 text-[13px] text-zinc-500">Prompt marketplace · bayar sekali, pakai harian</p>
           </div>
         </div>
         <Link
@@ -218,173 +246,225 @@ export default function PricingPage() {
         </Link>
       </header>
 
+      {/* hero */}
+      <section className="mx-auto mb-10 max-w-[640px] text-center">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.12] bg-white/[0.04] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+          <Sparkles className="h-3 w-3 text-violet-300" /> Pricing
+        </span>
+        <h2 className="mt-4 text-[34px] font-semibold leading-[1.1] tracking-[-0.03em] text-white sm:text-[40px]">
+          Pilih paket,{" "}
+          <span className="bg-gradient-to-r from-violet-300 via-fuchsia-200 to-sky-300 bg-clip-text text-transparent">
+            kuota langsung aktif
+          </span>
+        </h2>
+        <p className="mx-auto mt-3 max-w-[520px] text-[14.5px] leading-relaxed text-zinc-400">
+          Kuota prompt ITZ AI aktif otomatis begitu pembayaran tercatat — tanpa konfirmasi manual.
+          Semua paket memakai model AI yang sama, bedanya hanya jumlah kuota dan masa aktif.
+        </p>
+      </section>
+
       {user && (
-        <section className="mb-7 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-[13px] text-zinc-400">
-          Kamu login sebagai{" "}
-          <span className="font-medium text-zinc-200">{user.display_name || user.username}</span>.
+        <section className="mx-auto mb-7 max-w-[640px] rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-center text-[13px] text-zinc-400">
+          Login sebagai{" "}
+          <span className="font-medium text-zinc-200">{user.display_name || user.username}</span>
           {typeof user.remaining === "number" ? (
             <>
-              {" "}
-              Sisa kuota saat ini{" "}
-              <span className="font-medium tabular-nums text-emerald-300">
-                {user.remaining}
-              </span>{" "}
-              prompt.
+              {" "}· sisa kuota hari ini{" "}
+              <span className="font-medium tabular-nums text-emerald-300">{user.remaining}</span>{" "}
+              prompt
             </>
           ) : (
-            <>
-              {" "}
-              Kuota akunmu <span className="text-zinc-300">tanpa batas</span>.
-            </>
+            <> · kuota akunmu <span className="text-zinc-300">tanpa batas</span></>
           )}
         </section>
       )}
 
       {error && (
-        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-[13px] text-red-300">
+        <p className="mx-auto max-w-[640px] rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-center text-[13px] text-red-300">
           Gagal memuat harga: {error}
         </p>
       )}
       {!error && !data && (
-        <p className="flex items-center gap-2 text-[13px] text-zinc-500">
+        <p className="flex items-center justify-center gap-2 text-[13px] text-zinc-500">
           <Loader2 className="h-4 w-4 animate-spin" /> Memuat paket...
         </p>
       )}
 
       {data && plans.length > 0 && (
-        <section
-          aria-label="Pilih paket"
-          role="radiogroup"
-          className="grid grid-cols-1 gap-3.5 sm:grid-cols-3"
-        >
+        <section aria-label="Pilih paket" className="grid grid-cols-1 content-start gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {plans.map((p) => {
-            const active = activeId === p.id;
-            const perPrompt = p.prompts > 0 ? Math.round(p.amount / p.prompts) : 0;
-            // Diskon aktif hanya kalau harga coret di atas harga akhir.
+            // Ikon + warna per paket: terkecil -> daun (hijau), terpopuler ->
+            // roket (emas), terbesar -> diamond (biru), sisanya layers.
+            const rank = plans.filter((x) => Number(x.prompts) < Number(p.prompts)).length;
+            const PlanIcon = p.popular
+              ? Rocket
+              : rank === 0
+                ? Leaf
+                : rank === plans.length - 1
+                  ? Gem
+                  : Layers;
+            const planIconCls = p.popular
+              ? "text-[#d4af37]"
+              : rank === 0
+                ? "text-emerald-400/90"
+                : rank === plans.length - 1
+                  ? "text-sky-400"
+                  : "text-zinc-300";
             const off =
               typeof p.discount_percent === "number" &&
               p.discount_percent > 0 &&
               typeof p.original_amount === "number" &&
               p.original_amount > p.amount;
-            return (
-              <motion.button
-                key={p.id}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                onClick={() => setSelected(p.id)}
-                whileHover={{ y: -3 }}
-                whileTap={{ scale: 0.98 }}
-                transition={{ type: "spring", stiffness: 340, damping: 26 }}
-                className={`relative overflow-hidden rounded-2xl border p-5 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${
-                  active
-                    ? "border-white bg-white/[0.08] shadow-[0_0_0_1px_rgba(255,255,255,0.15),0_16px_44px_-16px_rgba(255,255,255,0.22)]"
-                    : "border-white/[0.08] bg-[#111114] hover:border-white/[0.2] hover:bg-white/[0.03]"
+            const feats = planFeatures(p);
+            const card = (
+              <div
+                className={`flex h-full flex-col rounded-2xl p-6 ${
+                  p.popular ? "bg-[#0d0d12]" : "border border-white/[0.08] bg-[#111114]"
                 }`}
               >
-                {p.popular && !active && (
-                  <span className="absolute right-4 top-4 flex items-center gap-1 rounded border border-white/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-300">
-                    <Sparkles className="h-2.5 w-2.5" /> Populer
-                  </span>
-                )}
-                <AnimatePresence>
-                  {active && (
-                    <motion.span
-                      initial={{ scale: 0, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0, opacity: 0 }}
-                      className="absolute right-4 top-4 flex h-5 w-5 items-center justify-center rounded-full bg-white text-black"
-                    >
-                      <Check className="h-3 w-3" strokeWidth={3} />
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-                <p className="flex items-center gap-2 text-[13px] font-medium tracking-wide text-zinc-500">
-                  {p.label}
+                {/* label + badge diskon */}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-2 text-[13px] font-semibold tracking-wide text-zinc-300">
+                    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/[0.1] bg-white/[0.04] ${planIconCls}`}>
+                      <PlanIcon className="h-3.5 w-3.5" />
+                    </span>
+                    {p.label}
+                  </p>
                   {off && (
-                    <span className="rounded border border-emerald-400/25 bg-emerald-400/[0.07] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-300">
+                    <span className="rounded-full border border-emerald-400/25 bg-emerald-400/[0.07] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-300">
                       Hemat {p.discount_percent}%
                     </span>
                   )}
-                </p>
-                <p className="mt-3 text-[32px] font-semibold leading-none tracking-[-0.03em] tabular-nums text-white">
-                  {p.prompts}
-                  <span className="ml-1.5 text-[13px] font-normal text-zinc-500">prompt</span>
-                </p>
-                <p className="mt-3 flex items-baseline gap-2 border-t border-white/[0.07] pt-3">
-                  <span className="text-[17px] font-medium tabular-nums text-zinc-200">
+                </div>
+
+                {/* harga besar ala pricing LLM */}
+                <div className="mt-4 flex items-baseline gap-2">
+                  <span className="text-[34px] font-semibold leading-none tracking-[-0.03em] tabular-nums text-white">
                     {rupiah(p.amount)}
                   </span>
                   {off && (
-                    <span className="text-[13px] tabular-nums text-zinc-600 line-through">
+                    <span className="text-[14px] tabular-nums text-zinc-600 line-through">
                       {rupiah(p.original_amount!)}
                     </span>
                   )}
+                </div>
+                <p className="mt-1.5 text-[12.5px] text-zinc-500">
+                  sekali bayar · kuota {p.prompts} prompt/hari
                 </p>
-                <p className="mt-1 text-[12px] tabular-nums text-zinc-500">
-                  {perPrompt > 0 ? `≈ ${rupiah(perPrompt)} / prompt` : "Harga khusus"}
-                </p>
-              </motion.button>
+
+                {/* fitur paket */}
+                <ul className="mt-5 space-y-2.5 border-t border-white/[0.07] pt-5">
+                  {feats.map((f, i) => (
+                    <li key={i} className="flex items-start gap-2.5 text-[13.5px] leading-snug text-zinc-300">
+                      {f.icon ? (
+                        <f.icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                      ) : (
+                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400/80" strokeWidth={2.5} />
+                      )}
+                      <span>{f.text}</span>
+                    </li>
+                  ))}
+                  {/* masa aktif: digabung di daftar keterangan bawah, aksen oranye matte */}
+                  <li className="flex items-start gap-2.5 text-[13.5px] leading-snug">
+                    <Timer className="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-400/70" />
+                    <span className="text-orange-300/90">
+                      {p.days && p.days > 0 ? `${p.days} hari masa aktif` : "Masa aktif selamanya"}
+                    </span>
+                  </li>
+                </ul>
+
+                {/* CTA per kartu */}
+                <div className="mt-6 pt-1">
+                  {user ? (
+                    <motion.button
+                      whileHover={{ scale: 1.015 }}
+                      whileTap={{ scale: 0.985 }}
+                      onClick={() => createOrder(p)}
+                      disabled={submitting !== null}
+                      className={`flex h-11 w-full items-center justify-center gap-2 rounded-xl text-[14.5px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                        p.popular
+                          ? "bg-white text-black hover:bg-zinc-200"
+                          : "border border-white/[0.14] bg-white/[0.04] text-zinc-100 hover:bg-white/[0.09]"
+                      }`}
+                    >
+                      {submitting === p.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <QrCode className="h-4 w-4" />
+                      )}
+                      Langganan sekarang
+                    </motion.button>
+                  ) : (
+                    <Link
+                      href="/login"
+                      className={`flex h-11 w-full items-center justify-center gap-2 rounded-xl text-[14.5px] font-semibold transition-colors ${
+                        p.popular
+                          ? "bg-white text-black hover:bg-zinc-200"
+                          : "border border-white/[0.14] bg-white/[0.04] text-zinc-100 hover:bg-white/[0.09]"
+                      }`}
+                    >
+                      Login untuk membeli
+                    </Link>
+                  )}
+                </div>
+              </div>
+            );
+
+            return p.popular ? (
+              <motion.div
+                key={p.id}
+                whileHover={{ y: -3 }}
+                transition={{ type: "spring", stiffness: 340, damping: 26 }}
+                className="relative rounded-2xl bg-gradient-to-b from-violet-400/50 via-white/[0.09] to-transparent p-[1.5px] shadow-[0_24px_60px_-28px_rgba(139,92,246,0.45)]"
+              >
+                <span className="absolute -top-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white shadow-[0_8px_20px_-8px_rgba(139,92,246,0.7)]">
+                  <Sparkles className="h-2.5 w-2.5" /> Paling populer
+                </span>
+                {card}
+              </motion.div>
+            ) : (
+              <motion.div
+                key={p.id}
+                whileHover={{ y: -3 }}
+                whileTap={{ scale: 0.995 }}
+                transition={{ type: "spring", stiffness: 340, damping: 26 }}
+                className="rounded-2xl transition-shadow hover:shadow-[0_20px_48px_-28px_rgba(255,255,255,0.18)]"
+              >
+                {card}
+              </motion.div>
             );
           })}
         </section>
       )}
 
       {data && plans.length === 0 && (
-        <p className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-200">
+        <p className="mx-auto max-w-[640px] rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-center text-[13px] text-amber-200">
           Belum ada paket aktif. Hubungi admin{data.contact ? ` (${data.contact})` : ""}.
         </p>
       )}
 
       {data && plans.length > 0 && (
-        <section className="mt-7 flex flex-col items-center gap-3">
-          {user ? (
-            <>
-              <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={createOrder}
-                disabled={submitting || !chosen}
-                className="flex h-12 w-full max-w-[360px] items-center justify-center gap-2 rounded-xl bg-white text-[15px] font-semibold text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {submitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <QrCode className="h-4 w-4" />
-                )}
-                Ambil paket{chosen ? ` ${chosen.prompts} prompt` : ""}
-              </motion.button>
-              {data.order_note && (
-                <p className="max-w-[460px] text-center text-[12.5px] leading-relaxed text-zinc-500">
-                  {data.order_note}
-                </p>
-              )}
-            </>
-          ) : (
-            <Link
-              href="/login"
-              className="flex h-12 w-full max-w-[360px] items-center justify-center rounded-xl bg-white text-[15px] font-semibold text-black transition-colors hover:bg-zinc-200"
-            >
-              Login untuk membeli paket
-            </Link>
-          )}
-          {notice && (
-            <p className="max-w-[520px] text-center text-[13px] text-emerald-300">{notice}</p>
-          )}
-        </section>
+        <p className="mx-auto mt-6 max-w-[560px] text-center text-[12.5px] leading-relaxed text-zinc-600">
+          {data.order_note || "Semua pembayaran terverifikasi otomatis oleh sistem. Simpan bukti transfer sampai kuota menyala."}
+        </p>
       )}
 
-      <section className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-5">
-          <h2 className="mb-3 text-[14px] font-medium text-zinc-200">Cara pembelian</h2>
-          <ol className="list-decimal space-y-2 pl-5 text-[13.5px] leading-relaxed text-zinc-400">
-            {steps.map((s) => (
-              <li key={s}>{s}</li>
+      <section className="mx-auto mt-14 grid max-w-[900px] grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6">
+          <h3 className="mb-4 text-[15px] font-semibold text-zinc-100">Cara pembelian</h3>
+          <ol className="space-y-3 text-[13.5px] leading-relaxed text-zinc-400">
+            {steps.map((s, i) => (
+              <li key={i} className="flex gap-3">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-white/[0.14] text-[11px] font-semibold tabular-nums text-zinc-300">
+                  {i + 1}
+                </span>
+                <span>{s}</span>
+              </li>
             ))}
           </ol>
         </div>
-        <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-5">
-          <h2 className="mb-3 text-[14px] font-medium text-zinc-200">Pembayaran</h2>
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6">
+          <h3 className="mb-4 text-[15px] font-semibold text-zinc-100">Pembayaran</h3>
           {data?.payment_qris || data?.payment_instructions ? (
             <div className="space-y-3 text-[13.5px] leading-relaxed text-zinc-400">
               {data?.payment_qris && (
@@ -424,13 +504,13 @@ export default function PricingPage() {
       </section>
 
       {user && orders.length > 0 && (
-        <section className="mt-10">
-          <h2 className="mb-3 flex items-center gap-2 text-[15px] font-semibold text-zinc-200">
+        <section className="mx-auto mt-12 max-w-[900px]">
+          <h3 className="mb-3 flex items-center gap-2 text-[15px] font-semibold text-zinc-200">
             <Receipt className="h-4 w-4 text-zinc-500" /> Order kamu
-          </h2>
-          <div className="overflow-hidden rounded-xl border border-white/[0.08]">
+          </h3>
+          <div className="overflow-hidden rounded-2xl border border-white/[0.08]">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] border-collapse text-left">
+              <table className="w-full min-w-[640px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-white/[0.08] bg-white/[0.02]">
                     <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
@@ -449,17 +529,33 @@ export default function PricingPage() {
                 </thead>
                 <tbody className="divide-y divide-white/[0.06]">
                   {orders.map((o) => {
+                    const expiredNow = o.expired === true;
                     const badge =
                       o.status === "paid"
-                        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+                        ? expiredNow
+                          ? "border-zinc-500/20 bg-zinc-500/10 text-zinc-400"
+                          : "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
                         : o.status === "cancelled"
                           ? "border-red-500/20 bg-red-500/10 text-red-300"
                           : "border-amber-500/20 bg-amber-500/10 text-amber-300";
+                    const statusText =
+                      o.status === "paid"
+                        ? expiredNow
+                          ? "MASA AKTIF HABIS"
+                          : o.expires_in_days != null && o.expires_in_days > 0
+                            ? `AKTIF · sisa ${o.expires_in_days} hari`
+                            : "AKTIF"
+                        : o.status === "cancelled"
+                          ? "DIBATALKAN"
+                          : "BELUM DIBAYAR";
                     return (
                       <tr key={o.id}>
                         <td className="px-4 py-3 text-[13.5px] text-zinc-200">
                           {o.plan_label || o.plan_id}
-                          <span className="ml-1.5 text-zinc-500">· {o.prompts} prompt</span>
+                          <span className="ml-1.5 text-zinc-500">
+                            · {o.prompts} prompt
+                            {o.days && o.days > 0 ? ` · ${o.days} hari` : ""}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-[13.5px] tabular-nums text-zinc-300">
                           {rupiah(o.amount)}
@@ -468,11 +564,7 @@ export default function PricingPage() {
                           <span
                             className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${badge}`}
                           >
-                            {o.status === "paid"
-                              ? "AKTIF"
-                              : o.status === "cancelled"
-                                ? "DIBATALKAN"
-                                : "BELUM DIBAYAR"}
+                            {statusText}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-[12.5px] text-zinc-500">
@@ -529,15 +621,18 @@ export default function PricingPage() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
                   ITZ AI · Pembayaran
                 </p>
-                <h2 className="mt-3 text-[22px] font-semibold tracking-tight text-white">
+                <h3 className="mt-3 text-[22px] font-semibold tracking-tight text-white">
                   {payUrl ? "Selesaikan pembayaran" : "Scan untuk bayar"}
-                </h2>
+                </h3>
                 {chosen && (
                   <p className="mt-1.5 text-[14px] text-zinc-400">
                     {chosen.label} ·{" "}
                     <span className="font-medium tabular-nums text-zinc-200">
                       {rupiah(chosen.amount)}
                     </span>
+                    {chosen.days && chosen.days > 0 ? (
+                      <span className="text-zinc-600"> · masa aktif {chosen.days} hari</span>
+                    ) : null}
                   </p>
                 )}
 

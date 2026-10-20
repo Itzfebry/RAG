@@ -21,6 +21,7 @@ try:
         supabase_client,
     )
     from backend.database.knowledge_repo import KnowledgeMixin
+    from backend.database.quota_repo import QuotaMixin
     from backend.database.rate_limit_repo import RateLimitMixin
     from backend.database.settings_repo import (
         RAG_SETTING_DEFAULTS,
@@ -45,6 +46,7 @@ except ImportError:
             supabase_client,
         )
         from database.knowledge_repo import KnowledgeMixin  # type: ignore
+        from database.quota_repo import QuotaMixin  # type: ignore
         from database.rate_limit_repo import RateLimitMixin  # type: ignore
         from database.settings_repo import (  # type: ignore
             RAG_SETTING_DEFAULTS,
@@ -73,6 +75,7 @@ except ImportError:
             supabase_client,
         )
         from database.knowledge_repo import KnowledgeMixin  # type: ignore
+        from database.quota_repo import QuotaMixin  # type: ignore
         from database.rate_limit_repo import RateLimitMixin  # type: ignore
         from database.settings_repo import (  # type: ignore
             RAG_SETTING_DEFAULTS,
@@ -92,6 +95,7 @@ class DatabaseService(
     UsersMixin,
     ChatMixin,
     BillingMixin,
+    QuotaMixin,
     UsageMixin,
 ):
     """Facade: agregasi seluruh repo domain. Public API tidak berubah."""

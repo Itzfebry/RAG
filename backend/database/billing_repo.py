@@ -1,6 +1,38 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
+
+MAX_PLAN_DAYS = 3650
+
+
+def parse_dt(value: Any) -> datetime | None:
+    """Parse ISO timestamp (mis. order.paid_at). None bila tidak valid."""
+    try:
+        s = str(value or "").strip()
+        return datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
+    except Exception:
+        return None
+
+
+def order_expiry(order: dict[str, Any]) -> tuple[bool, datetime | None]:
+    """(expired, expiry_dt) untuk satu order.
+
+    Masa aktif dihitung dari `paid_at + days` hari. days = 0/kosong (order
+    legacy) => tidak pernah expired. Timestamp paid_at disimpan naive lokal;
+    bila punya tzinfo, bandingkan di zona yang sama.
+    """
+    try:
+        days = int(order.get("days") or 0)
+    except Exception:
+        days = 0
+    if days <= 0:
+        return False, None
+    paid = parse_dt(order.get("paid_at"))
+    if paid is None:
+        return False, None
+    expiry = paid + timedelta(days=days)
+    now = datetime.now(expiry.tzinfo) if expiry.tzinfo else datetime.now()
+    return now >= expiry, expiry
 
 
 class BillingMixin:
@@ -42,6 +74,7 @@ class BillingMixin:
             "plan_id": str(plan.get("id")),
             "plan_label": str(plan.get("label") or plan.get("id")),
             "prompts": int(plan.get("prompts") or 0),
+            "days": int(plan.get("days") or 0),
             "amount": int(plan.get("amount") or 0),
             "status": "pending",
             "note": note,
