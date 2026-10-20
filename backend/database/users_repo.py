@@ -328,8 +328,20 @@ class UsersMixin:
 
     @staticmethod
     def increment_prompt_usage(user_id: str) -> dict[str, Any] | None:
-        from backend.database.db import DatabaseService, _counter_lock
+        """Inkrement kuota terpakai ATOMIK: dihitung di SQL (RPC `increment_prompt_usage`).
 
+        Menghilangkan lost update read-modify-write: dua request paralel kini
+        masing-masing menambah counter, bukan saling menimpa. Fallback lokal
+        memakai pola lama di bawah `_counter_lock` (per-process saja).
+        """
+        from backend.database.db import DatabaseService, _counter_lock, logger, supabase_client
+
+        if supabase_client:
+            try:
+                supabase_client.rpc("increment_prompt_usage", {"p_user_id": user_id}).execute()
+                return DatabaseService.get_user_by_id(user_id)
+            except Exception as e:
+                logger.warning(f"[quota] RPC increment_prompt_usage gagal, fallback lokal: {e}")
         with _counter_lock:
             u = DatabaseService.get_user_by_id(user_id)
             if not u:

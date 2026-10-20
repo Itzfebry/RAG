@@ -332,9 +332,12 @@ async def stream_chat(payload: ChatRequest, request: Request):
         limit = max(0, int(s.get("trial_prompts", 3)))
         if limit == 0:
             raise HTTPException(status_code=401, detail="Login diperlukan - hubungi admin untuk akses")
-        used = DatabaseService.get_trial_used(ip)
-        if used >= limit:
+        # Reservasi atomik (cek-batas + inkrement satu statement): request
+        # paralel dari IP yang sama tidak bisa semua lolos gate. Refund bila
+        # provider gagal/tidak menjawab.
+        if not DatabaseService.try_consume_trial_prompt(ip, limit):
             raise HTTPException(status_code=403, detail="Trial habis - login atau hubungi admin untuk akses")
+        reservation = {"mode": "trial"}
 
     budget_stats = DatabaseService.get_token_stats(1)
     if budget_stats.get("budget", 0) > 0 and (budget_stats.get("remaining") or 0) <= 0:
@@ -358,6 +361,14 @@ async def stream_chat(payload: ChatRequest, request: Request):
     t0 = _t.perf_counter()
 
     usage_owner = str(user.get("id")) if user is not None else f"trial:{ip}"
+
+    def _refund_reservation() -> None:
+        """Kembalikan reservasi kuota (harian user / trial IP)."""
+        with contextlib.suppress(Exception):
+            if reservation is not None and reservation.get("mode") == "trial":
+                DatabaseService.refund_trial_prompt(ip)
+            else:
+                DatabaseService.refund_daily_prompt(str(user.get("id")))
 
     # Identifikasi model aktif untuk pencatatan token (input vs output tetap
     # dua metrik terpisah; model hanya identifikasi tambahan).
@@ -403,34 +414,26 @@ async def stream_chat(payload: ChatRequest, request: Request):
                 streamed = streamed or (ev is not None and "content" in ev)
                 yield chunk
         except asyncio.CancelledError:
-            # Client membatalkan stream: kuota harian direservasi namun belum
-            # ada konten yang sampai -> refund agar tidak hangus. Bila jawaban
+            # Client membatalkan stream: kuota direservasi namun belum ada
+            # konten yang sampai -> refund agar tidak hangus. Bila jawaban
             # parsial sudah diterima, biarkan terpakai.
             if reservation is not None and not streamed:
-                with contextlib.suppress(Exception):
-                    DatabaseService.refund_daily_prompt(str(user.get("id")))
+                _refund_reservation()
             raise
         except Exception:
             # Kegagalan provider (retry/timeout/cancel): kuota harian yang
             # sudah direservasi dikembalikan agar tidak terpotong ganda.
             if reservation is not None:
-                with contextlib.suppress(Exception):
-                    DatabaseService.refund_daily_prompt(str(user.get("id")))
+                _refund_reservation()
             raise
-        # Kuota dipotong saat reservasi (jalur harian) atau setelah jawaban
-        # asli provider terkirim (jalur legacy/trial) - tidak pernah dobel.
+        # Kuota dipotong saat reservasi (jalur harian/trial) atau setelah jawaban
+        # asli provider terkirim (jalur legacy) - tidak pernah dobel.
         if not answered and reservation is not None:
             # Provider tidak menjawab (fallback error): refund kuota harian.
-            with contextlib.suppress(Exception):
-                DatabaseService.refund_daily_prompt(str(user.get("id")))
+            _refund_reservation()
         elif answered and reservation is None and user is not None:
             try:
                 DatabaseService.increment_prompt_usage(str(user.get("id")))
-            except Exception as e:
-                logger.warning(f"[quota] gagal mencatat pemakaian: {e}")
-        elif answered and user is None:
-            try:
-                DatabaseService.increment_trial(ip)
             except Exception as e:
                 logger.warning(f"[quota] gagal mencatat pemakaian: {e}")
         try:

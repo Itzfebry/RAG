@@ -80,6 +80,72 @@ def test_set_order_status_paid_true_once_then_false(monkeypatch):
     assert ("status", "pending") in fake.filters
 
 
+# -------------------------------------------- trial consume berbasis RPC atomik
+
+
+class _AtomicTrialSupa:
+    """Fake Supabase RPC consume_trial_prompt dengan counter nyata (atomik)."""
+
+    def __init__(self, limit: int):
+        self.used = 0
+        self.limit = limit
+
+    def rpc(self, _name, params):
+        self.used += 1
+        won = self.used <= self.limit
+
+        class _R:
+            data = bool(won)
+
+        return type("R", (), {"execute": lambda self: _R()})()
+
+
+def test_try_consume_trial_prompt_atomic_rpc(monkeypatch):
+    from backend.database.db import DatabaseService
+
+    fake = _AtomicTrialSupa(limit=2)
+    monkeypatch.setattr("backend.database.db.supabase_client", fake)
+    monkeypatch.setattr(
+        "backend.database.db._read_local_json",
+        lambda *a, **k: __import__("pytest").fail("fallback tak boleh jalan saat RPC ok"),
+    )
+
+    assert DatabaseService.try_consume_trial_prompt("1.2.3.4", 2) is True
+    assert DatabaseService.try_consume_trial_prompt("1.2.3.4", 2) is True
+    # Permintaan ke-3 melewati limit: RPC menyatakan false
+    assert DatabaseService.try_consume_trial_prompt("1.2.3.4", 2) is False
+    assert fake.used == 3
+
+
+def _write_local_json_stub(path, data):
+    import pathlib
+
+    p = pathlib.Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(__import__("json").dumps(data), encoding="utf-8")
+
+
+def test_trial_fallback_local_json_respects_limit(monkeypatch, tmp_path):
+    """Tanpa Supabase: gate trial tetap bekerja lewat file JSON lokal."""
+    import json
+
+    from backend.database.db import DatabaseService
+
+    monkeypatch.setattr("backend.database.db.supabase_client", None)
+    monkeypatch.setattr(
+        DatabaseService,
+        "_trial_file",
+        staticmethod(lambda: str(tmp_path / "trial_usage.json")),
+        raising=False,
+    )
+    monkeypatch.setattr("backend.database.db._write_local_json", _write_local_json_stub)
+
+    assert DatabaseService.try_consume_trial_prompt("5.6.7.8", 1) is True
+    assert DatabaseService.try_consume_trial_prompt("5.6.7.8", 1) is False
+    data = json.loads((tmp_path / "trial_usage.json").read_text(encoding="utf-8"))
+    assert data["5.6.7.8"] == 1
+
+
 # ------------------------------------- daily quota: expired plan must gate chat
 
 
