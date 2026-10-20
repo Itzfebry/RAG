@@ -168,4 +168,16 @@ if __name__ == "__main__":
     # UVICORN_RELOAD=0 kalau ingin server stabil (tanpa auto-reload - cocok
     # saat sedang dipakai chat; reload bikin server mati beberapa detik)
     _reload = os.getenv("UVICORN_RELOAD", "1") == "1"
-    uvicorn.run("backend.api.main:app", host="0.0.0.0", port=settings.PORT, reload=_reload)
+    if _reload:
+        # data/storage di dalam repo ditulis runtime (rate limit, lockout,
+        # session, settings) — tanpa exclude, tiap penulisan memicu restart
+        # dan request yang sedang berjalan di-abort ("Gagal terhubung").
+        uvicorn.run(
+            "backend.api.main:app",
+            host="0.0.0.0",
+            port=settings.PORT,
+            reload=True,
+            reload_excludes=["data", "logs"],
+        )
+    else:
+        uvicorn.run("backend.api.main:app", host="0.0.0.0", port=settings.PORT)
