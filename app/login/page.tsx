@@ -8,6 +8,11 @@ import { AlertCircle, Loader2, Zap, MessageSquare, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
+import { ApiError, apiErrorMessage, fetchApi, tryFetch } from "@/lib/fetch-api";
+
+type LoginResponse = { email_verified?: boolean; email?: string };
+type RegisterResponse = { email_sent?: boolean };
+type AuthJson = { detail?: unknown; message?: string };
 
 const VALUE_POINTS = [
   {
@@ -63,28 +68,18 @@ export default function UserLoginPage() {
       }
     } catch {}
     // Tampilkan tombol Google hanya jika backend sudah dikonfigurasi.
-    fetch("/api/python/auth/google-status")
-      .then(async (r) => {
-        if (r.ok) {
-          const j = await r.json();
-          setGoogleEnabled(Boolean(j.enabled));
-        }
-      })
-      .catch(() => {});
+    void tryFetch<{ enabled?: unknown }>("/api/python/auth/google-status").then((r) => {
+      if (r.ok && r.data.enabled) setGoogleEnabled(Boolean(r.data.enabled));
+    });
   }, []);
 
   // Layar verifikasi perlu email akun. Kalau belum ada di state (mis. halaman
   // di-reload, atau redirect dari /chat), ambil dari sesi login.
   useEffect(() => {
     if (mode !== "verify" || email) return;
-    fetch("/api/python/user/me")
-      .then(async (r) => {
-        if (r.ok) {
-          const j = await r.json();
-          if (j.email) setEmail(j.email);
-        }
-      })
-      .catch(() => {});
+    void tryFetch<{ email?: string }>("/api/python/user/me").then((r) => {
+      if (r.ok && r.data.email) setEmail(r.data.email);
+    });
   }, [mode, email]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -92,30 +87,29 @@ export default function UserLoginPage() {
     setIsLoading(true);
     setAuthError("");
     try {
-      const res = await fetch("/api/python/user/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim().toLowerCase(), password }),
-      });
-      const data = await res.json().catch(() => ({}) as any);
-      if (res.ok) {
+      const r = await tryFetch<LoginResponse>(
+        "/api/python/user/login",
+        { json: { username: username.trim().toLowerCase(), password } },
+        "Login gagal",
+      );
+      if (r.ok) {
         try {
           if (rememberMe) localStorage.setItem(REMEMBER_KEY, username.trim().toLowerCase());
           else localStorage.removeItem(REMEMBER_KEY);
           sessionStorage.setItem("itz_welcome", "1");
         } catch {}
         // Email belum diverifikasi -> arahkan ke layar verifikasi, jangan ke chat.
-        if (data?.email_verified === false && data?.email) {
-          setEmail(String(data.email));
+        if (r.data.email_verified === false && r.data.email) {
+          setEmail(String(r.data.email));
           setOtpCode("");
-          setInfoMsg(`Kode verifikasi dikirim ke ${data.email}.`);
+          setInfoMsg(`Kode verifikasi dikirim ke ${r.data.email}.`);
           setMode("verify");
           return;
         }
         router.push("/chat");
         router.refresh();
       } else {
-        setAuthError(typeof data?.detail === "string" ? data.detail : "Login gagal");
+        setAuthError(r.error);
       }
     } catch {
       setAuthError("Gagal terhubung ke server");
@@ -137,20 +131,21 @@ export default function UserLoginPage() {
     }
     setIsLoading(true);
     try {
-      const res = await fetch("/api/python/user/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: username.trim().toLowerCase(),
-          email: email.trim().toLowerCase(),
-          password,
-          display_name: displayName.trim() || null,
-        }),
-      });
-      const data = await res.json().catch(() => ({}) as any);
-      if (res.ok) {
+      const r = await tryFetch<RegisterResponse>(
+        "/api/python/user/register",
+        {
+          json: {
+            username: username.trim().toLowerCase(),
+            email: email.trim().toLowerCase(),
+            password,
+            display_name: displayName.trim() || null,
+          },
+        },
+        "Pendaftaran gagal",
+      );
+      if (r.ok) {
         setOtpCode("");
-        if (data?.email_sent === false) {
+        if (r.data.email_sent === false) {
           setAuthError(
             "Akun dibuat, tapi email verifikasi gagal dikirim. Tekan 'Kirim ulang kode'.",
           );
@@ -159,8 +154,7 @@ export default function UserLoginPage() {
         }
         setMode("verify");
       } else {
-        const detail = data?.detail;
-        setAuthError(typeof detail === "string" ? detail : "Pendaftaran gagal");
+        setAuthError(r.error);
       }
     } catch {
       setAuthError("Gagal terhubung ke server");
@@ -170,16 +164,21 @@ export default function UserLoginPage() {
   };
 
   const postJson = async (path: string, body: object) => {
-    const res = await fetch(`/api/python${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}) as any);
-    return { ok: res.ok, data };
+    try {
+      const data = await fetchApi<AuthJson>(`/api/python${path}`, { json: body });
+      return { ok: true, data };
+    } catch (e) {
+      // Network failure: helper memakai pesan default "Gagal terhubung ke server"
+      // sebagai detail agar errMsg() menampilkan pesan yang sama seperti catch lama.
+      const errData =
+        e instanceof ApiError && e.data !== null
+          ? (e.data as AuthJson)
+          : { detail: apiErrorMessage(e, "Gagal terhubung ke server") };
+      return { ok: false, data: errData };
+    }
   };
 
-  const errMsg = (data: any, fallback: string) =>
+  const errMsg = (data: AuthJson, fallback: string) =>
     typeof data?.detail === "string" ? data.detail : fallback;
 
   const handleVerify = async (e: React.FormEvent) => {
@@ -211,10 +210,13 @@ export default function UserLoginPage() {
     setAuthError("");
     setInfoMsg("");
     try {
-      const res = await fetch("/api/python/user/verify-email/send", { method: "POST" });
-      const data = await res.json().catch(() => ({}) as any);
-      if (res.ok) setInfoMsg("Kode baru sudah dikirim.");
-      else setAuthError(errMsg(data, "Gagal mengirim ulang kode"));
+      const r = await tryFetch<AuthJson>(
+        "/api/python/user/verify-email/send",
+        { method: "POST" },
+        "Gagal mengirim ulang kode",
+      );
+      if (r.ok) setInfoMsg("Kode baru sudah dikirim.");
+      else setAuthError(r.error);
     } catch {
       setAuthError("Gagal terhubung ke server");
     }
@@ -288,15 +290,18 @@ export default function UserLoginPage() {
     setIsGoogleLoading(true);
     setAuthError("");
     try {
-      const res = await fetch("/api/python/auth/google-login");
-      const data = await res.json();
+      const data = await fetchApi<{ url?: string } & AuthJson>(
+        "/api/python/auth/google-login",
+        {},
+        { fallbackError: "Gagal terhubung ke server" },
+      );
       if (data.url) {
         window.location.href = data.url;
       } else {
-        setAuthError(typeof data?.detail === "string" ? data.detail : "Gagal memulai login Google");
+        setAuthError(typeof data.detail === "string" ? data.detail : "Gagal memulai login Google");
       }
-    } catch {
-      setAuthError("Gagal terhubung ke server");
+    } catch (e) {
+      setAuthError(apiErrorMessage(e, "Gagal terhubung ke server"));
     } finally {
       setIsGoogleLoading(false);
     }

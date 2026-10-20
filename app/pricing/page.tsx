@@ -16,6 +16,7 @@ import {
   Receipt,
   MessageCircle,
 } from "lucide-react";
+import { ApiError, apiErrorMessage, fetchApi, tryFetch } from "@/lib/fetch-api";
 
 export type Plan = {
   id: string;
@@ -71,26 +72,29 @@ export default function PricingPage() {
   const [payUrl, setPayUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/python/pricing")
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`Server ${r.status}`);
-        setData((await r.json()) as PricingData);
-      })
-      .catch((e) => setError(String(e.message || e)));
+    fetchApi<PricingData>("/api/python/pricing")
+      .then((d) => setData(d))
+      .catch((e) => {
+        // HTTP gagal -> pesan "Server <status>" seperti versi lama;
+        // koneksi gagal langsung menampilkan fallback Indonesia.
+        if (e instanceof ApiError && e.status > 0) {
+          setError(`Server ${e.status}`);
+        } else {
+          setError(apiErrorMessage(e, "Gagal terhubung ke server"));
+        }
+      });
   }, []);
 
   useEffect(() => {
-    fetch("/api/python/user/me")
-      .then(async (r) => (r.ok ? setUser(await r.json()) : null))
+    fetchApi<UserInfo>("/api/python/user/me")
+      .then(setUser)
       .catch(() => {});
   }, []);
 
   const loadOrders = React.useCallback(() => {
-    fetch("/api/python/user/orders")
-      .then(async (r) => {
-        if (!r.ok) return;
-        const j = await r.json();
-        setOrders(Array.isArray(j.items) ? j.items : []);
+    fetchApi<{ items?: unknown[] }>("/api/python/user/orders")
+      .then((j) => {
+        setOrders(Array.isArray(j.items) ? (j.items as OrderRow[]) : []);
       })
       .catch(() => {});
   }, []);
@@ -111,18 +115,19 @@ export default function PricingPage() {
     setSubmitting(true);
     setNotice(null);
     try {
-      const r = await fetch("/api/python/user/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan_id: chosen.id }),
-      });
-      const j = await r.json().catch(() => ({}));
+      const r = await tryFetch<{
+        order?: OrderRow | null;
+        payment_url?: string;
+        detail?: string;
+      }>("/api/python/user/orders", { json: { plan_id: chosen.id } }, "Gagal membuat order");
       if (!r.ok) {
-        setNotice(typeof j.detail === "string" ? j.detail : "Gagal membuat order");
+        setNotice(r.error);
         return;
       }
-      setOrder((j.order as OrderRow) ?? null);
-      setPayUrl(typeof j.payment_url === "string" && j.payment_url ? j.payment_url : null);
+      setOrder(r.data.order ?? null);
+      setPayUrl(
+        typeof r.data.payment_url === "string" && r.data.payment_url ? r.data.payment_url : null,
+      );
       setShowQris(true);
       loadOrders();
     } catch {
@@ -137,13 +142,9 @@ export default function PricingPage() {
   useEffect(() => {
     if (!showQris || !order) return;
     const tick = () => {
-      fetch("/api/python/user/orders")
-        .then(async (r) => {
-          if (!r.ok) return;
-          const j = await r.json();
-          const row = (Array.isArray(j.items) ? j.items : []).find(
-            (o: OrderRow) => o.id === order.id,
-          );
+      fetchApi<{ items?: OrderRow[] }>("/api/python/user/orders")
+        .then((j) => {
+          const row = (Array.isArray(j.items) ? j.items : []).find((o) => o.id === order.id);
           if (row && row.status === "paid") {
             setShowQris(false);
             setOrder(null);
@@ -151,10 +152,8 @@ export default function PricingPage() {
               `Pembayaran tercatat otomatis. Kuota ${chosen ? `${chosen.prompts} prompt` : "paket"} sudah aktif.`,
             );
             loadOrders();
-            fetch("/api/python/user/me")
-              .then(async (r2) => {
-                if (r2.ok) setUser(await r2.json());
-              })
+            fetchApi<UserInfo>("/api/python/user/me")
+              .then(setUser)
               .catch(() => {});
           }
         })

@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
+import { ApiError, fetchApi } from "@/lib/fetch-api";
 import { SectionHeader } from "../SectionHeader";
 import {
   cardBase,
@@ -173,12 +174,12 @@ export function PricingTab({
   const loadOrders = useCallback(async () => {
     setLoadingOrders(true);
     try {
-      const r = await fetch("/api/python/admin/orders");
-      if (r.ok) {
-        const j = await r.json();
-        setOrders(Array.isArray(j.items) ? j.items : []);
-        if (j.counts) setCounts(j.counts);
-      }
+      const j = await fetchApi<{
+        items?: OrderRow[];
+        counts?: { pending: number; paid: number; cancelled: number };
+      }>("/api/python/admin/orders");
+      setOrders(Array.isArray(j.items) ? j.items : []);
+      if (j.counts) setCounts(j.counts);
     } catch {}
     setLoadingOrders(false);
   }, []);
@@ -190,24 +191,24 @@ export function PricingTab({
   const act = async (id: string, action: "confirm" | "cancel") => {
     setBusyId(id);
     try {
-      const r = await fetch(`/api/python/admin/orders/${id}/${action}`, { method: "POST" });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        pushToast(
-          "error",
-          action === "confirm" ? "Gagal konfirmasi" : "Gagal batalkan",
-          typeof j.detail === "string" ? j.detail : `HTTP ${r.status}`,
-        );
-        return;
-      }
+      await fetchApi(`/api/python/admin/orders/${id}/${action}`, { method: "POST" });
       pushToast(
         "success",
         action === "confirm" ? "Order dikonfirmasi" : "Order dibatalkan",
         action === "confirm" ? "Kuota user sudah ditambahkan." : undefined,
       );
       await loadOrders();
-    } catch {
-      pushToast("error", "Gagal", "Tidak bisa menghubungi backend");
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0) {
+        const d = (e.data ?? {}) as { detail?: unknown };
+        pushToast(
+          "error",
+          action === "confirm" ? "Gagal konfirmasi" : "Gagal batalkan",
+          typeof d.detail === "string" ? d.detail : `HTTP ${e.status}`,
+        );
+      } else {
+        pushToast("error", "Gagal", "Tidak bisa menghubungi backend");
+      }
     } finally {
       setBusyId(null);
     }

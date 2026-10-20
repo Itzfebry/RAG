@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { apiErrorMessage, fetchApi } from "@/lib/fetch-api";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -23,24 +24,16 @@ export default function AdminLoginPage() {
     setAuthError("");
     setIsLoading(true);
     try {
-      const res = await fetch("/api/python/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      if (res.ok) {
-        router.push("/admin");
-        router.refresh();
-      } else {
-        const data = await res.json().catch(() => ({}) as any);
-        const msg =
-          typeof (data as any).detail === "string"
-            ? (data as any).detail
-            : JSON.stringify((data as any).detail || "Login gagal");
-        setAuthError(msg);
-      }
-    } catch {
-      setAuthError("Gagal terhubung ke server auth");
+      const data = await fetchApi<{ detail?: unknown }>(
+        "/api/python/admin/login",
+        { json: { username, password } },
+        { fallbackError: "Gagal terhubung ke server auth" },
+      );
+      router.push("/admin");
+      router.refresh();
+    } catch (e) {
+      const msg = apiErrorMessage(e, "Login gagal");
+      setAuthError(msg);
     } finally {
       setIsLoading(false);
     }

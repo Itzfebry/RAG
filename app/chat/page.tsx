@@ -10,12 +10,34 @@ import ChatHistoryPanel, { ChatSummary } from "@/components/chat/ChatHistoryPane
 import OnboardingTour, { TourStep } from "@/components/chat/OnboardingTour";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, Info, X } from "lucide-react";
+import { ApiError, fetchApi, tryFetch } from "@/lib/fetch-api";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   durationMs?: number;
 }
+
+type Me = {
+  username: string;
+  display_name?: string | null;
+  email?: string | null;
+  email_verified?: boolean;
+  max_prompts: number;
+  prompts_used: number;
+  remaining: number | null;
+  has_password?: boolean;
+  goal?: string;
+  style_id?: string;
+  gender?: string;
+};
+
+type TrialInfo = {
+  trial_prompts: number;
+  used: number;
+  remaining: number;
+  allowed: boolean;
+};
 
 const MAX_HISTORY_MESSAGES = 20;
 
@@ -159,11 +181,8 @@ export default function ChatPage() {
   }, [infoOpen]);
   const refreshSuggestions = useCallback(async () => {
     try {
-      const r = await fetch("/api/python/suggestions?limit=3");
-      if (r.ok) {
-        const j = await r.json();
-        if (Array.isArray(j.suggestions) && j.suggestions.length) setSuggestions(j.suggestions);
-      }
+      const j = await fetchApi<{ suggestions?: string[] }>("/api/python/suggestions?limit=3");
+      if (Array.isArray(j.suggestions) && j.suggestions.length) setSuggestions(j.suggestions);
     } catch {}
   }, []);
   useEffect(() => {
@@ -184,55 +203,47 @@ export default function ChatPage() {
   const [nowTick, setNowTick] = useState(0);
 
   useEffect(() => {
-    fetch("/api/python/user/me")
-      .then(async (r) => {
-        if (r.ok) {
-          const j = await r.json();
-          // Gate verifikasi email: user login dengan email belum terverifikasi
-          // diarahkan ke layar verifikasi sebelum bisa chat.
-          if (j.email && j.email_verified === false) {
-            window.location.href = "/login?mode=verify";
-            return;
-          }
-          setUserInfo(j);
-          // Instruksi sekali per akun: tampil kalau akun ini belum pernah
-          // melihat tour (flag permanen di localStorage, termasuk saat klik Lewati).
-          try {
-            const TOUR_KEY = `itz_onboarding_done:${j.username}`;
-            if (!localStorage.getItem(TOUR_KEY)) {
-              tourUserRef.current = j.username;
-              window.setTimeout(() => {
-                const valid = TOUR_STEPS.filter((s) => document.getElementById(s.target));
-                if (valid.length) {
-                  setTourSteps(valid);
-                  setTourOpen(true);
-                }
-              }, 900);
-            }
-          } catch {}
-          // sapaan selamat datang setelah login (flag dari /login atau ?welcome=1 dari OAuth Google)
-          try {
-            const flagged = sessionStorage.getItem("itz_welcome") === "1";
-            const qp = new URLSearchParams(window.location.search).has("welcome");
-            if (flagged || qp) {
-              sessionStorage.removeItem("itz_welcome");
-              if (qp) window.history.replaceState({}, "", window.location.pathname);
-              if (j.display_name) setWelcomeName(j.display_name);
-            }
-          } catch {}
+    fetchApi<Me>("/api/python/user/me")
+      .then((j) => {
+        // Gate verifikasi email: user login dengan email belum terverifikasi
+        // diarahkan ke layar verifikasi sebelum bisa chat.
+        if (j.email && j.email_verified === false) {
+          window.location.href = "/login?mode=verify";
           return;
         }
-        // guest -> fetch trial info
-        const t = await fetch("/api/python/trial")
-          .then((x) => x.json())
-          .catch(() => null);
-        if (t) setTrialInfo(t);
+        setUserInfo(j);
+        // Instruksi sekali per akun: tampil kalau akun ini belum pernah
+        // melihat tour (flag permanen di localStorage, termasuk saat klik Lewati).
+        try {
+          const TOUR_KEY = `itz_onboarding_done:${j.username}`;
+          if (!localStorage.getItem(TOUR_KEY)) {
+            tourUserRef.current = j.username;
+            window.setTimeout(() => {
+              const valid = TOUR_STEPS.filter((s) => document.getElementById(s.target));
+              if (valid.length) {
+                setTourSteps(valid);
+                setTourOpen(true);
+              }
+            }, 900);
+          }
+        } catch {}
+        // sapaan selamat datang setelah login (flag dari /login atau ?welcome=1 dari OAuth Google)
+        try {
+          const flagged = sessionStorage.getItem("itz_welcome") === "1";
+          const qp = new URLSearchParams(window.location.search).has("welcome");
+          if (flagged || qp) {
+            sessionStorage.removeItem("itz_welcome");
+            if (qp) window.history.replaceState({}, "", window.location.pathname);
+            if (j.display_name) setWelcomeName(j.display_name);
+          }
+        } catch {}
       })
       .catch(async () => {
-        const t = await fetch("/api/python/trial")
-          .then((x) => x.json())
-          .catch(() => null);
-        if (t) setTrialInfo(t);
+        // guest -> fetch trial info
+        try {
+          const t = await fetchApi<TrialInfo>("/api/python/trial");
+          setTrialInfo(t);
+        } catch {}
       });
   }, []);
 
@@ -251,17 +262,17 @@ export default function ChatPage() {
 
   const doLogout = async () => {
     setConfirmLogout(false);
-    try {
-      await fetch("/api/python/user/logout", { method: "POST" });
-    } catch {}
+    await fetchApi("/api/python/user/logout", { method: "POST" }).catch(() => {});
     window.location.href = "/login";
   };
 
   const loadChatList = useCallback(async () => {
     try {
-      const r = await fetch("/api/python/user/chats");
-      if (!r.ok) return;
-      const j = await r.json();
+      const j = await fetchApi<{
+        items?: ChatSummary[];
+        limit?: number;
+        retention_days?: number;
+      }>("/api/python/user/chats");
       setChatList(j.items || []);
       if (typeof j.limit === "number") setChatLimit(j.limit);
       if (typeof j.retention_days === "number") setChatRetention(j.retention_days);
@@ -275,34 +286,25 @@ export default function ChatPage() {
   const openChat = async (id: string) => {
     if (isLoading) return;
     try {
-      const r = await fetch(`/api/python/user/chats/${id}`);
-      if (!r.ok) {
-        setError("Chat tidak ditemukan");
-        return;
-      }
-      const j = await r.json();
-      setMessages(
-        (j.messages || []).map((m: { role: "user" | "assistant"; content: string }) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      );
+      const j = await fetchApi<{
+        messages?: { role: "user" | "assistant"; content: string }[];
+      }>(`/api/python/user/chats/${id}`);
+      setMessages((j.messages || []).map((m) => ({ role: m.role, content: m.content })));
       setActiveChatId(id);
       setError(null);
       setHistoryOpen(false);
-    } catch {
-      setError("Gagal membuka chat");
+    } catch (e) {
+      // HTTP gagal -> chat tidak ditemukan; koneksi gagal -> pesan umum.
+      setError(
+        e instanceof ApiError && e.status > 0 ? "Chat tidak ditemukan" : "Gagal membuka chat",
+      );
     }
   };
 
   const deleteChat = async (id: string) => {
     // Konfirmasi hapus ditangani ChatHistoryPanel (dialog sendiri).
     try {
-      const r = await fetch(`/api/python/user/chats/${id}`, { method: "DELETE" });
-      if (!r.ok) {
-        setError("Gagal menghapus chat");
-        return;
-      }
+      await fetchApi(`/api/python/user/chats/${id}`, { method: "DELETE" });
       if (activeChatId === id) {
         setActiveChatId(null);
         setMessages([]);
@@ -339,13 +341,8 @@ export default function ChatPage() {
     setProfileMsg(null);
     setProfileOpen(true);
     if (styleOptions.length === 0) {
-      fetch("/api/python/user/styles")
-        .then(async (r) => {
-          if (r.ok) {
-            const j = await r.json();
-            setStyleOptions(j.styles || []);
-          }
-        })
+      fetchApi<{ styles?: typeof styleOptions }>("/api/python/user/styles")
+        .then((j) => setStyleOptions(j.styles || []))
         .catch(() => {});
     }
   }, [userInfo, styleOptions.length]);
@@ -359,14 +356,16 @@ export default function ChatPage() {
     setPwSaving(true);
     setPwMsg(null);
     try {
-      const r = await fetch("/api/python/user/password", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ current_password: pwOld || null, new_password: pwNew }),
-      });
-      const j = await r.json().catch(() => ({}));
+      const r = await tryFetch<{ detail?: string }>(
+        "/api/python/user/password",
+        {
+          method: "PUT",
+          json: { current_password: pwOld || null, new_password: pwNew },
+        },
+        "Gagal mengubah sandi",
+      );
       if (!r.ok) {
-        setPwMsg(typeof j.detail === "string" ? j.detail : "Gagal mengubah sandi");
+        setPwMsg(r.error);
         return;
       }
       setUserInfo((p) => (p ? { ...p, has_password: true } : p));
@@ -385,29 +384,36 @@ export default function ChatPage() {
     setProfileSaving(true);
     setProfileMsg(null);
     try {
-      const r = await fetch("/api/python/user/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          display_name: profileName,
-          goal: profileGoal,
-          style_id: profileStyle,
-          gender: profileGender,
-        }),
-      });
-      const j = await r.json().catch(() => ({}));
+      const r = await tryFetch<{
+        display_name?: string | null;
+        goal?: string;
+        style_id?: string;
+        gender?: string;
+      }>(
+        "/api/python/user/profile",
+        {
+          method: "PUT",
+          json: {
+            display_name: profileName,
+            goal: profileGoal,
+            style_id: profileStyle,
+            gender: profileGender,
+          },
+        },
+        "Gagal menyimpan profil",
+      );
       if (!r.ok) {
-        setProfileMsg(typeof j.detail === "string" ? j.detail : "Gagal menyimpan profil");
+        setProfileMsg(r.error);
         return;
       }
       setUserInfo((p) =>
         p
           ? {
               ...p,
-              display_name: j.display_name,
-              goal: j.goal,
-              style_id: j.style_id,
-              gender: j.gender,
+              display_name: r.data.display_name,
+              goal: r.data.goal,
+              style_id: r.data.style_id,
+              gender: r.data.gender,
             }
           : p,
       );
@@ -444,7 +450,7 @@ export default function ChatPage() {
     const idx = messages.map((m) => m.role).lastIndexOf("user");
     if (idx < 0) return;
     if (userInfo && activeChatId) {
-      await fetch(`/api/python/user/chats/${activeChatId}/truncate-last-turn`, {
+      await fetchApi(`/api/python/user/chats/${activeChatId}/truncate-last-turn`, {
         method: "POST",
       }).catch(() => {});
     }
@@ -455,32 +461,28 @@ export default function ChatPage() {
     try {
       let id = activeChatId;
       if (!id) {
-        const r = await fetch("/api/python/user/chats", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: userMessage.slice(0, 60) }),
-        });
-        if (!r.ok) {
-          // batas 3 chat tercapai: jawaban tetap tampil, tapi tidak disimpan
-          if (r.status === 409)
-            setQuotaAlert(
-              (await r.json().catch(() => ({}))).detail || "Maksimal 3 chat tersimpan.",
-            );
+        try {
+          const j = await fetchApi<{ id?: string | number }>("/api/python/user/chats", {
+            json: { title: userMessage.slice(0, 60) },
+          });
+          id = String(j.id);
+          setActiveChatId(id);
+        } catch (e) {
+          if (e instanceof ApiError && e.status === 409) {
+            // batas 3 chat tercapai: jawaban tetap tampil, tapi tidak disimpan
+            const d = (e.data ?? null) as { detail?: unknown } | null;
+            setQuotaAlert(typeof d?.detail === "string" ? d.detail : "Maksimal 3 chat tersimpan.");
+          }
           return;
         }
-        const j = await r.json();
-        id = String(j.id);
-        setActiveChatId(id);
       }
-      await fetch(`/api/python/user/chats/${id}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await fetchApi(`/api/python/user/chats/${id}/messages`, {
+        json: {
           messages: [
             { role: "user", content: userMessage },
             { role: "assistant", content: answer },
           ],
-        }),
+        },
       });
       await loadChatList();
     } catch {}
@@ -497,6 +499,8 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
     try {
+      // Streaming SSE: respons dibaca bertahap lewat body reader, karena itu
+      // endpoint ini tidak lewat fetchApi (yang mem-parse JSON sekaligus).
       const res = await fetch("/api/python/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -514,8 +518,7 @@ export default function ChatPage() {
         if (msg.includes("Trial habis") || msg.includes("Trial")) {
           openQuotaOffer(msg);
           // refresh trial info
-          fetch("/api/python/trial")
-            .then((x) => x.json())
+          fetchApi<TrialInfo>("/api/python/trial")
             .then(setTrialInfo)
             .catch(() => {});
           throw new Error(msg);
@@ -575,21 +578,17 @@ export default function ChatPage() {
         }
       }
       if (userInfo)
-        fetch("/api/python/user/me")
-          .then(async (r) => {
-            if (r.ok) {
-              const j = await r.json();
-              setUserInfo(j);
-              if (j.remaining === 0) {
-                setQuotaOut("quota");
-                setQuotaNoticeHidden(false);
-              }
+        fetchApi<Me>("/api/python/user/me")
+          .then((j) => {
+            setUserInfo(j);
+            if (j.remaining === 0) {
+              setQuotaOut("quota");
+              setQuotaNoticeHidden(false);
             }
           })
           .catch(() => {});
       else
-        fetch("/api/python/trial")
-          .then((x) => x.json())
+        fetchApi<TrialInfo>("/api/python/trial")
           .then(setTrialInfo)
           .catch(() => {});
       if (userInfo && acc.trim() && !isStatic) {

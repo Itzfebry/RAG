@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { ApiError, apiErrorMessage, fetchApi } from "@/lib/fetch-api";
 
 interface CommandDoc {
   name: string;
@@ -17,13 +18,16 @@ export default function DocsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/python/commands")
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`Server ${r.status}`);
-        const j = await r.json();
-        setCommands(j.commands as CommandDoc[]);
-      })
-      .catch((e) => setError(String(e.message || e)));
+    fetchApi<{ commands: CommandDoc[] }>("/api/python/commands")
+      .then((j) => setCommands(j.commands))
+      .catch((e) => {
+        // HTTP gagal -> "Server <status>" seperti sebelumnya; koneksi gagal -> fallback.
+        if (e instanceof ApiError && e.status > 0) {
+          setError(`Server ${e.status}`);
+        } else {
+          setError(apiErrorMessage(e, "Gagal terhubung ke server"));
+        }
+      });
   }, []);
 
   return (

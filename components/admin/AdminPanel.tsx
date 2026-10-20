@@ -150,6 +150,23 @@ import { StylesTab } from "./tabs/StylesTab";
 import { PricingTab } from "./tabs/PricingTab";
 import { SectionHeader } from "./SectionHeader";
 import { FieldInfo } from "./FieldInfo";
+import { ApiError, fetchApi, tryFetch } from "@/lib/fetch-api";
+
+type TokenUsageStats = {
+  budget?: number;
+  daily?: { prompt?: number; completion?: number; total?: number }[];
+  today?: { total?: number };
+  yesterday?: { total?: number };
+};
+
+type AdminBootstrap = {
+  config?: Record<string, any>;
+  categories?: unknown[];
+  entries?: unknown[];
+  models?: any;
+  users?: unknown[];
+  settings?: any;
+};
 
 type TabType =
   | "dashboard"
@@ -516,23 +533,20 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           p !== "day"
             ? `?period=${p}&limit=${p === "day" ? 14 : p === "week" ? 12 : p === "month" ? 12 : 6}`
             : "";
-        const res = await fetch(`/api/python/admin/stats${qs}`);
-        if (authExpired(res.status)) return;
-        if (res.ok) {
-          const j = await res.json();
-          setRealStats(j);
-          if (Array.isArray(j.knowledgeByCategory) && j.knowledgeByCategory.length) {
-            setCategoryData(j.knowledgeByCategory);
-          }
+        const j = await fetchApi<RealStats>(`/api/python/admin/stats${qs}`);
+        setRealStats(j);
+        if (Array.isArray(j.knowledgeByCategory) && j.knowledgeByCategory.length) {
+          setCategoryData(j.knowledgeByCategory);
         }
-      } catch {}
+      } catch (e) {
+        if (e instanceof ApiError && e.status > 0 && authExpired(e.status)) return;
+      }
       // agregasi token: harian, sisa budget, per user
       try {
-        const tr = await fetch(`/api/python/admin/token-usage?days=${tokenDays}`);
-        if (tr.ok) {
-          const tj = await tr.json();
-          setTokenStats(tj);
-        }
+        const tj = await fetchApi<TokenUsageStats>(
+          `/api/python/admin/token-usage?days=${tokenDays}`,
+        );
+        setTokenStats(tj);
       } catch {}
       setStatsLoading(false);
     },
@@ -553,32 +567,31 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const saveTokenBudget = async () => {
     const v = Math.max(0, parseInt(budgetInput || "0", 10) || 0);
     try {
-      const res = await fetch("/api/python/admin/token-budget", {
+      const j = await fetchApi<{ budget?: number }>("/api/python/admin/token-budget", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ daily_token_budget: v }),
+        json: { daily_token_budget: v },
       });
-      if (res.ok) {
-        const j = await res.json();
-        setTokenStats((t: any) =>
-          t
-            ? {
-                ...t,
-                budget: j.budget,
-                remaining: j.budget > 0 ? j.budget - (t.today?.total || 0) : null,
-              }
-            : t,
-        );
-        pushToast(
-          "success",
-          "Budget token disimpan",
-          v > 0 ? `${v.toLocaleString()} token/hari` : "Tanpa batas harian",
-        );
-      } else {
+      setTokenStats((t: TokenUsageStats | null) =>
+        t
+          ? {
+              ...t,
+              budget: j.budget,
+              remaining: j.budget ? j.budget - (t.today?.total || 0) : null,
+            }
+          : t,
+      );
+      pushToast(
+        "success",
+        "Budget token disimpan",
+        v > 0 ? `${v.toLocaleString()} token/hari` : "Tanpa batas harian",
+      );
+    } catch (e) {
+      // HTTP gagal -> "Coba lagi."; koneksi gagal -> "Server tidak merespons."
+      if (!(e instanceof ApiError) || e.status > 0) {
         pushToast("error", "Gagal simpan budget", "Coba lagi.");
+      } else {
+        pushToast("error", "Gagal simpan budget", "Server tidak merespons.");
       }
-    } catch {
-      pushToast("error", "Gagal simpan budget", "Server tidak merespons.");
     }
   };
 
@@ -627,8 +640,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
   const checkAuth = async () => {
     try {
-      const res = await fetch("/api/python/admin/verify");
-      if (res.ok) {
+      const r = await tryFetch("/api/python/admin/verify");
+      if (r.ok) {
         setIsAuthenticated(true);
         loadAllData();
       } else {
@@ -651,23 +664,17 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   };
 
   const handleLogout = async () => {
-    try {
-      await fetch("/api/python/admin/logout", { method: "POST" });
-    } catch {}
+    await fetchApi("/api/python/admin/logout", { method: "POST" }).catch(() => {});
     router.replace("/admin/login");
   };
 
   const loadHealth = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/python/admin/health");
-      if (authExpired(res.status)) return;
-      if (res.ok) {
-        setHealth(await res.json());
-        setHealthError(false);
-      } else {
-        setHealthError(true);
-      }
-    } catch {
+      const j = await fetchApi("/api/python/admin/health");
+      setHealth(j);
+      setHealthError(false);
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0 && authExpired(e.status)) return;
       setHealthError(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -675,8 +682,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
   const loadAudit = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/python/admin/audit?limit=100");
-      if (res.ok) setAuditRows((await res.json()).items || []);
+      const j = await fetchApi<{ items?: unknown[] }>("/api/python/admin/audit?limit=100");
+      setAuditRows(j.items || []);
     } catch {}
   }, []);
 
@@ -697,25 +704,28 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       return;
     setReindexing(true);
     try {
-      const res = await fetch("/api/python/admin/knowledge/reindex", { method: "POST" });
-      if (authExpired(res.status)) return;
-      const j = await res.json().catch(() => ({}));
-      if (res.ok) {
-        pushToast(
-          "success",
-          "Reindex selesai",
-          `${j.entries} entry, ${j.chunks} chunk (${j.provider})`,
-        );
-        loadAudit();
-      } else {
+      const j = await fetchApi<{ entries?: number; chunks?: number; provider?: string }>(
+        "/api/python/admin/knowledge/reindex",
+        { method: "POST" },
+      );
+      pushToast(
+        "success",
+        "Reindex selesai",
+        `${j.entries} entry, ${j.chunks} chunk (${j.provider})`,
+      );
+      loadAudit();
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0 && authExpired(e.status)) return;
+      if (e instanceof ApiError && e.status > 0) {
+        const d = (e.data ?? {}) as { detail?: unknown };
         pushToast(
           "error",
           "Reindex gagal",
-          typeof j.detail === "string" ? j.detail : `HTTP ${res.status}`,
+          typeof d.detail === "string" ? d.detail : `HTTP ${e.status}`,
         );
+      } else {
+        pushToast("error", "Reindex gagal", "Tidak bisa menghubungi backend");
       }
-    } catch {
-      pushToast("error", "Reindex gagal", "Tidak bisa menghubungi backend");
     } finally {
       setReindexing(false);
     }
@@ -724,16 +734,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const loadUsersAndSettings = async () => {
     setUsersLoading(true);
     try {
-      const [uRes, sRes] = await Promise.all([
-        fetch("/api/python/admin/users"),
-        fetch("/api/python/admin/settings"),
+      const results = await Promise.all([
+        fetchApi("/api/python/admin/users").catch(() => null),
+        fetchApi("/api/python/admin/settings").catch(() => null),
       ]);
-      if (uRes.ok) setUsers(await uRes.json());
-      if (sRes.ok) {
-        const j = await sRes.json();
-        const s = j.settings || j;
-        setAppSettings(parseAppSettings(s));
-      }
+      const [u, s] = results as [unknown, { settings?: unknown } | null];
+      if (u) setUsers(u as unknown[]);
+      if (s) setAppSettings(parseAppSettings((s.settings || s) as any));
     } catch {}
     setUsersLoading(false);
   };
@@ -741,28 +748,30 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const handleSyncLocalUsers = async () => {
     setSyncingUsers(true);
     try {
-      const res = await fetch("/api/python/admin/users/sync-local", { method: "POST" });
-      if (authExpired(res.status)) return;
-      const j = await res.json().catch(() => ({}));
-      if (res.ok) {
-        const n = Number(j.created || 0);
-        pushToast(
-          n > 0 ? "success" : "info",
-          n > 0 ? `${n} user disinkronkan` : "Tidak ada user baru",
-          n > 0
-            ? "User lokal yang belum ada di database sudah dibuat."
-            : "Semua user lokal sudah ada di database.",
-        );
-        loadUsersAndSettings();
-      } else {
+      const j = await fetchApi<{ created?: number }>("/api/python/admin/users/sync-local", {
+        method: "POST",
+      });
+      const n = Number(j.created || 0);
+      pushToast(
+        n > 0 ? "success" : "info",
+        n > 0 ? `${n} user disinkronkan` : "Tidak ada user baru",
+        n > 0
+          ? "User lokal yang belum ada di database sudah dibuat."
+          : "Semua user lokal sudah ada di database.",
+      );
+      loadUsersAndSettings();
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0 && authExpired(e.status)) return;
+      if (e instanceof ApiError && e.status > 0) {
+        const d = (e.data ?? {}) as { detail?: unknown };
         pushToast(
           "error",
           "Gagal sinkron",
-          typeof j.detail === "string" ? j.detail : `HTTP ${res.status}`,
+          typeof d.detail === "string" ? d.detail : `HTTP ${e.status}`,
         );
+      } else {
+        pushToast("error", "Gagal sinkron", "Tidak bisa menghubungi backend");
       }
-    } catch {
-      pushToast("error", "Gagal sinkron", "Tidak bisa menghubungi backend");
     } finally {
       setSyncingUsers(false);
     }
@@ -787,45 +796,51 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           max_prompts: Number(userForm.max_prompts),
           is_active: userForm.is_active,
         };
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (authExpired(res.status)) return;
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      pushToast("error", "Gagal simpan user", (j.detail || JSON.stringify(j)).slice(0, 140));
-      return;
+    try {
+      await fetchApi(url, { method, json: body });
+      pushToast("success", isEdit ? "User diperbarui" : "User dibuat");
+      setUserModalOpen(false);
+      setEditingUserId(null);
+      setUserForm({
+        username: "",
+        password: "",
+        display_name: "",
+        max_prompts: 50,
+        is_active: true,
+      });
+      loadUsersAndSettings();
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0 && authExpired(e.status)) return;
+      const d = ((e instanceof ApiError ? e.data : null) ?? {}) as { detail?: unknown };
+      pushToast(
+        "error",
+        "Gagal simpan user",
+        typeof d.detail === "string" ? d.detail : JSON.stringify(d).slice(0, 140),
+      );
     }
-    pushToast("success", isEdit ? "User diperbarui" : "User dibuat");
-    setUserModalOpen(false);
-    setEditingUserId(null);
-    setUserForm({ username: "", password: "", display_name: "", max_prompts: 50, is_active: true });
-    loadUsersAndSettings();
   };
 
   const handleDeleteUser = async (id: string) => {
     if (!confirm("Hapus user ini?")) return;
-    const res = await fetch(`/api/python/admin/users/${id}`, { method: "DELETE" });
-    if (authExpired(res.status)) return;
-    if (!res.ok) {
+    try {
+      await fetchApi(`/api/python/admin/users/${id}`, { method: "DELETE" });
+      pushToast("success", "User dihapus");
+      loadUsersAndSettings();
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0 && authExpired(e.status)) return;
       pushToast("error", "Gagal hapus user");
-      return;
     }
-    pushToast("success", "User dihapus");
-    loadUsersAndSettings();
   };
 
   const handleResetUsage = async (id: string) => {
-    const res = await fetch(`/api/python/admin/users/${id}/reset-usage`, { method: "POST" });
-    if (authExpired(res.status)) return;
-    if (!res.ok) {
+    try {
+      await fetchApi(`/api/python/admin/users/${id}/reset-usage`, { method: "POST" });
+      pushToast("success", "Usage direset");
+      loadUsersAndSettings();
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0 && authExpired(e.status)) return;
       pushToast("error", "Gagal reset");
-      return;
     }
-    pushToast("success", "Usage direset");
-    loadUsersAndSettings();
   };
 
   const handleSaveSettings = async () => {
@@ -840,31 +855,32 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       rag_match_threshold:
         appSettings.rag_match_threshold === null ? null : Number(appSettings.rag_match_threshold),
     };
-    const res = await fetch("/api/python/admin/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payloadBody),
-    });
-    if (authExpired(res.status)) return;
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      const msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail || j);
-      pushToast("error", "Gagal simpan", msg.slice(0, 120));
-      return;
+    try {
+      const j = await fetchApi<{ settings?: unknown }>("/api/python/admin/settings", {
+        method: "PUT",
+        json: payloadBody,
+      });
+      const s = j.settings || j;
+      setAppSettings(parseAppSettings(s as any));
+      pushToast("success", "Pengaturan disimpan");
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0 && authExpired(e.status)) return;
+      if (e instanceof ApiError && e.status > 0) {
+        const d = (e.data ?? {}) as { detail?: unknown };
+        const msg = typeof d.detail === "string" ? d.detail : JSON.stringify(d.detail || d);
+        pushToast("error", "Gagal simpan", msg.slice(0, 120));
+      }
     }
-    const j = await res.json();
-    const s = j.settings || j;
-    setAppSettings(parseAppSettings(s));
-    pushToast("success", "Pengaturan disimpan");
   };
 
   const loadAllData = async () => {
     setUsersLoading(true);
     try {
-      const res = await fetch("/api/python/admin/bootstrap");
-      if (authExpired(res.status)) return;
-      if (!res.ok) return;
-      const b = await res.json();
+      const b = await fetchApi<AdminBootstrap>(
+        "/api/python/admin/bootstrap",
+        {},
+        { fallbackError: "Gagal memuat data admin" },
+      );
 
       const c = b.config || {};
       if (c.identity) setIdentityData(c.identity);
@@ -891,7 +907,9 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       const catCounts: Record<string, number> = {};
       entries.forEach((e: any) => {
         const cat = cats.find((x: any) => x.id === e.category_id);
-        if (cat) catCounts[cat.name] = (catCounts[cat.name] || 0) + 1;
+        if (cat)
+          catCounts[(cat as { name: string }).name] =
+            (catCounts[(cat as { name: string }).name] || 0) + 1;
       });
       setCategoryData(Object.entries(catCounts).map(([name, value]) => ({ name, value })));
 
@@ -925,26 +943,29 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       const fo = opts?.freeOnly ?? freeOnly;
       let data: any = null;
       if (catalogApiKey.trim() || catalogBaseUrl.trim()) {
-        const res = await fetch("/api/python/admin/models/catalog", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            api_key: catalogApiKey.trim() || undefined,
-            base_url: catalogBaseUrl.trim() || undefined,
-            include_free_only: fo,
-            limit: 120,
-          }),
-        });
-        if (res.ok) {
-          const j = await res.json();
+        try {
+          const j = await fetchApi<{ data?: unknown[]; error?: unknown }>(
+            "/api/python/admin/models/catalog",
+            {
+              method: "POST",
+              json: {
+                api_key: catalogApiKey.trim() || undefined,
+                base_url: catalogBaseUrl.trim() || undefined,
+                include_free_only: fo,
+                limit: 120,
+              },
+            },
+          );
           if (Array.isArray(j.data) && j.data.length) {
             setAvailableModels(j.data);
             data = j.data;
           }
           if (j.error) pushToast("error", "Katalog gagal", String(j.error).slice(0, 160));
-        } else {
-          const j = await res.json().catch(() => ({}));
-          const msg = (j as any).detail || (j as any).error || "Katalog gagal";
+        } catch (e) {
+          // Koneksi terputus: hanya dicatat di console, sama seperti versi lama.
+          if (!(e instanceof ApiError) || e.status === 0) throw e;
+          const j = (e.data ?? {}) as { detail?: unknown; error?: unknown };
+          const msg = j.detail || j.error || "Katalog gagal";
           pushToast(
             "error",
             "Katalog gagal",
@@ -953,20 +974,30 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         }
       } else {
         const params = new URLSearchParams({ include_free_only: String(fo), limit: "120" });
-        const res = await fetch(`/api/python/admin/models?${params.toString()}`);
-        if (res.ok) {
-          const j = await res.json();
+        let j: {
+          live_catalog?: { data?: unknown; fallback?: { data?: unknown }; error?: unknown };
+          data?: unknown;
+        } | null = null;
+        try {
+          j = await fetchApi<{
+            live_catalog?: { data?: unknown; fallback?: { data?: unknown }; error?: unknown };
+            data?: unknown;
+          }>(`/api/python/admin/models?${params.toString()}`);
+        } catch {}
+        if (j) {
           data = j.live_catalog?.data || j.live_catalog?.fallback?.data || j.data || null;
           if (Array.isArray(data)) setAvailableModels(data);
           if (j.live_catalog?.error)
             pushToast("error", "Katalog gagal", String(j.live_catalog.error).slice(0, 160));
         }
         if (!data || !Array.isArray(data) || data.length === 0) {
-          const res2 = await fetch(
-            `/api/python/v1/models/available?limit=120&include_free_only=${fo}`,
-          );
-          if (res2.ok) {
-            const j2 = await res2.json();
+          let j2: { data?: unknown; fallback?: { data?: unknown } } | null = null;
+          try {
+            j2 = await fetchApi<{ data?: unknown; fallback?: { data?: unknown } }>(
+              `/api/python/v1/models/available?limit=120&include_free_only=${fo}`,
+            );
+          } catch {}
+          if (j2) {
             if (Array.isArray(j2.data) && j2.data.length) setAvailableModels(j2.data);
             else if (Array.isArray(j2.fallback?.data)) setAvailableModels(j2.fallback.data);
           }
@@ -988,13 +1019,14 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       if (catalogApiKey.trim()) body.api_key = catalogApiKey.trim();
       if (catalogBaseUrl.trim()) body.base_url = catalogBaseUrl.trim();
       if (modelConfig.provider) body.provider = modelConfig.provider;
-      const res = await fetch("/api/python/admin/models/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (res.ok && j.status === "ok") {
+      const j = await fetchApi<{
+        status?: string;
+        latency_ms?: number;
+        sample?: string;
+        detail?: { error?: unknown; latency_ms?: number };
+        error?: unknown;
+      }>("/api/python/admin/models/test", { json: body });
+      if (j.status === "ok") {
         setModelTestResults((prev) => ({
           ...prev,
           [id]: { status: "ok", latency_ms: j.latency_ms, sample: j.sample },
@@ -1018,6 +1050,29 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         );
       }
     } catch (e: any) {
+      // HTTP gagal: bentuk error sama seperti branch gagal versi lama (detail/latency).
+      if (e instanceof ApiError && e.status > 0) {
+        const d = (e.data ?? {}) as {
+          detail?: { error?: unknown; latency_ms?: number };
+          error?: unknown;
+        };
+        const err = (d.detail?.error || d.detail || d.error || "Gagal") as string;
+        const latency = d.detail?.latency_ms;
+        setModelTestResults((prev) => ({
+          ...prev,
+          [id]: {
+            status: "error",
+            latency_ms: latency,
+            error: typeof err === "string" ? err : JSON.stringify(err),
+          },
+        }));
+        pushToast(
+          "error",
+          "Model gagal",
+          typeof err === "string" ? err.slice(0, 160) : "Cek kredensial / model",
+        );
+        return;
+      }
       setModelTestResults((prev) => ({
         ...prev,
         [id]: { status: "error", error: e.message || String(e) },
@@ -1031,10 +1086,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     setSaveSuccess(false);
     setErrorMessage("");
     try {
-      const res = await fetch("/api/python/admin/models", {
+      const j = await fetchApi<{
+        data?: Partial<typeof modelConfig>;
+        current?: Partial<typeof modelConfig>;
+        active_model?: string;
+      }>("/api/python/admin/models", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        json: {
           active_model: modelConfig.active_model,
           fallback_models: modelConfig.fallback_models,
           provider: modelConfig.provider,
@@ -1042,34 +1100,34 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           temperature: modelConfig.temperature,
           reasoning_enabled: modelConfig.reasoning_enabled,
           max_tokens: modelConfig.max_tokens,
-        }),
+        },
       });
-      if (res.ok) {
-        const j = await res.json();
-        const cur = j.data || j.current || modelConfig;
-        setModelConfig((prev) => ({ ...prev, ...cur }));
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
-        pushToast(
-          "success",
-          "Model diperbarui",
-          (cur.active_model || modelConfig.active_model || "").slice(0, 80),
-        );
-      } else {
-        if (authExpired(res.status)) return;
-        const d = await res.json().catch(() => ({}));
-        const msg = (d as any).detail || "Gagal menyimpan model config";
+      const cur = j.data || j.current || modelConfig;
+      setModelConfig((prev) => ({ ...prev, ...cur }));
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      pushToast(
+        "success",
+        "Model diperbarui",
+        (cur.active_model || modelConfig.active_model || "").slice(0, 80),
+      );
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0) {
+        if (authExpired(e.status)) return;
+        const d = (e.data ?? {}) as { detail?: unknown };
+        const msg = d.detail || "Gagal menyimpan model config";
         setErrorMessage(typeof msg === "string" ? msg : JSON.stringify(msg));
         pushToast(
           "error",
           "Gagal simpan model",
           typeof msg === "string" ? msg.slice(0, 120) : "Periksa input.",
         );
+      } else {
+        const err = e as { message?: string };
+        const msg = err.message || "Error saving model config";
+        setErrorMessage(msg);
+        pushToast("error", "Gagal simpan model", msg.slice(0, 120));
       }
-    } catch (err: any) {
-      const msg = err.message || "Error saving model config";
-      setErrorMessage(msg);
-      pushToast("error", "Gagal simpan model", msg.slice(0, 120));
     } finally {
       setSaving(false);
     }
@@ -1103,27 +1161,27 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       styles: "Gaya Respons",
     };
     try {
-      const res = await fetch("/api/python/admin/config", {
+      await fetchApi("/api/python/admin/config", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ section: tableMap[section], data: payloadData }),
+        json: { section: tableMap[section], data: payloadData },
       });
-      if (res.ok) {
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
-        pushToast("success", "Tersimpan", `${labelMap[section] ?? section} diperbarui.`);
-      } else {
-        if (authExpired(res.status)) return;
-        const d = await res.json().catch(() => ({}));
-        const msg = (d as any).detail || "Gagal menyimpan konfigurasi";
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      pushToast("success", "Tersimpan", `${labelMap[section] ?? section} diperbarui.`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0) {
+        if (authExpired(e.status)) return;
+        const d = (e.data ?? {}) as { detail?: unknown };
+        const msg = d.detail || "Gagal menyimpan konfigurasi";
         const str = typeof msg === "string" ? msg : JSON.stringify(msg);
         setErrorMessage(str);
         pushToast("error", "Gagal simpan", str.slice(0, 120));
+      } else {
+        const err = e as { message?: string };
+        const msg = err.message || "Error saving configuration";
+        setErrorMessage(msg);
+        pushToast("error", "Gagal simpan", msg.slice(0, 120));
       }
-    } catch (err: any) {
-      const msg = err.message || "Error saving configuration";
-      setErrorMessage(msg);
-      pushToast("error", "Gagal simpan", msg.slice(0, 120));
     } finally {
       setSaving(false);
     }
@@ -1132,32 +1190,44 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const handleSavePricing = async () => {
     setSaving(true);
     try {
-      const res = await fetch("/api/python/admin/pricing", {
+      const j = await fetchApi<{
+        pricing?: {
+          plans?: {
+            id: string;
+            label: string;
+            prompts: number;
+            amount: number;
+            popular: boolean;
+            original_amount?: number | null;
+          }[];
+          payment_qris?: string;
+          payment_instructions?: string;
+          contact?: string;
+          order_note?: string;
+        };
+      }>("/api/python/admin/pricing", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pricingData),
+        json: pricingData,
       });
-      if (res.ok) {
-        const j = await res.json().catch(() => ({}));
-        if (j.pricing) {
-          setPricingData({
-            plans: Array.isArray(j.pricing.plans) ? j.pricing.plans : [],
-            payment_qris: j.pricing.payment_qris || "",
-            payment_instructions: j.pricing.payment_instructions || "",
-            contact: j.pricing.contact || "",
-            order_note: j.pricing.order_note || "",
-          });
-        }
-        pushToast("success", "Tersimpan", "Harga & paket diperbarui.");
-      } else {
-        if (authExpired(res.status)) return;
-        const d = await res.json().catch(() => ({}));
-        const str =
-          typeof d.detail === "string" ? d.detail : `Gagal menyimpan (HTTP ${res.status})`;
-        pushToast("error", "Gagal simpan", str.slice(0, 160));
+      if (j.pricing) {
+        setPricingData({
+          plans: Array.isArray(j.pricing.plans) ? j.pricing.plans : [],
+          payment_qris: j.pricing.payment_qris || "",
+          payment_instructions: j.pricing.payment_instructions || "",
+          contact: j.pricing.contact || "",
+          order_note: j.pricing.order_note || "",
+        });
       }
-    } catch {
-      pushToast("error", "Gagal simpan", "Tidak bisa menghubungi backend");
+      pushToast("success", "Tersimpan", "Harga & paket diperbarui.");
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0) {
+        if (authExpired(e.status)) return;
+        const d = (e.data ?? {}) as { detail?: unknown };
+        const str = typeof d.detail === "string" ? d.detail : `Gagal menyimpan (HTTP ${e.status})`;
+        pushToast("error", "Gagal simpan", str.slice(0, 160));
+      } else {
+        pushToast("error", "Gagal simpan", "Tidak bisa menghubungi backend");
+      }
     } finally {
       setSaving(false);
     }
@@ -1168,50 +1238,55 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     const cat = knowledgeCategories.find((c) => c.slug === selectedCategorySlug);
     if (!cat) return;
     try {
-      const res = await fetch("/api/python/admin/knowledge/entries", {
+      await fetchApi("/api/python/admin/knowledge/entries", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        json: {
           id: entryForm.id || undefined,
           category_id: cat.id,
           title: entryForm.title,
           content: entryForm.content,
           is_active: true,
-        }),
+        },
       });
-      if (res.ok) {
-        setNewEntryModal(false);
-        setEntryForm({ id: "", title: "", content: "", category_id: "" });
-        loadAllData();
-        pushToast("success", "Knowledge ditambah", entryForm.title.slice(0, 60));
-      } else {
-        if (authExpired(res.status)) return;
-        const d = await res.json().catch(() => ({}));
-        const msg = (d as any).detail || "Gagal simpan knowledge";
+      setNewEntryModal(false);
+      setEntryForm({ id: "", title: "", content: "", category_id: "" });
+      loadAllData();
+      pushToast("success", "Knowledge ditambah", entryForm.title.slice(0, 60));
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0) {
+        if (authExpired(e.status)) return;
+        const d = (e.data ?? {}) as { detail?: unknown };
+        const msg = d.detail || "Gagal simpan knowledge";
         pushToast(
           "error",
           "Gagal simpan",
-          typeof msg === "string" ? msg.slice(0, 120) : "Cek input.",
+          typeof msg === "string" ? (msg as string).slice(0, 120) : "Cek input.",
         );
+      } else {
+        const err = e as { message?: string };
+        pushToast("error", "Gagal simpan", err.message?.slice(0, 120) || "Error");
       }
-    } catch (err: any) {
-      pushToast("error", "Gagal simpan", err.message?.slice(0, 120) || "Error");
     }
   };
 
   const handleDeleteKnowledgeEntry = async (id: string) => {
     if (!confirm("Hapus entri knowledge ini?")) return;
     try {
-      const res = await fetch(`/api/python/admin/knowledge/entries/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        loadAllData();
-        pushToast("success", "Terhapus", "Entri knowledge dihapus.");
+      await fetchApi(`/api/python/admin/knowledge/entries/${id}`, { method: "DELETE" });
+      loadAllData();
+      pushToast("success", "Terhapus", "Entri knowledge dihapus.");
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0) {
+        const d = (e.data ?? {}) as { detail?: unknown };
+        pushToast(
+          "error",
+          "Gagal hapus",
+          (typeof d.detail === "string" ? (d.detail as string).slice(0, 120) : "") || "Coba lagi.",
+        );
       } else {
-        const d = await res.json().catch(() => ({}));
-        pushToast("error", "Gagal hapus", (d as any).detail?.slice?.(0, 120) || "Coba lagi.");
+        const err = e as { message?: string };
+        pushToast("error", "Gagal hapus", err.message?.slice(0, 120) || "Error");
       }
-    } catch (err: any) {
-      pushToast("error", "Gagal hapus", err.message?.slice(0, 120) || "Error");
     }
   };
 
@@ -1318,36 +1393,38 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     applyImportedDataToState(data);
     setSaving(true);
     try {
-      const res = await fetch("/api/python/admin/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        const msg = (j as any).detail || (j as any).message || JSON.stringify(j);
+      let j: Record<string, any> = {};
+      try {
+        j = await fetchApi<Record<string, any>>("/api/python/admin/import", {
+          method: "POST",
+          json: data,
+        });
+      } catch (e) {
+        // HTTP gagal / koneksi terputus: bentuk pesan sama seperti versi lama.
+        if (!(e instanceof ApiError)) throw e;
+        const j2 = (e.data ?? {}) as Record<string, unknown>;
+        const msg = j2.detail || j2.message || e.data;
         const str = typeof msg === "string" ? msg : JSON.stringify(msg, null, 2);
         setJsonError(str);
         setSaveSuccess(false);
         pushToast("error", "Import gagal", str.slice(0, 120));
-      } else {
-        const j = await res.json().catch(() => ({}));
-        if ((j as any).errors) {
-          const errStr = JSON.stringify((j as any).errors, null, 2);
-          setJsonError(`Partial import - some sections failed:\n${errStr}`);
-          pushToast("info", "Import sebagian", "Beberapa section gagal - cek detail.");
-        } else {
-          pushToast(
-            "success",
-            "Import berhasil",
-            `${((j as any).applied_sections || []).length} section + ${(j as any).knowledge_entries_applied || 0} knowledge diterapkan.`,
-          );
-        }
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
-        await loadAllData();
-        setTimeout(() => setShowJsonModal(false), 700);
+        return;
       }
+      if (j.errors) {
+        const errStr = JSON.stringify(j.errors, null, 2);
+        setJsonError(`Partial import - some sections failed:\n${errStr}`);
+        pushToast("info", "Import sebagian", "Beberapa section gagal - cek detail.");
+      } else {
+        pushToast(
+          "success",
+          "Import berhasil",
+          `${j.applied_sections?.length || 0} section + ${j.knowledge_entries_applied || 0} knowledge diterapkan.`,
+        );
+      }
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      await loadAllData();
+      setTimeout(() => setShowJsonModal(false), 700);
     } catch (e: any) {
       const msg = e.message || String(e);
       setJsonError(msg);
@@ -1371,14 +1448,11 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
   const openJsonModalWithPrefill = async () => {
     try {
-      const res = await fetch("/api/python/admin/export");
-      if (res.ok) {
-        const j = await res.json();
-        setJsonText(JSON.stringify(j, null, 2));
-        setJsonError("");
-        setShowJsonModal(true);
-        return;
-      }
+      const j = await fetchApi("/api/python/admin/export");
+      setJsonText(JSON.stringify(j, null, 2));
+      setJsonError("");
+      setShowJsonModal(true);
+      return;
     } catch {}
     setJsonText(
       JSON.stringify(

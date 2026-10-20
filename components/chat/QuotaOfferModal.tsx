@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowUpRight, Check, Copy, Gauge, Hourglass, LogIn, MessageCircle, X } from "lucide-react";
 import Link from "next/link";
+import { fetchApi } from "@/lib/fetch-api";
 
 export type QuotaOfferVariant = "quota" | "trial" | "login";
 
@@ -107,13 +108,21 @@ export default function QuotaOfferModal({
 
   useEffect(() => {
     if (!open) return;
-    fetch("/api/python/pricing")
-      .then(async (r) => {
-        if (!r.ok) return;
-        const j = await r.json();
+    fetchApi<{
+      plans?: {
+        id: unknown;
+        prompts: number;
+        amount: number;
+        popular?: boolean;
+        original_amount?: number | null;
+        discount_percent?: number | null;
+      }[];
+      contact_wa?: string;
+    }>("/api/python/pricing")
+      .then((j) => {
         const plans = Array.isArray(j.plans) ? j.plans : [];
         if (!plans.length) return;
-        const mapped = plans.map((p: any) => ({
+        const mapped = plans.map((p) => ({
           id: String(p.id),
           prompts: Number(p.prompts),
           price: rupiah(Number(p.amount)),
@@ -127,9 +136,9 @@ export default function QuotaOfferModal({
         }));
         setPackages(mapped);
         setSelected((prev) =>
-          mapped.some((p: any) => p.id === prev)
+          mapped.some((p: (typeof mapped)[number]) => p.id === prev)
             ? prev
-            : (mapped.find((p: any) => p.popular)?.id ?? mapped[0].id),
+            : (mapped.find((p: (typeof mapped)[number]) => p.popular)?.id ?? mapped[0].id),
         );
         setContactWa(String(j.contact_wa || ""));
       })
