@@ -37,6 +37,134 @@ def _clean_chunk(text: str) -> str:
     return text.replace("\u2014", ", ").replace("\u2013", "-")
 
 
+# --- SSE (Server-Sent Events) helpers ----------------------------------------
+
+
+_CLIENT_HEADERS = {"HTTP-Referer": "http://localhost:3000", "X-Title": "ITZ AI"}
+
+
+def _emit(payload: dict[str, Any]) -> str:
+    """Serialisasi satu event SSE."""
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+async def _emit_words(text: str) -> AsyncGenerator[str, None]:
+    """Stream teks kata-per-kata (dipakai mock & ultimate-fallback)."""
+    for chunk in text.split(" "):
+        yield _emit({"content": chunk + " "})
+
+
+async def _emit_closing(
+    tail: str,
+    usage: dict[str, Any] | None,
+    ttft_ms: int | None,
+    start: float,
+    *,
+    current_model: str = "",
+    max_tokens: int | None = None,
+    finish_reason: str | None = None,
+) -> AsyncGenerator[str, None]:
+    """Event penutup stream: sisa buffer, usage, timing, answered, DONE."""
+    if tail:
+        yield _emit({"content": tail})
+    if finish_reason == "length" and max_tokens is not None:
+        logger.warning(
+            f"Warning: jawaban terpotong (finish_reason=length, max_tokens={max_tokens}, model={current_model})"
+        )
+    if usage:
+        yield _emit({"usage": usage})
+    total_ms = int((time.perf_counter() - start) * 1000)
+    yield _emit({"timing": {"ttft_ms": ttft_ms if ttft_ms is not None else total_ms, "total_ms": total_ms}})
+    yield _emit({"answered": True})
+    yield "data: [DONE]\n\n"
+
+
+async def _emit_buffered(
+    text: str,
+    start: float,
+    ttft_holder: list[int | None],
+    usage: dict[str, Any] | None = None,
+) -> AsyncGenerator[str, None]:
+    """Stream `text` dalam buffer 12 char (smooth, tanpa sleep), lalu event penutup."""
+    if ttft_holder[0] is None:
+        ttft_holder[0] = int((time.perf_counter() - start) * 1000)
+    buffer = ""
+    for char in text:
+        buffer += char
+        if len(buffer) >= 12:
+            yield _emit({"content": buffer})
+            buffer = ""
+    # Sisa buffer dikirim sekali oleh _emit_closing sebagai tail.
+    async for event in _emit_closing(buffer, usage, ttft_holder[0], start):
+        yield event
+
+
+def _parse_bool(v: Any) -> bool:
+    """Parse konfigurasi boolean yang bisa datang sebagai str atau bool."""
+    if isinstance(v, str):
+        return v.lower() in ("1", "true", "yes", "on")
+    return bool(v)
+
+
+def _merge_models(primary: str, fallback_raw: Any) -> list[str]:
+    """Primary -> fallbacks, tanpa duplikat, tanpa hardcoded default."""
+    models = [primary]
+    for fm in [str(m).strip() for m in (fallback_raw or []) if str(m).strip()]:
+        if fm not in models:
+            models.append(fm)
+    return models
+
+
+def _build_openai_messages(
+    query: str, session_history: list[dict[str, str]], system_prompt: str
+) -> list[dict[str, str]]:
+    """Susun daftar pesan OpenAI: system + 10 history terakhir + query."""
+    messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    for msg in session_history[-10:]:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            content = " ".join([str(c.get("text", "")) if isinstance(c, dict) else str(c) for c in content])
+
+        # Map roles properly
+        if role in ["user", "assistant", "system"]:
+            messages.append({"role": role, "content": str(content)})
+        else:
+            messages.append({"role": "user", "content": str(content)})
+
+    messages.append({"role": "user", "content": query})
+    return messages
+
+
+def _create_client(provider: str, api_key: str, base_url: str, nvidia_api_key: str) -> tuple[Any | None, str | None]:
+    """Buat client sesuai provider. Return (client, client_type)."""
+    if provider.lower() == "nvidia" and nvidia_api_key:
+        try:
+            from langchain_nvidia_ai_endpoints import ChatNVIDIA
+
+            return (
+                ChatNVIDIA(
+                    model=settings.NVIDIA_MODEL,
+                    api_key=nvidia_api_key,
+                    temperature=1,
+                    top_p=0.95,
+                    max_tokens=8192,
+                ),
+                "langchain_nvidia",
+            )
+        except ImportError:
+            logger.warning("Warning: langchain_nvidia_ai_endpoints not installed. Falling back to OpenAI client.")
+            return None, None
+    # Default to OpenAI-compatible client
+    try:
+        return (
+            OpenAI(base_url=base_url, api_key=api_key, default_headers=_CLIENT_HEADERS),
+            "openai",
+        )
+    except Exception:
+        return None, None
+
+
 try:
     from backend.config.config import settings
     from backend.core.logging_config import get_logger
@@ -114,39 +242,7 @@ class AgentOrchestrator:
         self.nvidia_api_key = _resolve_nvidia_api_key()
         self.model = _resolve_default_model(self.provider)
         self.base_url = _resolve_base_url(self.provider)
-        self.client: OpenAI | Any = None
-
-        # Initialize client based on provider
-        if self.provider.lower() == "nvidia" and self.nvidia_api_key:
-            try:
-                from langchain_nvidia_ai_endpoints import ChatNVIDIA
-
-                self.client = ChatNVIDIA(
-                    model=settings.NVIDIA_MODEL,
-                    api_key=self.nvidia_api_key,
-                    temperature=1,
-                    top_p=0.95,
-                    max_tokens=8192,
-                )
-                self.client_type = "langchain_nvidia"
-            except ImportError:
-                logger.warning("Warning: langchain_nvidia_ai_endpoints not installed. Falling back to OpenAI client.")
-                self.client = None
-        else:
-            # Default to OpenAI-compatible client
-            try:
-                self.client = OpenAI(
-                    base_url=self.base_url,
-                    api_key=self.api_key,
-                    default_headers={
-                        "HTTP-Referer": "http://localhost:3000",
-                        "X-Title": "ITZ AI",
-                    },
-                )
-                self.client_type = "openai"
-            except Exception:
-                self.client = None
-                self.client_type = None
+        self.client, self.client_type = _create_client(self.provider, self.api_key, self.base_url, self.nvidia_api_key)
 
     async def stream_chat_response(
         self,
@@ -156,26 +252,13 @@ class AgentOrchestrator:
         user_profile: dict[str, Any] | None = None,
         command_names: list[str] | None = None,
     ) -> AsyncGenerator[str, None]:
+        """Orkestrasi utama: bangun prompt, resolve runtime config, stream per model (fallback chain)."""
         start = time.perf_counter()
-        ttft_ms: int | None = None
+        ttft_holder: list[int | None] = [None]
         system_prompt = build_system_prompt(
             query, session_history, user_profile=user_profile, command_names=command_names
         )
-
-        openai_messages = [{"role": "system", "content": system_prompt}]
-        for msg in session_history[-10:]:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if isinstance(content, list):
-                content = " ".join([str(c.get("text", "")) if isinstance(c, dict) else str(c) for c in content])
-
-            # Map roles properly
-            if role in ["user", "assistant", "system"]:
-                openai_messages.append({"role": role, "content": str(content)})
-            else:
-                openai_messages.append({"role": "user", "content": str(content)})
-
-        openai_messages.append({"role": "user", "content": query})
+        openai_messages = _build_openai_messages(query, session_history, system_prompt)
 
         # Check client availability based on provider
         if not self.client:
@@ -183,13 +266,60 @@ class AgentOrchestrator:
                 mock_text = f"Hello! I am ITZ AI. (Note: NVIDIA_API_KEY is not set).\n\nYou asked: '{query}'."
             else:
                 mock_text = f"Hello! I am ITZ AI. (Note: OPENROUTER_API_KEY is not set).\n\nYou asked: '{query}'."
-            for chunk in mock_text.split(" "):
-                yield f"data: {json.dumps({'content': chunk + ' '})}\n\n"
+            async for event in _emit_words(mock_text):
+                yield event
             yield "data: [DONE]\n\n"
             return
 
+        runtime = self._resolve_runtime_config(model_override)
+        model_config: dict[str, Any] = runtime["config"]
+        provider: str = runtime["provider"]
+        temperature: float = runtime["temperature"]
+        reasoning_enabled: bool = runtime["reasoning_enabled"]
+
+        success = False
+        last_error = None
+
+        for current_model in runtime["models_to_try"]:
+            try:
+                # Handle different client types
+                if self.client_type == "langchain_nvidia":
+                    async for event in self._stream_langchain_nvidia(openai_messages, start, ttft_holder):
+                        yield event
+                else:
+                    async for event in self._stream_openai_compat(
+                        current_model,
+                        openai_messages,
+                        model_config,
+                        provider,
+                        temperature,
+                        reasoning_enabled,
+                        start,
+                        ttft_holder,
+                    ):
+                        yield event
+                success = True
+                break  # Exit loop if stream completed successfully
+
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Model '{current_model}' failed with error: {last_error}. Trying next fallback...")
+                continue
+
+        if not success:
+            error_str = last_error or "Unknown API error"
+            logger.warning(f"All models failed. Last error: {error_str}")
+            total_ms = int((time.perf_counter() - start) * 1000)
+            fallback_response = f"Halo! Berdasarkan knowledge base ITZ AI dan riwayat percakapan Anda, saya memahami pertanyaan Anda mengenai '{query}'. (Catatan: Terjadi kendala saat memanggil model AI. Coba lagi beberapa saat.)"
+            async for event in _emit_words(fallback_response):
+                yield event
+            yield _emit({"timing": {"ttft_ms": total_ms, "total_ms": total_ms}})
+            yield "data: [DONE]\n\n"
+
+    def _resolve_runtime_config(self, model_override: str | None) -> dict[str, Any]:
+        """Config runtime dari DB (cached) + override per-request; rebuild client bila berubah."""
         # Fetch dynamic model configuration from database (cached)
-        model_config = {}
+        model_config: dict[str, Any] = {}
         with contextlib.suppress(Exception):
             model_config = DatabaseService.get_config_table("ai_model_config")
 
@@ -213,205 +343,140 @@ class AgentOrchestrator:
             self.api_key = api_key
             self.nvidia_api_key = nvidia_api_key
             self.provider = provider
+            self.client, self.client_type = _create_client(provider, api_key, base_url, nvidia_api_key)
 
-            if provider.lower() == "nvidia" and nvidia_api_key:
-                try:
-                    from langchain_nvidia_ai_endpoints import ChatNVIDIA
+        return {
+            "config": model_config,
+            "primary_model": primary_model,
+            "provider": provider,
+            "base_url": base_url,
+            "api_key": api_key,
+            "nvidia_api_key": nvidia_api_key,
+            "temperature": float(model_config.get("temperature", 0.4)),
+            "reasoning_enabled": _parse_bool(model_config.get("reasoning_enabled", False)),
+            "models_to_try": _merge_models(primary_model, model_config.get("fallback_models")),
+        }
 
-                    self.client = ChatNVIDIA(
-                        model=settings.NVIDIA_MODEL,
-                        api_key=nvidia_api_key,
-                        temperature=1,
-                        top_p=0.95,
-                        max_tokens=8192,
-                    )
-                    self.client_type = "langchain_nvidia"
-                except ImportError:
-                    logger.warning(
-                        "Warning: langchain_nvidia_ai_endpoints not installed. Falling back to OpenAI client."
-                    )
-                    self.client = None
+    async def _stream_langchain_nvidia(
+        self,
+        openai_messages: list[dict[str, str]],
+        start: float,
+        ttft_holder: list[int | None],
+    ) -> AsyncGenerator[str, None]:
+        """Stream via LangChain ChatNVIDIA (non-token streaming; konten di-chunk manual)."""
+        # Konversi pesan OpenAI ke format LangChain; system disederhanakan jadi user + note
+        langchain_messages = []
+        for msg in openai_messages:
+            if msg["role"] == "system":
+                langchain_messages.append({"role": "user", "content": f"[System]: {msg['content']}"})
             else:
-                # Default to OpenAI-compatible client
-                try:
-                    self.client = OpenAI(
-                        base_url=base_url,
-                        api_key=api_key,
-                        default_headers={"HTTP-Referer": "http://localhost:3000", "X-Title": "ITZ AI"},
-                    )
-                    self.client_type = "openai"
-                except Exception:
-                    self.client = None
-                    self.client_type = None
-        temperature = float(model_config.get("temperature", 0.4))
-        reasoning_raw = model_config.get("reasoning_enabled", False)
-        if isinstance(reasoning_raw, str):
-            reasoning_enabled = reasoning_raw.lower() in ("1", "true", "yes", "on")
+                langchain_messages.append({"role": msg["role"], "content": msg["content"]})
+
+        response = self.client.invoke(langchain_messages)
+
+        # Extract content dari LangChain response
+        if hasattr(response, "content"):
+            content_text = response.content
+        elif isinstance(response, dict) and "content" in response:
+            content_text = response["content"]
         else:
-            reasoning_enabled = bool(reasoning_raw)
-        fallback_models = [str(m).strip() for m in (model_config.get("fallback_models") or []) if str(m).strip()]
+            content_text = str(response)
 
-        # Build list of models to try (Primary -> Fallbacks). Fully dynamic, no hardcoded defaults.
-        models_to_try = [primary_model]
-        for fm in fallback_models:
-            if fm not in models_to_try:
-                models_to_try.append(fm)
+        # Token usage (usage_metadata) untuk analitik admin
+        usage: dict[str, Any] | None = None
+        _um = getattr(response, "usage_metadata", None)
+        if isinstance(_um, dict):
+            usage = {
+                "prompt_tokens": int(_um.get("input_tokens", 0) or 0),
+                "completion_tokens": int(_um.get("output_tokens", 0) or 0),
+                "total_tokens": int(_um.get("total_tokens", 0) or 0),
+            }
 
-        success = False
-        last_error = None
+        # Stream konten dalam buffer 12 char (smooth, tanpa sleep)
+        content_text = _CLOSING_RE.sub("", _clean_chunk(content_text))
+        async for event in _emit_buffered(content_text, start, ttft_holder, usage):
+            yield event
 
-        for current_model in models_to_try:
-            try:
-                # Handle different client types
-                if self.client_type == "langchain_nvidia":
-                    # LangChain Nvidia client - invoke with messages (including system prompt and history)
-                    # Convert OpenAI format messages to LangChain format
-                    langchain_messages = []
-                    for msg in openai_messages:
-                        if msg["role"] == "system":
-                            # LangChain uses HumanMessage/AIMessage/SystemMessage
-                            # For simplicity, include system as user message with note
-                            langchain_messages.append({"role": "user", "content": f"[System]: {msg['content']}"})
-                        else:
-                            langchain_messages.append({"role": msg["role"], "content": msg["content"]})
+    async def _stream_openai_compat(
+        self,
+        current_model: str,
+        openai_messages: list[dict[str, str]],
+        model_config: dict[str, Any],
+        provider: str,
+        temperature: float,
+        reasoning_enabled: bool,
+        start: float,
+        ttft_holder: list[int | None],
+    ) -> AsyncGenerator[str, None]:
+        """Stream via OpenAI-compatible client (Groq / OpenRouter)."""
+        # Reasoning dimatikan agar output bersih terstruktur.
+        extra_body_params = {}
+        if reasoning_enabled and provider.lower() != "groq":
+            extra_body_params["reasoning"] = {"enabled": True}
 
-                    response = self.client.invoke(langchain_messages)
+        # Reasoning models (gpt-oss dkk) bakal token utk berpikir dari budget ini,
+        # jadi 800 kekecilan -> jawaban kepotong di tengah (finish_reason=length).
+        try:
+            max_tokens = int(model_config.get("max_tokens") or 8192)
+        except (TypeError, ValueError):
+            max_tokens = 8192
+        if max_tokens < 1024:
+            max_tokens = 1024
 
-                    # Extract content from LangChain response
-                    if hasattr(response, "content"):
-                        content_text = response.content
-                    elif isinstance(response, dict) and "content" in response:
-                        content_text = response["content"]
-                    else:
-                        content_text = str(response)
+        response = self.client.chat.completions.create(
+            model=current_model,
+            messages=openai_messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+            stream_options={"include_usage": True},
+            extra_body=extra_body_params if extra_body_params else None,
+        )
 
-                    # Token usage (usage_metadata) untuk analitik admin
-                    _usage = None
-                    _um = getattr(response, "usage_metadata", None)
-                    if isinstance(_um, dict):
-                        _usage = {
-                            "prompt_tokens": int(_um.get("input_tokens", 0) or 0),
-                            "completion_tokens": int(_um.get("output_tokens", 0) or 0),
-                            "total_tokens": int(_um.get("total_tokens", 0) or 0),
-                        }
+        # Buffer 12 chars = 2-3 kata per flush, smooth tanpa flicker. Tanpa sleep.
+        buffer = ""
+        finish_reason = None
+        usage: dict[str, Any] | None = None
+        tail = ""
 
-                    # Stream content in chunks - 12 chars smooth, tanpa sleep
-                    content_text = _CLOSING_RE.sub("", _clean_chunk(content_text))
-                    if ttft_ms is None:
-                        ttft_ms = int((time.perf_counter() - start) * 1000)
+        for chunk in response:
+            _u = getattr(chunk, "usage", None)
+            if _u is not None:
+                usage = {
+                    "prompt_tokens": int(getattr(_u, "prompt_tokens", 0) or 0),
+                    "completion_tokens": int(getattr(_u, "completion_tokens", 0) or 0),
+                    "total_tokens": int(getattr(_u, "total_tokens", 0) or 0),
+                }
+            if chunk.choices and chunk.choices[0].delta:
+                if getattr(chunk.choices[0], "finish_reason", None):
+                    finish_reason = chunk.choices[0].finish_reason
+                delta = chunk.choices[0].delta
+                # Abaikan reasoning trace agar tidak bocor ke UI
+                if getattr(delta, "reasoning", None):
+                    continue
+                content = _clean_chunk(getattr(delta, "content", None) or "")
+                if not content:
+                    continue
+                if ttft_holder[0] is None:
+                    ttft_holder[0] = int((time.perf_counter() - start) * 1000)
+                buffer += content
+                # Flush buffer ke tail; _TAIL_HOLD menahan akhir jawaban agar
+                # garis closing ("Done./Selesai.") bisa dibersihkan sebelum kirim.
+                if len(buffer) >= 12:
+                    tail += buffer
                     buffer = ""
-                    buffer_size = 12
-                    for char in content_text:
-                        buffer += char
-                        if len(buffer) >= buffer_size:
-                            yield f"data: {json.dumps({'content': buffer})}\n\n"
-                            buffer = ""
+                    if len(tail) > _TAIL_HOLD:
+                        emit, tail = tail[:-_TAIL_HOLD], tail[-_TAIL_HOLD:]
+                        yield _emit({"content": emit})
 
-                    # Flush remaining
-                    if buffer:
-                        yield f"data: {json.dumps({'content': buffer})}\n\n"
-
-                    if _usage:
-                        yield f"data: {json.dumps({'usage': _usage})}\n\n"
-
-                    total_ms = int((time.perf_counter() - start) * 1000)
-                    yield f"data: {json.dumps({'timing': {'ttft_ms': ttft_ms if ttft_ms is not None else total_ms, 'total_ms': total_ms}})}\n\n"
-                    yield f"data: {json.dumps({'answered': True})}\n\n"
-                    yield "data: [DONE]\n\n"
-                    success = True
-                    break
-
-                else:
-                    # OpenAI-compatible client (Groq / OpenRouter). reasoning dimatikan agar output bersih terstruktur.
-                    extra_body_params = {}
-                    if reasoning_enabled and provider.lower() != "groq":
-                        extra_body_params["reasoning"] = {"enabled": True}
-
-                    # Reasoning models (gpt-oss dkk) bakal token utk berpikir dari budget ini,
-                    # jadi 800 kekecilan -> jawaban kepotong di tengah (finish_reason=length).
-                    try:
-                        max_tokens = int(model_config.get("max_tokens") or 8192)
-                    except (TypeError, ValueError):
-                        max_tokens = 8192
-                    if max_tokens < 1024:
-                        max_tokens = 1024
-
-                    response = self.client.chat.completions.create(
-                        model=current_model,
-                        messages=openai_messages,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        stream=True,
-                        stream_options={"include_usage": True},
-                        extra_body=extra_body_params if extra_body_params else None,
-                    )
-
-                    # Buffer 12 chars = 2-3 kata per flush, smooth tanpa flicker. Tanpa sleep.
-                    buffer = ""
-                    buffer_size = 12
-                    _finish_reason = None
-                    _usage = None
-                    tail = ""
-
-                    for chunk in response:
-                        _u = getattr(chunk, "usage", None)
-                        if _u is not None:
-                            _usage = {
-                                "prompt_tokens": int(getattr(_u, "prompt_tokens", 0) or 0),
-                                "completion_tokens": int(getattr(_u, "completion_tokens", 0) or 0),
-                                "total_tokens": int(getattr(_u, "total_tokens", 0) or 0),
-                            }
-                        if chunk.choices and chunk.choices[0].delta:
-                            if getattr(chunk.choices[0], "finish_reason", None):
-                                _finish_reason = chunk.choices[0].finish_reason
-                            delta = chunk.choices[0].delta
-                            # Abaikan reasoning trace agar tidak bocor ke UI
-                            if getattr(delta, "reasoning", None):
-                                continue
-                            content = _clean_chunk(getattr(delta, "content", None) or "")
-                            if not content:
-                                continue
-                            if ttft_ms is None:
-                                ttft_ms = int((time.perf_counter() - start) * 1000)
-                            buffer += content
-                            # Flush buffer when threshold reached
-                            if len(buffer) >= buffer_size:
-                                tail += buffer
-                                buffer = ""
-                                if len(tail) > _TAIL_HOLD:
-                                    emit, tail = tail[:-_TAIL_HOLD], tail[-_TAIL_HOLD:]
-                                    yield f"data: {json.dumps({'content': emit})}\n\n"
-
-                    tail = _CLOSING_RE.sub("", tail + buffer)
-                    if tail:
-                        yield f"data: {json.dumps({'content': tail})}\n\n"
-
-                    if _finish_reason == "length":
-                        logger.warning(
-                            f"Warning: jawaban terpotong (finish_reason=length, max_tokens={max_tokens}, model={current_model})"
-                        )
-
-                    if _usage:
-                        yield f"data: {json.dumps({'usage': _usage})}\n\n"
-
-                    total_ms = int((time.perf_counter() - start) * 1000)
-                    yield f"data: {json.dumps({'timing': {'ttft_ms': ttft_ms if ttft_ms is not None else total_ms, 'total_ms': total_ms}})}\n\n"
-                    yield f"data: {json.dumps({'answered': True})}\n\n"
-                    yield "data: [DONE]\n\n"
-                    success = True
-                    break  # Exit loop if stream completed successfully
-
-            except Exception as e:
-                last_error = str(e)
-                logger.warning(f"Model '{current_model}' failed with error: {last_error}. Trying next fallback...")
-                continue
-
-        if not success:
-            error_str = last_error or "Unknown API error"
-            logger.warning(f"All models failed. Last error: {error_str}")
-            total_ms = int((time.perf_counter() - start) * 1000)
-            fallback_response = f"Halo! Berdasarkan knowledge base ITZ AI dan riwayat percakapan Anda, saya memahami pertanyaan Anda mengenai '{query}'. (Catatan: Terjadi kendala saat memanggil model AI. Coba lagi beberapa saat.)"
-            for chunk in fallback_response.split(" "):
-                yield f"data: {json.dumps({'content': chunk + ' '})}\n\n"
-            yield f"data: {json.dumps({'timing': {'ttft_ms': total_ms, 'total_ms': total_ms}})}\n\n"
-            yield "data: [DONE]\n\n"
+        final_tail = _CLOSING_RE.sub("", tail + buffer)
+        async for event in _emit_closing(
+            final_tail,
+            usage,
+            ttft_holder[0],
+            start,
+            current_model=current_model,
+            max_tokens=max_tokens,
+            finish_reason=finish_reason,
+        ):
+            yield event
