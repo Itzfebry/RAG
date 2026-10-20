@@ -109,7 +109,7 @@ def _parse_bool(v: Any) -> bool:
 def _merge_models(primary: str, fallback_raw: Any) -> list[str]:
     """Primary -> fallbacks, tanpa duplikat, tanpa hardcoded default."""
     models = [primary]
-    for fm in [str(m).strip() for m in (fallback_raw or []) if str(m).strip()]:
+    for fm in [str(m or "").strip() for m in (fallback_raw or []) if str(m or "").strip()]:
         if fm not in models:
             models.append(fm)
     return models
