@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { ApiError, fetchApi } from "@/lib/fetch-api";
+import type { PricingData, PricingPlan } from "@/lib/api-types";
 import { SectionHeader } from "../SectionHeader";
 import {
   cardBase,
@@ -35,14 +36,7 @@ import {
   textareaCls,
 } from "../adminStyles";
 
-export type PlanRow = {
-  id: string;
-  label: string;
-  prompts: number;
-  amount: number;
-  popular: boolean;
-  original_amount?: number | null;
-};
+export type PlanRow = PricingPlan;
 
 const MAX_PLANS = 12;
 const MAX_QRIS_CHARS = 600_000;
@@ -69,20 +63,8 @@ export function PricingTab({
   saving,
   pushToast,
 }: {
-  pricing: {
-    plans: PlanRow[];
-    payment_qris: string;
-    payment_instructions: string;
-    contact: string;
-    order_note: string;
-  };
-  onChange: (next: {
-    plans: PlanRow[];
-    payment_qris: string;
-    payment_instructions: string;
-    contact: string;
-    order_note: string;
-  }) => void;
+  pricing: PricingData;
+  onChange: (next: PricingData) => void;
   onSave: () => void;
   saving: boolean;
   pushToast: (kind: "success" | "error" | "info", title: string, desc?: string) => void;
@@ -148,7 +130,7 @@ export function PricingTab({
       if (!Number.isFinite(Number(p.amount)) || Number(p.amount) < 0)
         return `Paket #${i + 1}: harga tidak valid.`;
       const orig = p.original_amount;
-      if (orig !== null && orig !== undefined && orig !== ("" as any)) {
+      if (orig !== null && orig !== undefined && orig !== "") {
         if (!Number.isFinite(Number(orig)) || Number(orig) <= 0)
           return `Paket #${i + 1}: harga coret harus angka lebih dari 0 (atau dikosongkan).`;
         if (Number(orig) <= Number(p.amount))

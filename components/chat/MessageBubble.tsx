@@ -11,7 +11,7 @@ import { motion } from "framer-motion";
 
 interface Props {
   role: "user" | "assistant";
-  content: string | any;
+  content: unknown;
   isStreaming?: boolean;
   durationMs?: number;
   onRegenerate?: () => void;
@@ -35,10 +35,12 @@ export const MessageBubble: React.FC<Props> = ({
       ? content
       : Array.isArray(content)
         ? content
-            .map((c) => (typeof c === "object" ? (c as any).text || JSON.stringify(c) : c))
+            .map((c) =>
+              typeof c === "object" ? (c as { text?: string }).text || JSON.stringify(c) : c,
+            )
             .join(" ")
         : typeof content === "object" && content !== null
-          ? (content as any).text || JSON.stringify(content)
+          ? (content as { text?: string }).text || JSON.stringify(content)
           : String(content || "");
 
   const onCopy = async () => {

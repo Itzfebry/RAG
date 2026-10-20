@@ -11,33 +11,15 @@ import OnboardingTour, { TourStep } from "@/components/chat/OnboardingTour";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, Info, X } from "lucide-react";
 import { ApiError, fetchApi, tryFetch } from "@/lib/fetch-api";
+import type { Me, TrialInfo } from "@/lib/api-types";
+
+export type { Me, TrialInfo };
 
 interface Message {
   role: "user" | "assistant";
   content: string;
   durationMs?: number;
 }
-
-type Me = {
-  username: string;
-  display_name?: string | null;
-  email?: string | null;
-  email_verified?: boolean;
-  max_prompts: number;
-  prompts_used: number;
-  remaining: number | null;
-  has_password?: boolean;
-  goal?: string;
-  style_id?: string;
-  gender?: string;
-};
-
-type TrialInfo = {
-  trial_prompts: number;
-  used: number;
-  remaining: number;
-  allowed: boolean;
-};
 
 const MAX_HISTORY_MESSAGES = 20;
 
@@ -601,8 +583,8 @@ export default function ChatPage() {
         if (last?.role === "assistant") u[u.length - 1] = { ...last, durationMs: dur };
         return u;
       });
-    } catch (e: any) {
-      const m = e.message || "Gagal terhubung ke backend.";
+    } catch (e) {
+      const m = (e instanceof Error ? e.message : "") || "Gagal terhubung ke backend.";
       if (
         m.includes("Batas prompt habis") ||
         m.includes("Trial habis") ||
@@ -626,51 +608,59 @@ export default function ChatPage() {
       <div aria-hidden className="itz-particles z-[1]">
         <span
           className="itz-dot"
-          style={{
-            left: "14%",
-            top: "10%",
-            width: 4,
-            height: 4,
-            color: "rgba(255,255,255,0.35)",
-            animationDelay: "0s",
-            ["--dur" as any]: "5s",
-          }}
+          style={
+            {
+              left: "14%",
+              top: "10%",
+              width: 4,
+              height: 4,
+              color: "rgba(255,255,255,0.35)",
+              animationDelay: "0s",
+              "--dur": "5s",
+            } as React.CSSProperties
+          }
         />
         <span
           className="itz-dot"
-          style={{
-            left: "68%",
-            top: "12%",
-            width: 3,
-            height: 3,
-            color: "rgba(255,255,255,0.25)",
-            animationDelay: "1.1s",
-            ["--dur" as any]: "5.5s",
-          }}
+          style={
+            {
+              left: "68%",
+              top: "12%",
+              width: 3,
+              height: 3,
+              color: "rgba(255,255,255,0.25)",
+              animationDelay: "1.1s",
+              "--dur": "5.5s",
+            } as React.CSSProperties
+          }
         />
         <span
           className="itz-dot"
-          style={{
-            left: "28%",
-            top: "26%",
-            width: 3,
-            height: 3,
-            color: "rgba(255,255,255,0.2)",
-            animationDelay: "1.6s",
-            ["--dur" as any]: "4.8s",
-          }}
+          style={
+            {
+              left: "28%",
+              top: "26%",
+              width: 3,
+              height: 3,
+              color: "rgba(255,255,255,0.2)",
+              animationDelay: "1.6s",
+              "--dur": "4.8s",
+            } as React.CSSProperties
+          }
         />
         <span
           className="itz-dot"
-          style={{
-            left: "74%",
-            top: "38%",
-            width: 4,
-            height: 4,
-            color: "rgba(255,255,255,0.25)",
-            animationDelay: "1.3s",
-            ["--dur" as any]: "5.2s",
-          }}
+          style={
+            {
+              left: "74%",
+              top: "38%",
+              width: 4,
+              height: 4,
+              color: "rgba(255,255,255,0.25)",
+              animationDelay: "1.3s",
+              "--dur": "5.2s",
+            } as React.CSSProperties
+          }
         />
       </div>
 

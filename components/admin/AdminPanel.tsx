@@ -115,6 +115,7 @@ import {
   Cell,
   ReferenceLine,
 } from "recharts";
+import type { TooltipContentProps } from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   cardBase,
@@ -151,22 +152,27 @@ import { PricingTab } from "./tabs/PricingTab";
 import { SectionHeader } from "./SectionHeader";
 import { FieldInfo } from "./FieldInfo";
 import { ApiError, fetchApi, tryFetch } from "@/lib/fetch-api";
-
-type TokenUsageStats = {
-  budget?: number;
-  daily?: { prompt?: number; completion?: number; total?: number }[];
-  today?: { total?: number };
-  yesterday?: { total?: number };
-};
-
-type AdminBootstrap = {
-  config?: Record<string, any>;
-  categories?: unknown[];
-  entries?: unknown[];
-  models?: any;
-  users?: unknown[];
-  settings?: any;
-};
+import type {
+  AdminBootstrap,
+  AdminExportPayload,
+  AdminHealth,
+  AdminImportData,
+  AdminImportResult,
+  AdminUser,
+  AppSettingsRaw,
+  AuditRow,
+  CommunicationConfig,
+  IdentityConfig,
+  KnowledgeCategory,
+  KnowledgeEntry,
+  ModelCatalogEntry,
+  PersonalConfig,
+  PersonalityConfig,
+  PricingData,
+  StyleConfig,
+  SystemConfig,
+  TokenUsageStats,
+} from "@/lib/api-types";
 
 type TabType =
   | "dashboard"
@@ -208,8 +214,9 @@ type RealStats = {
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
 /* ---- format angka + tooltip chart (rapi, monospace, monokrom) ---- */
-const fmtNum = (n: number) => Number(n || 0).toLocaleString("id-ID");
-const fmtCompact = (n: number) => {
+const fmtNum = (n: number | string | readonly (number | string)[] | null | undefined) =>
+  Number(n || 0).toLocaleString("id-ID");
+const fmtCompact = (n: number | undefined) => {
   const v = Number(n || 0);
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1).replace(".", ",")}M`;
   if (v >= 1_000) return `${(v / 1_000).toFixed(1).replace(".", ",")}K`;
@@ -231,10 +238,12 @@ const fmtDayFull = (iso: string) => {
   });
 };
 
-function ChartTooltip({ active, payload, label, unit }: any) {
+type ChartTooltipProps = Partial<TooltipContentProps<number, string>> & { unit?: string };
+
+function ChartTooltip({ active, payload, label, unit }: ChartTooltipProps) {
   if (!active || !payload || !payload.length) return null;
-  const rows = payload.filter((p: any) => p.value !== undefined && p.value !== null);
-  const total = rows.reduce((s: number, p: any) => s + (Number(p.value) || 0), 0);
+  const rows = payload.filter((p) => p.value !== undefined && p.value !== null);
+  const total = rows.reduce((s, p) => s + (Number(p.value) || 0), 0);
   return (
     <div className="min-w-[160px] rounded-lg border border-white/10 bg-[#0c0c10]/95 px-3 py-2.5 shadow-[0_16px_40px_-12px_rgba(0,0,0,0.85)] backdrop-blur">
       {label !== undefined && label !== null && (
@@ -242,14 +251,14 @@ function ChartTooltip({ active, payload, label, unit }: any) {
           {label}
         </p>
       )}
-      {rows.map((p: any, i: number) => (
+      {rows.map((p, i) => (
         <div key={i} className="flex items-center justify-between gap-5 py-0.5 text-[12.5px]">
           <span className="flex items-center gap-1.5 text-zinc-400">
             <span
               className="h-2 w-2 shrink-0 rounded-[3px]"
               style={{ background: p.color || p.stroke || p.fill || "#a1a1aa" }}
             />
-            {p.name || p.dataKey}
+            {(p.name || p.dataKey) as React.ReactNode}
           </span>
           <span className="font-mono tabular-nums text-zinc-100">
             {fmtNum(p.value)}
@@ -341,7 +350,7 @@ function fmtDateTime(iso?: string | null): string {
   return `${d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}, ${d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`;
 }
 
-function parseAppSettings(s: any) {
+function parseAppSettings(s: AppSettingsRaw) {
   const threshold = s.rag_match_threshold;
   return {
     user_token_expiry_hours: Number(s.user_token_expiry_hours ?? 24),
@@ -359,10 +368,10 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [health, setHealth] = useState<any>(null);
+  const [health, setHealth] = useState<AdminHealth | null>(null);
   const [healthError, setHealthError] = useState(false);
   const [reindexing, setReindexing] = useState(false);
-  const [auditRows, setAuditRows] = useState<any[]>([]);
+  const [auditRows, setAuditRows] = useState<AuditRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -391,14 +400,14 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
   const [categoryData, setCategoryData] = useState<{ name: string; value: number }[]>([]);
 
-  const [identityData, setIdentityData] = useState({
+  const [identityData, setIdentityData] = useState<IdentityConfig>({
     name: "",
     role: "",
     description: "",
     identity: "",
     purpose: "",
   });
-  const [personalData, setPersonalData] = useState({
+  const [personalData, setPersonalData] = useState<PersonalConfig>({
     profile: "",
     background: "",
     interests: "",
@@ -407,7 +416,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     preferences: "",
     relevant_context: "",
   });
-  const [personalityData, setPersonalityData] = useState({
+  const [personalityData, setPersonalityData] = useState<PersonalityConfig>({
     personality: "",
     tone: "",
     attitude: "",
@@ -416,7 +425,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     response_behavior: "",
     prohibited_behavior: "",
   });
-  const [commData, setCommData] = useState({
+  const [commData, setCommData] = useState<CommunicationConfig>({
     primary_language: "",
     tone: "",
     response_length: "",
@@ -424,7 +433,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     technical_depth: "",
     explanation_style: "",
   });
-  const [sysData, setSysData] = useState({
+  const [sysData, setSysData] = useState<SystemConfig>({
     behavioral_rules: "",
     response_rules: "",
     safety_rules: "",
@@ -432,23 +441,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     reasoning_constraints: "",
     formatting_rules: "",
   });
-  const [stylesData, setStylesData] = useState<{
-    styles: { id: string; name: string; description: string; prompt: string }[];
-  }>({ styles: [] });
-  const [pricingData, setPricingData] = useState<{
-    plans: {
-      id: string;
-      label: string;
-      prompts: number;
-      amount: number;
-      popular: boolean;
-      original_amount?: number | null;
-    }[];
-    payment_qris: string;
-    payment_instructions: string;
-    contact: string;
-    order_note: string;
-  }>({
+  const [stylesData, setStylesData] = useState<{ styles: StyleConfig[] }>({ styles: [] });
+  const [pricingData, setPricingData] = useState<PricingData>({
     plans: [],
     payment_qris: "",
     payment_instructions: "",
@@ -465,7 +459,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     reasoning_enabled: false,
     max_tokens: 8192,
   });
-  const [availableModels, setAvailableModels] = useState<any[]>([]);
+  const [availableModels, setAvailableModels] = useState<ModelCatalogEntry[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelSearch, setModelSearch] = useState("");
   const [freeOnly, setFreeOnly] = useState(false);
@@ -480,13 +474,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     >
   >({});
 
-  const [knowledgeCategories, setKnowledgeCategories] = useState<any[]>([]);
-  const [knowledgeEntries, setKnowledgeEntries] = useState<any[]>([]);
+  const [knowledgeCategories, setKnowledgeCategories] = useState<KnowledgeCategory[]>([]);
+  const [knowledgeEntries, setKnowledgeEntries] = useState<KnowledgeEntry[]>([]);
   const [selectedCategorySlug, setSelectedCategorySlug] = useState<string>("technical_knowledge");
   const [newEntryModal, setNewEntryModal] = useState(false);
   const [entryForm, setEntryForm] = useState({ id: "", title: "", content: "", category_id: "" });
 
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [syncingUsers, setSyncingUsers] = useState(false);
   const [appSettings, setAppSettings] = useState<{
@@ -518,11 +512,23 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const jsonFileRef = React.useRef<HTMLInputElement>(null);
 
   const [realStats, setRealStats] = useState<RealStats | null>(null);
-  const [tokenStats, setTokenStats] = useState<any>(null);
+  const [tokenStats, setTokenStats] = useState<TokenUsageStats | null>(null);
   const [budgetInput, setBudgetInput] = useState("0");
   const [statsLoading, setStatsLoading] = useState(false);
   const [chartPeriod, setChartPeriod] = useState<"day" | "week" | "month" | "year">("day");
   const [tokenDays, setTokenDays] = useState<number>(14);
+  // Cookie admin (itz_admin_token) expire tiap 2h. Kalau panel dibiarkan
+  // terbuka lewat expiry, semua save balik 401 "No token provided".
+  // Guard ini redirect ke login alih-alih menampilkan error membingungkan.
+  const authExpired = (status: number): boolean => {
+    if (status === 401) {
+      pushToast("error", "Sesi admin berakhir", "Silakan login ulang");
+      router.replace("/admin/login");
+      return true;
+    }
+    return false;
+  };
+
   const fetchStats = React.useCallback(
     async (period?: string) => {
       if (!isAuthenticated) return;
@@ -554,11 +560,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   );
   useEffect(() => {
     if (tokenStats && typeof tokenStats.budget === "number") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setBudgetInput(String(tokenStats.budget));
     }
   }, [tokenStats?.budget]);
   useEffect(() => {
     if (!isAuthenticated) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchStats();
     const t = setInterval(fetchStats, 15000);
     return () => clearInterval(t);
@@ -606,15 +614,20 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const tokAvg14 =
     tokenStats && Array.isArray(tokenStats.daily) && tokenStats.daily.length
       ? Math.round(
-          tokenStats.daily.reduce((s: number, d: any) => s + Number(d.total || 0), 0) /
+          tokenStats.daily.reduce<number>((s, d) => s + Number(d.total || 0), 0) /
             tokenStats.daily.length,
         )
       : 0;
   // rincian periode grafik token (ikut tab 7/14/30 hari)
   const tokPeriod =
     tokenStats && Array.isArray(tokenStats.daily) && tokenStats.daily.length
-      ? tokenStats.daily.reduce(
-          (a: any, d: any) => ({
+      ? tokenStats.daily.reduce<{
+          prompt: number;
+          completion: number;
+          total: number;
+          peak: number;
+        }>(
+          (a, d) => ({
             prompt: a.prompt + Number(d.prompt || 0),
             completion: a.completion + Number(d.completion || 0),
             total: a.total + Number(d.total || 0),
@@ -634,10 +647,74 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         })()
       : null;
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
+  /* Muat bootstrap: config persona, knowledge, model config, users, settings. */
+  const loadAllData = async () => {
+    setUsersLoading(true);
+    try {
+      const b = await fetchApi<AdminBootstrap>(
+        "/api/python/admin/bootstrap",
+        {},
+        { fallbackError: "Gagal memuat data admin" },
+      );
 
+      const c = b.config || {};
+      if (c.identity) setIdentityData(c.identity);
+      if (c.personal) setPersonalData(c.personal);
+      if (c.personality) setPersonalityData(c.personality);
+      if (c.communication) setCommData(c.communication);
+      if (c.system) setSysData(c.system);
+      if (Array.isArray(c.response_styles?.styles)) {
+        const styles = c.response_styles.styles;
+        setStylesData({ styles });
+      }
+      if (c.pricing) {
+        setPricingData({
+          plans: Array.isArray(c.pricing.plans) ? c.pricing.plans : [],
+          payment_qris: c.pricing.payment_qris || "",
+          payment_instructions: c.pricing.payment_instructions || "",
+          contact: c.pricing.contact || "",
+          order_note: c.pricing.order_note || "",
+        });
+      }
+
+      const cats = Array.isArray(b.categories) ? b.categories : [];
+      const entries = Array.isArray(b.entries) ? b.entries : [];
+      setKnowledgeCategories(cats);
+      setKnowledgeEntries(entries);
+      const catCounts: Record<string, number> = {};
+      entries.forEach((e) => {
+        const cat = cats.find((x) => x.id === e.category_id);
+        if (cat) catCounts[cat.name] = (catCounts[cat.name] || 0) + 1;
+      });
+      setCategoryData(Object.entries(catCounts).map(([name, value]) => ({ name, value })));
+
+      const m = b.models || {};
+      const cur = m.current || m;
+      setModelConfig({
+        active_model: cur.active_model || "",
+        fallback_models: (cur.fallback_models || []).map((s) => String(s)),
+        provider: cur.provider || "openrouter",
+        api_base_url: cur.api_base_url || "https://openrouter.ai/api/v1",
+        temperature: Number(cur.temperature ?? 0.4),
+        reasoning_enabled: Boolean(cur.reasoning_enabled),
+        max_tokens: Number(cur.max_tokens) || 8192,
+      });
+      const cat = m.live_catalog?.data || m.live_catalog?.fallback?.data || [];
+      if (Array.isArray(cat) && cat.length) setAvailableModels(cat);
+
+      setUsers(Array.isArray(b.users) ? b.users : []);
+      const s = b.settings?.settings || b.settings || {};
+      setAppSettings(parseAppSettings(s as AppSettingsRaw));
+    } catch (err) {
+      console.error("Error loading admin data:", err);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  // Cookie admin (itz_admin_token) expire tiap 2h. Kalau panel dibiarkan
+  // terbuka lewat expiry, semua save balik 401 "No token provided".
+  // Guard ini redirect ke login alih-alih menampilkan error membingungkan.
   const checkAuth = async () => {
     try {
       const r = await tryFetch("/api/python/admin/verify");
@@ -651,17 +728,10 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     setIsLoadingAuth(false);
   };
 
-  // Cookie admin (itz_admin_token) expire tiap 2h. Kalau panel dibiarkan
-  // terbuka lewat expiry, semua save balik 401 "No token provided".
-  // Guard ini redirect ke login alih-alih menampilkan error membingungkan.
-  const authExpired = (status: number): boolean => {
-    if (status === 401) {
-      pushToast("error", "Sesi admin berakhir", "Silakan login ulang");
-      router.replace("/admin/login");
-      return true;
-    }
-    return false;
-  };
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    checkAuth();
+  }, []);
 
   const handleLogout = async () => {
     await fetchApi("/api/python/admin/logout", { method: "POST" }).catch(() => {});
@@ -670,7 +740,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
   const loadHealth = React.useCallback(async () => {
     try {
-      const j = await fetchApi("/api/python/admin/health");
+      const j = await fetchApi<AdminHealth>("/api/python/admin/health");
       setHealth(j);
       setHealthError(false);
     } catch (e) {
@@ -682,13 +752,14 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
   const loadAudit = React.useCallback(async () => {
     try {
-      const j = await fetchApi<{ items?: unknown[] }>("/api/python/admin/audit?limit=100");
+      const j = await fetchApi<{ items?: AuditRow[] }>("/api/python/admin/audit?limit=100");
       setAuditRows(j.items || []);
     } catch {}
   }, []);
 
   useEffect(() => {
     if (!isAuthenticated) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadHealth();
     loadAudit();
     const t = window.setInterval(loadHealth, 30000);
@@ -735,12 +806,12 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     setUsersLoading(true);
     try {
       const results = await Promise.all([
-        fetchApi("/api/python/admin/users").catch(() => null),
-        fetchApi("/api/python/admin/settings").catch(() => null),
+        fetchApi<AdminUser[]>("/api/python/admin/users").catch(() => null),
+        fetchApi<{ settings?: AppSettingsRaw }>("/api/python/admin/settings").catch(() => null),
       ]);
-      const [u, s] = results as [unknown, { settings?: unknown } | null];
-      if (u) setUsers(u as unknown[]);
-      if (s) setAppSettings(parseAppSettings((s.settings || s) as any));
+      const [u, s] = results;
+      if (u) setUsers(u);
+      if (s) setAppSettings(parseAppSettings((s.settings || s) as AppSettingsRaw));
     } catch {}
     setUsersLoading(false);
   };
@@ -782,7 +853,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     const isEdit = Boolean(editingUserId);
     const url = isEdit ? `/api/python/admin/users/${editingUserId}` : "/api/python/admin/users";
     const method = isEdit ? "PUT" : "POST";
-    const body: any = isEdit
+    const body = isEdit
       ? {
           display_name: userForm.display_name || null,
           max_prompts: Number(userForm.max_prompts),
@@ -856,12 +927,12 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         appSettings.rag_match_threshold === null ? null : Number(appSettings.rag_match_threshold),
     };
     try {
-      const j = await fetchApi<{ settings?: unknown }>("/api/python/admin/settings", {
+      const j = await fetchApi<{ settings?: AppSettingsRaw }>("/api/python/admin/settings", {
         method: "PUT",
         json: payloadBody,
       });
       const s = j.settings || j;
-      setAppSettings(parseAppSettings(s as any));
+      setAppSettings(parseAppSettings(s as AppSettingsRaw));
       pushToast("success", "Pengaturan disimpan");
     } catch (e) {
       if (e instanceof ApiError && e.status > 0 && authExpired(e.status)) return;
@@ -873,78 +944,14 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     }
   };
 
-  const loadAllData = async () => {
-    setUsersLoading(true);
-    try {
-      const b = await fetchApi<AdminBootstrap>(
-        "/api/python/admin/bootstrap",
-        {},
-        { fallbackError: "Gagal memuat data admin" },
-      );
-
-      const c = b.config || {};
-      if (c.identity) setIdentityData(c.identity);
-      if (c.personal) setPersonalData(c.personal);
-      if (c.personality) setPersonalityData(c.personality);
-      if (c.communication) setCommData(c.communication);
-      if (c.system) setSysData(c.system);
-      if (Array.isArray(c.response_styles?.styles))
-        setStylesData({ styles: c.response_styles.styles });
-      if (c.pricing) {
-        setPricingData({
-          plans: Array.isArray(c.pricing.plans) ? c.pricing.plans : [],
-          payment_qris: c.pricing.payment_qris || "",
-          payment_instructions: c.pricing.payment_instructions || "",
-          contact: c.pricing.contact || "",
-          order_note: c.pricing.order_note || "",
-        });
-      }
-
-      const cats = Array.isArray(b.categories) ? b.categories : [];
-      const entries = Array.isArray(b.entries) ? b.entries : [];
-      setKnowledgeCategories(cats);
-      setKnowledgeEntries(entries);
-      const catCounts: Record<string, number> = {};
-      entries.forEach((e: any) => {
-        const cat = cats.find((x: any) => x.id === e.category_id);
-        if (cat)
-          catCounts[(cat as { name: string }).name] =
-            (catCounts[(cat as { name: string }).name] || 0) + 1;
-      });
-      setCategoryData(Object.entries(catCounts).map(([name, value]) => ({ name, value })));
-
-      const m = b.models || {};
-      const cur = m.current || m;
-      setModelConfig({
-        active_model: cur.active_model || "",
-        fallback_models: (cur.fallback_models || []).map((s: any) => String(s)),
-        provider: cur.provider || "openrouter",
-        api_base_url: cur.api_base_url || "https://openrouter.ai/api/v1",
-        temperature: Number(cur.temperature ?? 0.4),
-        reasoning_enabled: Boolean(cur.reasoning_enabled),
-        max_tokens: Number(cur.max_tokens) || 8192,
-      });
-      const cat = m.live_catalog?.data || m.live_catalog?.fallback?.data || [];
-      if (Array.isArray(cat) && cat.length) setAvailableModels(cat);
-
-      setUsers(Array.isArray(b.users) ? b.users : []);
-      const s = b.settings?.settings || b.settings || {};
-      setAppSettings(parseAppSettings(s));
-    } catch (err) {
-      console.error("Error loading admin data:", err);
-    } finally {
-      setUsersLoading(false);
-    }
-  };
-
   const refreshAvailableModels = async (opts?: { freeOnly?: boolean }) => {
     setModelsLoading(true);
     try {
       const fo = opts?.freeOnly ?? freeOnly;
-      let data: any = null;
+      let data: ModelCatalogEntry[] | null = null;
       if (catalogApiKey.trim() || catalogBaseUrl.trim()) {
         try {
-          const j = await fetchApi<{ data?: unknown[]; error?: unknown }>(
+          const j = await fetchApi<{ data?: ModelCatalogEntry[]; error?: unknown }>(
             "/api/python/admin/models/catalog",
             {
               method: "POST",
@@ -975,13 +982,21 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       } else {
         const params = new URLSearchParams({ include_free_only: String(fo), limit: "120" });
         let j: {
-          live_catalog?: { data?: unknown; fallback?: { data?: unknown }; error?: unknown };
-          data?: unknown;
+          live_catalog?: {
+            data?: ModelCatalogEntry[];
+            fallback?: { data?: ModelCatalogEntry[] };
+            error?: unknown;
+          };
+          data?: ModelCatalogEntry[];
         } | null = null;
         try {
           j = await fetchApi<{
-            live_catalog?: { data?: unknown; fallback?: { data?: unknown }; error?: unknown };
-            data?: unknown;
+            live_catalog?: {
+              data?: ModelCatalogEntry[];
+              fallback?: { data?: ModelCatalogEntry[] };
+              error?: unknown;
+            };
+            data?: ModelCatalogEntry[];
           }>(`/api/python/admin/models?${params.toString()}`);
         } catch {}
         if (j) {
@@ -991,11 +1006,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
             pushToast("error", "Katalog gagal", String(j.live_catalog.error).slice(0, 160));
         }
         if (!data || !Array.isArray(data) || data.length === 0) {
-          let j2: { data?: unknown; fallback?: { data?: unknown } } | null = null;
+          let j2: { data?: ModelCatalogEntry[]; fallback?: { data?: ModelCatalogEntry[] } } | null =
+            null;
           try {
-            j2 = await fetchApi<{ data?: unknown; fallback?: { data?: unknown } }>(
-              `/api/python/v1/models/available?limit=120&include_free_only=${fo}`,
-            );
+            j2 = await fetchApi<{
+              data?: ModelCatalogEntry[];
+              fallback?: { data?: ModelCatalogEntry[] };
+            }>(`/api/python/v1/models/available?limit=120&include_free_only=${fo}`);
           } catch {}
           if (j2) {
             if (Array.isArray(j2.data) && j2.data.length) setAvailableModels(j2.data);
@@ -1015,7 +1032,9 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     if (!id) return;
     setModelTestResults((prev) => ({ ...prev, [id]: { status: "loading" } }));
     try {
-      const body: any = { model: id };
+      const body: { model: string; api_key?: string; base_url?: string; provider?: string } = {
+        model: id,
+      };
       if (catalogApiKey.trim()) body.api_key = catalogApiKey.trim();
       if (catalogBaseUrl.trim()) body.base_url = catalogBaseUrl.trim();
       if (modelConfig.provider) body.provider = modelConfig.provider;
@@ -1049,7 +1068,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           typeof err === "string" ? err.slice(0, 160) : "Cek kredensial / model",
         );
       }
-    } catch (e: any) {
+    } catch (e) {
+      const msg0 = (e instanceof Error ? e.message : "") || String(e);
       // HTTP gagal: bentuk error sama seperti branch gagal versi lama (detail/latency).
       if (e instanceof ApiError && e.status > 0) {
         const d = (e.data ?? {}) as {
@@ -1075,9 +1095,9 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       }
       setModelTestResults((prev) => ({
         ...prev,
-        [id]: { status: "error", error: e.message || String(e) },
+        [id]: { status: "error", error: msg0 },
       }));
-      pushToast("error", "Model gagal", (e.message || String(e)).slice(0, 160));
+      pushToast("error", "Model gagal", msg0.slice(0, 160));
     }
   };
 
@@ -1291,7 +1311,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   };
 
   const buildLocalExportBlob = () => {
-    const exportObj: any = {
+    const exportObj: AdminExportPayload = {
       version: 1,
       exported_at: new Date().toISOString(),
       ai_identity: identityData,
@@ -1299,7 +1319,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       ai_personality: personalityData,
       communication_settings: commData,
       system_instructions: sysData,
-      knowledge_entries: knowledgeEntries.map((e: any) => ({
+      knowledge_entries: knowledgeEntries.map((e) => ({
         id: e.id,
         category_slug:
           knowledgeCategories.find((c) => c.id === e.category_id)?.slug ||
@@ -1369,7 +1389,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     URL.revokeObjectURL(url);
   };
 
-  const applyImportedDataToState = (data: any) => {
+  const applyImportedDataToState = (data: AdminImportData) => {
     if (data.ai_identity) setIdentityData((prev) => ({ ...prev, ...data.ai_identity }));
     if (data.personal_information)
       setPersonalData((prev) => ({ ...prev, ...data.personal_information }));
@@ -1381,11 +1401,11 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
   const handleJsonApplyFromText = async () => {
     setJsonError("");
-    let data: any;
+    let data: AdminImportData;
     try {
       data = JSON.parse(jsonText);
-    } catch (e: any) {
-      const msg = `Invalid JSON: ${e.message || String(e)}`;
+    } catch (e) {
+      const msg = `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`;
       setJsonError(msg);
       pushToast("error", "JSON tidak valid", msg.slice(0, 120));
       return;
@@ -1393,9 +1413,9 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     applyImportedDataToState(data);
     setSaving(true);
     try {
-      let j: Record<string, any> = {};
+      let j: AdminImportResult = {};
       try {
-        j = await fetchApi<Record<string, any>>("/api/python/admin/import", {
+        j = await fetchApi<AdminImportResult>("/api/python/admin/import", {
           method: "POST",
           json: data,
         });
@@ -1425,8 +1445,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       setTimeout(() => setSaveSuccess(false), 3000);
       await loadAllData();
       setTimeout(() => setShowJsonModal(false), 700);
-    } catch (e: any) {
-      const msg = e.message || String(e);
+    } catch (e) {
+      const msg = ((e instanceof Error ? e.message : "") || String(e)) as string;
       setJsonError(msg);
       pushToast("error", "Import gagal", msg.slice(0, 120));
     } finally {
@@ -1441,8 +1461,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       setJsonText(text);
       const data = JSON.parse(text);
       applyImportedDataToState(data);
-    } catch (e: any) {
-      setJsonError(e.message || String(e));
+    } catch (e) {
+      setJsonError(((e instanceof Error ? e.message : "") || String(e)) as string);
     }
   };
 
@@ -1465,7 +1485,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                 ai_personality: personalityData,
                 communication_settings: commData,
                 system_instructions: sysData,
-                knowledge_entries: knowledgeEntries.slice(0, 50).map((e: any) => ({
+                knowledge_entries: knowledgeEntries.slice(0, 50).map((e) => ({
                   category_slug:
                     knowledgeCategories.find((c) => c.id === e.category_id)?.slug || undefined,
                   title: e.title,
@@ -1899,7 +1919,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                         <p className="mt-1 text-[13px] text-zinc-500">
                           {health.token_budget.budget === 0
                             ? "Budget: tanpa batas"
-                            : health.token_budget.remaining < 0
+                            : Number(health.token_budget.remaining) < 0
                               ? "Budget terlampaui"
                               : `Sisa ${fmtNum(health.token_budget.remaining)}`}
                         </p>
@@ -2099,14 +2119,14 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                       <CardContent className={cardContentCls}>
                         {!tokenStats ||
                         !Array.isArray(tokenStats.daily) ||
-                        tokenStats.daily.every((d: any) => !d.total) ? (
+                        tokenStats.daily.every((d) => !d.total) ? (
                           <div className="py-16 text-center text-[16px] text-zinc-500">
                             Belum ada token terpakai - chat dulu untuk isi data.
                           </div>
                         ) : (
                           <ResponsiveContainer width="100%" height={260}>
                             <AreaChart
-                              data={tokenStats.daily.map((d: any) => ({
+                              data={tokenStats.daily.map((d) => ({
                                 day: fmtDay(String(d.day)),
                                 prompt: d.prompt,
                                 completion: d.completion,
@@ -2153,9 +2173,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                               <Tooltip
                                 content={<ChartTooltip />}
                                 cursor={{ stroke: "#3f3f46", strokeWidth: 1 }}
-                                labelFormatter={(_: any, payload: any) =>
-                                  payload?.[0]?.payload?.full || _
-                                }
+                                labelFormatter={(_, payload) => payload?.[0]?.payload?.full || _}
                               />
                               <ReferenceLine
                                 y={tokAvg14}
@@ -2257,7 +2275,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                           </CardTitle>
                         </CardHeader>
                         <CardContent className={cardContentCls}>
-                          {tokenStats && tokenStats.budget > 0 ? (
+                          {tokenStats ? (
                             <BudgetGauge
                               pct={
                                 (100 * Number(tokenStats.today?.total || 0)) /
@@ -2270,7 +2288,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                               <p className="mt-2 text-[13px] text-zinc-500">tanpa batas harian</p>
                             </div>
                           )}
-                          {tokenStats && tokenStats.budget > 0 && (
+                          {tokenStats && Number(tokenStats.budget) > 0 && (
                             <p className="mt-1 text-center text-[13px] text-zinc-500">
                               <span className="font-mono tabular-nums text-zinc-300">
                                 {fmtNum(tokenStats.today?.total)}
@@ -2311,16 +2329,14 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                         <CardContent className={cardContentCls}>
                           {tokenStats &&
                           Array.isArray(tokenStats.daily) &&
-                          tokenStats.daily.some((d: any) => d.total > 0) ? (
+                          tokenStats.daily.some((d) => d.total > 0) ? (
                             (() => {
                               const sorted = [...tokenStats.daily]
-                                .sort(
-                                  (a: any, b: any) => Number(b.total || 0) - Number(a.total || 0),
-                                )
+                                .sort((a, b) => Number(b.total || 0) - Number(a.total || 0))
                                 .slice(0, 3);
                               return (
                                 <div className="space-y-3">
-                                  {sorted.map((d: any, i: number) => {
+                                  {sorted.map((d, i) => {
                                     const pct =
                                       Number(sorted[0]?.total) > 0
                                         ? Math.round(
@@ -2436,7 +2452,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                         ) : (
                           <ResponsiveContainer width="100%" height={280}>
                             <BarChart
-                              data={realStats.dailyRequests.map((d: any) => {
+                              data={realStats.dailyRequests.map((d) => {
                                 const lab = String(d.day);
                                 const short = chartPeriod === "day" ? fmtDay(lab) : lab;
                                 return {
@@ -2475,9 +2491,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                               <Tooltip
                                 content={<ChartTooltip unit=" req" />}
                                 cursor={{ fill: "rgba(255,255,255,0.03)" }}
-                                labelFormatter={(_: any, payload: any) =>
-                                  payload?.[0]?.payload?.full || _
-                                }
+                                labelFormatter={(_, payload) => payload?.[0]?.payload?.full || _}
                               />
                               <Bar
                                 dataKey="count"
@@ -2499,14 +2513,14 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                       </CardHeader>
                       <CardContent className={cardContentCls}>
                         {!realStats.dailyLatency ||
-                        realStats.dailyLatency.every((d: any) => d.avg_ms == null) ? (
+                        realStats.dailyLatency.every((d) => d.avg_ms == null) ? (
                           <div className="py-16 text-center text-[16px] text-zinc-500">
                             Belum ada latency - chat dulu untuk isi data.
                           </div>
                         ) : (
                           <ResponsiveContainer width="100%" height={280}>
                             <LineChart
-                              data={realStats.dailyLatency.map((d: any) => {
+                              data={realStats.dailyLatency.map((d) => {
                                 const lab = String(d.day);
                                 const short = chartPeriod === "day" ? fmtDay(lab) : lab;
                                 return {
@@ -2544,9 +2558,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                               <Tooltip
                                 content={<ChartTooltip unit=" ms" />}
                                 cursor={{ stroke: "#3f3f46", strokeWidth: 1 }}
-                                labelFormatter={(_: any, payload: any) =>
-                                  payload?.[0]?.payload?.full || _
-                                }
+                                labelFormatter={(_, payload) => payload?.[0]?.payload?.full || _}
                               />
                               <Line
                                 type="linear"
@@ -2569,8 +2581,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                         {realStats.dailyLatency &&
                           (() => {
                             const agg: Record<string, { sum: number; cnt: number }> = {};
-                            realStats.dailyLatency.forEach((d: any) =>
-                              (d.models || []).forEach((m: any) => {
+                            realStats.dailyLatency.forEach((d) =>
+                              (d.models || []).forEach((m) => {
                                 const k = m.model || "unknown";
                                 if (!agg[k]) agg[k] = { sum: 0, cnt: 0 };
                                 agg[k].sum += (m.avg_ms || 0) * (m.count || 1);
@@ -2650,7 +2662,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                               </tr>
                             </thead>
                             <tbody>
-                              {tokenStats.by_user.map((r: any) => (
+                              {tokenStats.by_user.map((r) => (
                                 <tr
                                   key={r.owner}
                                   className="border-b border-white/[0.04] text-zinc-300"
@@ -2734,7 +2746,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                           </p>
                         ) : (
                           <div className="flex flex-wrap gap-1.5 max-h-[88px] overflow-auto pr-1">
-                            {availableModels.slice(0, 24).map((m: any) => (
+                            {availableModels.slice(0, 24).map((m) => (
                               <span
                                 key={m.id}
                                 className="inline-flex max-w-[220px] truncate rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[13px] font-medium text-zinc-300"
@@ -3238,7 +3250,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/[0.06]">
-                          {users.map((u: any) => {
+                          {users.map((u) => {
                             const isUnlimited = Number(u.max_prompts) === 0;
                             const exhausted =
                               !isUnlimited && Number(u.prompts_used || 0) >= Number(u.max_prompts);
@@ -4222,7 +4234,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               Batal
             </Button>
             <Button
-              onClick={(e: any) => handleSaveKnowledgeEntry(e)}
+              onClick={(e) => handleSaveKnowledgeEntry(e)}
               className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium"
             >
               Simpan &amp; Generate Embedding
@@ -4354,8 +4366,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                   applyImportedDataToState(JSON.parse(jsonText));
                   setSaveSuccess(true);
                   setTimeout(() => setSaveSuccess(false), 2000);
-                } catch (e: any) {
-                  setJsonError(`Invalid JSON: ${e.message}`);
+                } catch (e) {
+                  setJsonError(`Invalid JSON: ${e instanceof Error ? e.message : String(e)}`);
                 }
               }}
               className="h-9 border-white/10 bg-white/[0.04] text-zinc-300 text-[16px]"
