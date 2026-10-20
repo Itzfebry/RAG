@@ -81,14 +81,31 @@ export default function OnboardingTour({ steps, onFinish }: Props) {
       {rect ? (
         <>
           {/* Empat tirai gelap menyisakan lubang di sekitar elemen target */}
-          <div className="pointer-events-auto fixed inset-x-0 top-0 bg-black/70" style={{ height: Math.max(0, rect.top) }} />
-          <div className="pointer-events-auto fixed inset-x-0 bottom-0 bg-black/70" style={{ top: Math.max(0, rect.top + rect.height) }} />
-          <div className="pointer-events-auto fixed left-0 bg-black/70" style={{ top: rect.top, width: Math.max(0, rect.left), height: rect.height }} />
-          <div className="pointer-events-auto fixed right-0 bg-black/70" style={{ top: rect.top, left: rect.left + rect.width, height: rect.height }} />
+          <div
+            className="pointer-events-auto fixed inset-x-0 top-0 bg-black/70"
+            style={{ height: Math.max(0, rect.top) }}
+          />
+          <div
+            className="pointer-events-auto fixed inset-x-0 bottom-0 bg-black/70"
+            style={{ top: Math.max(0, rect.top + rect.height) }}
+          />
+          <div
+            className="pointer-events-auto fixed left-0 bg-black/70"
+            style={{ top: rect.top, width: Math.max(0, rect.left), height: rect.height }}
+          />
+          <div
+            className="pointer-events-auto fixed right-0 bg-black/70"
+            style={{ top: rect.top, left: rect.left + rect.width, height: rect.height }}
+          />
           {/* Cincin sorot */}
           <div
             className="pointer-events-none fixed rounded-xl ring-2 ring-white/75"
-            style={{ top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 }}
+            style={{
+              top: rect.top - PAD,
+              left: rect.left - PAD,
+              width: rect.width + PAD * 2,
+              height: rect.height + PAD * 2,
+            }}
           />
         </>
       ) : (
@@ -105,7 +122,9 @@ export default function OnboardingTour({ steps, onFinish }: Props) {
         <p className="text-[10.5px] font-medium uppercase tracking-wider text-zinc-500">
           Langkah {index + 1} dari {steps.length}
         </p>
-        <p className="mt-1 text-[14.5px] font-semibold tracking-[-0.01em] text-white">{step.title}</p>
+        <p className="mt-1 text-[14.5px] font-semibold tracking-[-0.01em] text-white">
+          {step.title}
+        </p>
         <p className="mt-1 text-[12.5px] leading-relaxed text-zinc-400">{step.desc}</p>
         <div className="mt-4 flex items-center justify-between gap-2">
           <button

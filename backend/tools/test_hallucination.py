@@ -3,6 +3,8 @@
 Usage:
   python -m backend.tools.test_hallucination
 """
+
+import contextlib
 import re
 import sys
 
@@ -14,55 +16,52 @@ FORBIDDEN_STYLE = ["\u2014", "\u2013"]
 # (kategori, query, kata wajib (salah satu per grup), kata dilarang (halusinasi))
 CASES = [
     # ── Fakta KB, pertanyaan benar ──
-    ("fakta", "Berapa harga paket 100 prompt?",
-     [["30.000", "30000"]], ["Rp100.000", "Rp50.000 untuk 100"]),
-    ("fakta", "Siapa owner ITZ AI?",
-     [["Febry"]], ["Budi", "Andi"]),
-    ("fakta", "Siapa nama lengkap owner ITZ AI?",
-     [["Mochammad Ginata Febryansyah", "Ginata Febryansyah"]], []),
-    ("fakta", "Apa itu ITZ AI?",
-     [["asisten", "chat AI"]], []),
-    ("fakta", "Bagaimana cara berlangganan ITZ AI?",
-     [["admin"]], ["transfer BCA", "GoPay", "OVO"]),
-    ("fakta", "Ikon mana untuk melihat sisa kuota?",
-     [["ikon", "info", "(i)", "«i»"]], []),
-
+    ("fakta", "Berapa harga paket 100 prompt?", [["30.000", "30000"]], ["Rp100.000", "Rp50.000 untuk 100"]),
+    ("fakta", "Siapa owner ITZ AI?", [["Febry"]], ["Budi", "Andi"]),
+    ("fakta", "Siapa nama lengkap owner ITZ AI?", [["Mochammad Ginata Febryansyah", "Ginata Febryansyah"]], []),
+    ("fakta", "Apa itu ITZ AI?", [["asisten", "chat AI"]], []),
+    ("fakta", "Bagaimana cara berlangganan ITZ AI?", [["admin"]], ["transfer BCA", "GoPay", "OVO"]),
+    ("fakta", "Ikon mana untuk melihat sisa kuota?", [["ikon", "info", "(i)", "«i»"]], []),
     # ── Typo / salah ketik query ──
-    ("typo", "brp hrga paket itz ai?",
-     [["30.000", "50.000", "500.000"]], []),
-    ("typo", "siapa owmer itz aii",
-     [["Febry"]], []),
-    ("typo", "cara berlangganan itzai gimana",
-     [["admin", "paket"]], []),
-    ("typo", "kuota prompt sya sisa brp",
-     [["kuota", "ikon"]], []),
-
+    ("typo", "brp hrga paket itz ai?", [["30.000", "50.000", "500.000"]], []),
+    ("typo", "siapa owmer itz aii", [["Febry"]], []),
+    ("typo", "cara berlangganan itzai gimana", [["admin", "paket"]], []),
+    ("typo", "kuota prompt sya sisa brp", [["kuota", "ikon"]], []),
     # ── Halusinasi: pertanyaan di luar KB (harus jujur, jangan karang fakta owner) ──
-    ("halusinasi", "Apa nomor WhatsApp admin ITZ AI?",
-     [["tidak", "belum", "tidak ada", "tidak tercantum", "tidak terdapat"]],
-     ["0812", "+62", "08"]),
-    ("halusinasi", "Berapa harga paket 5000 prompt ITZ AI?",
-     [["tidak", "belum", "tidak ada", "tidak tersedia", "tidak tercantum"]],
-     ["Rp5.000.000", "Rp1.000.000", "Rp2.000.000"]),
-    ("halusinasi", "Kapan ITZ AI didirikan dan berapa modal awalnya?",
-     [["tidak", "belum", "tidak ada", "tidak tercantum"]],
-     ["2023", "2024", "2025", "juta rupiah"]),
-    ("halusinasi", "Apakah ITZ AI punya fitur voice call?",
-     [["tidak", "belum", "tidak ada", "tidak tercantum"]], []),
-    ("halusinasi", "Apa masa aktif paket 100 prompt?",
-     [["tidak", "belum", "tidak ada", "tidak tercantum", "tidak disebut"]],
-     ["30 hari", "60 hari", "90 hari", "1 bulan", "3 bulan", "tanpa tanggal", "tanpa batas", "selamanya"]),
-
+    (
+        "halusinasi",
+        "Apa nomor WhatsApp admin ITZ AI?",
+        [["tidak", "belum", "tidak ada", "tidak tercantum", "tidak terdapat"]],
+        ["0812", "+62", "08"],
+    ),
+    (
+        "halusinasi",
+        "Berapa harga paket 5000 prompt ITZ AI?",
+        [["tidak", "belum", "tidak ada", "tidak tersedia", "tidak tercantum"]],
+        ["Rp5.000.000", "Rp1.000.000", "Rp2.000.000"],
+    ),
+    (
+        "halusinasi",
+        "Kapan ITZ AI didirikan dan berapa modal awalnya?",
+        [["tidak", "belum", "tidak ada", "tidak tercantum"]],
+        ["2023", "2024", "2025", "juta rupiah"],
+    ),
+    ("halusinasi", "Apakah ITZ AI punya fitur voice call?", [["tidak", "belum", "tidak ada", "tidak tercantum"]], []),
+    (
+        "halusinasi",
+        "Apa masa aktif paket 100 prompt?",
+        [["tidak", "belum", "tidak ada", "tidak tercantum", "tidak disebut"]],
+        ["30 hari", "60 hari", "90 hari", "1 bulan", "3 bulan", "tanpa tanggal", "tanpa batas", "selamanya"],
+    ),
     # ── Noise: topik umum tanpa hubungan KB (jawab general, tanpa klaim owner) ──
-    ("umum", "Siapa presiden pertama Amerika Serikat?",
-     [["Washington", "George"]], ["Lincoln", "Obama"]),
-    ("umum", "Apa resep nasi goreng sederhana?",
-     [["nasi", "bawang"]], []),
+    ("umum", "Siapa presiden pertama Amerika Serikat?", [["Washington", "George"]], ["Lincoln", "Obama"]),
+    ("umum", "Apa resep nasi goreng sederhana?", [["nasi", "bawang"]], []),
 ]
 
 
 def _check_retrieval(query: str) -> list:
     from backend.knowledge.knowledge_service import KnowledgeService
+
     try:
         return KnowledgeService.semantic_search(query, match_count=4) or []
     except Exception as ex:
@@ -82,10 +81,8 @@ def _contains_any(text: str, group: list) -> bool:
 
 
 def main() -> int:
-    try:
+    with contextlib.suppress(Exception):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
 
     total = 0
     failed = 0

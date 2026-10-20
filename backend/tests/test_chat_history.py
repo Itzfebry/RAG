@@ -74,10 +74,13 @@ def test_seven_day_retention_purges_old_chats(db):
         {"id": "new-1", "user_id": "user-a", "title": "baru", "created_at": fresh, "updated_at": fresh},
     ]
     m._write_local_json(db._chats_file(), sessions)
-    m._write_local_json(db._chat_msgs_file(), [
-        {"id": "m1", "session_id": "old-1", "role": "user", "content": "x", "created_at": old},
-        {"id": "m2", "session_id": "new-1", "role": "user", "content": "y", "created_at": fresh},
-    ])
+    m._write_local_json(
+        db._chat_msgs_file(),
+        [
+            {"id": "m1", "session_id": "old-1", "role": "user", "content": "x", "created_at": old},
+            {"id": "m2", "session_id": "new-1", "role": "user", "content": "y", "created_at": fresh},
+        ],
+    )
     rows = db.list_chat_sessions("user-a")
     assert [r["id"] for r in rows] == ["new-1"]
     assert db.list_chat_messages("old-1") == []

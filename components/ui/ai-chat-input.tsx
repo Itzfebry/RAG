@@ -86,9 +86,15 @@ export function AIChatInput({
               key={c.name}
               role="option"
               aria-selected={i === activeIdx}
-              onMouseDown={(e) => { e.preventDefault(); applySuggestion(c.name); }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                applySuggestion(c.name);
+              }}
               onMouseEnter={() => setActiveIdx(i)}
-              className={cn("flex cursor-pointer items-baseline justify-between gap-3 px-3.5 py-2", i === activeIdx ? "bg-white/[0.08]" : "hover:bg-white/[0.04]")}
+              className={cn(
+                "flex cursor-pointer items-baseline justify-between gap-3 px-3.5 py-2",
+                i === activeIdx ? "bg-white/[0.08]" : "hover:bg-white/[0.04]",
+              )}
             >
               <span className="font-mono text-[13px] text-zinc-100">/{c.name}</span>
               <span className="truncate text-[12px] text-zinc-500">{c.purpose}</span>
@@ -100,7 +106,10 @@ export function AIChatInput({
         <div className="mb-2 flex flex-wrap items-center gap-1.5" aria-label="Mode aktif">
           <span className="text-[11.5px] text-zinc-500">Mode:</span>
           {activeCmds.map((n) => (
-            <span key={n} className="rounded-md border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11.5px] text-zinc-300">
+            <span
+              key={n}
+              className="rounded-md border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[11.5px] text-zinc-300"
+            >
               /{n}
             </span>
           ))}
@@ -127,9 +136,9 @@ export function AIChatInput({
           disabled={!canSend}
           className={cn(
             "relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-200 focus-visible:outline-offset-0",
-            canSend 
-              ? "bg-white text-black hover:bg-zinc-100 hover:scale-105 active:scale-95 shadow-[0_2px_12px_rgba(255,255,255,0.15)]" 
-              : "bg-white/[0.08] text-zinc-600 cursor-not-allowed"
+            canSend
+              ? "bg-white text-black hover:bg-zinc-100 hover:scale-105 active:scale-95 shadow-[0_2px_12px_rgba(255,255,255,0.15)]"
+              : "bg-white/[0.08] text-zinc-600 cursor-not-allowed",
           )}
           aria-label="Send message"
         >

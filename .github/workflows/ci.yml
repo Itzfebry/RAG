@@ -2,42 +2,42 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
 
 jobs:
-  backend:
-    name: Backend tests (pytest)
+  python:
+    name: Python lint & tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
-
-      - name: Run test suite
+      - name: Ruff lint
+        run: python -m ruff check .
+      - name: Ruff format check
+        run: python -m ruff format --check .
+      - name: Tests
         run: python -m pytest backend/tests -q
 
   frontend:
-    name: Frontend typecheck (tsc)
+    name: Frontend lint & typecheck
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
       - name: Install dependencies
         run: npm ci
-
-      - name: Typecheck
+      - name: ESLint
+        run: npx eslint .
+      - name: Prettier check
+        run: npx prettier --check .
+      - name: TypeScript check
         run: npx tsc --noEmit

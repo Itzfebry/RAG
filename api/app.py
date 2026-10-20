@@ -11,6 +11,7 @@ filesystem-routes. Rewrite hanya memilih handler; path request ASLI yang
 diterima FastAPI — prefix /api/python/* (dipakai frontend) dan /v1/*
 dinormalisasi oleh wrapper di bawah ini.
 """
+
 import os
 import sys
 
@@ -38,11 +39,11 @@ class _NormalizePath:
         if scope["type"] == "http":
             path = scope["path"]
             if path.startswith("/api/python/"):
-                scope["path"] = "/api/" + path[len("/api/python/"):]
+                scope["path"] = "/api/" + path[len("/api/python/") :]
             elif path == "/api/python":
                 scope["path"] = "/api"
             elif path.startswith("/v1/"):
-                scope["path"] = "/api/v1/" + path[len("/v1/"):]
+                scope["path"] = "/api/v1/" + path[len("/v1/") :]
             elif path == "/v1":
                 scope["path"] = "/api/v1"
         await self._app(scope, receive, send)

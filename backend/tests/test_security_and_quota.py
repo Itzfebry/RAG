@@ -3,6 +3,7 @@
 Tidak butuh Supabase / provider LLM / embedding eksternal. Jalankan:
   python -m pytest backend/tests -q
 """
+
 import os
 import sys
 
@@ -49,6 +50,7 @@ def test_jwt_secret_rejects_default_and_short(monkeypatch):
 
 def test_cron_warmup_requires_secret(monkeypatch):
     from fastapi.testclient import TestClient
+
     import backend.api.main as m
 
     monkeypatch.setenv("CRON_SECRET", "s3cret")
@@ -59,6 +61,7 @@ def test_cron_warmup_requires_secret(monkeypatch):
 
 def test_upload_requires_admin():
     from fastapi.testclient import TestClient
+
     import backend.api.main as m
 
     c = TestClient(m.app)
@@ -72,6 +75,7 @@ def test_upload_requires_admin():
 def test_body_limit_blocks_chunked_oversize():
     from fastapi import FastAPI, Request
     from fastapi.testclient import TestClient
+
     from backend.security.middleware import BodySizeLimitMiddleware
 
     app = FastAPI()
@@ -142,4 +146,4 @@ def test_match_threshold_default_is_provider_aware():
 
     expected = 0.64 if ks.EMBEDDING_PROVIDER == "gemini" else 0.25
     if "MATCH_THRESHOLD" not in os.environ:
-        assert ks.MATCH_THRESHOLD == expected
+        assert expected == ks.MATCH_THRESHOLD

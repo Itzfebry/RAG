@@ -4,9 +4,28 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Copy, Loader2, QrCode, Sparkles, ArrowLeft, Clock, X, Receipt, MessageCircle } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Loader2,
+  QrCode,
+  Sparkles,
+  ArrowLeft,
+  Clock,
+  X,
+  Receipt,
+  MessageCircle,
+} from "lucide-react";
 
-export type Plan = { id: string; label: string; prompts: number; amount: number; popular?: boolean; original_amount?: number | null; discount_percent?: number | null };
+export type Plan = {
+  id: string;
+  label: string;
+  prompts: number;
+  amount: number;
+  popular?: boolean;
+  original_amount?: number | null;
+  discount_percent?: number | null;
+};
 
 export type PricingData = {
   plans: Plan[];
@@ -17,7 +36,12 @@ export type PricingData = {
   order_note: string;
 };
 
-type UserInfo = { username?: string; display_name?: string | null; remaining?: number | null; max_prompts?: number | null } | null;
+type UserInfo = {
+  username?: string;
+  display_name?: string | null;
+  remaining?: number | null;
+  max_prompts?: number | null;
+} | null;
 
 type OrderRow = {
   id: string;
@@ -76,7 +100,10 @@ export default function PricingPage() {
   }, [user, loadOrders]);
 
   const plans = data?.plans ?? [];
-  const activeId = useMemo(() => selected ?? plans.find((p) => p.popular)?.id ?? plans[0]?.id ?? null, [selected, plans]);
+  const activeId = useMemo(
+    () => selected ?? plans.find((p) => p.popular)?.id ?? plans[0]?.id ?? null,
+    [selected, plans],
+  );
   const chosen = plans.find((p) => p.id === activeId) ?? null;
 
   const createOrder = async () => {
@@ -114,13 +141,21 @@ export default function PricingPage() {
         .then(async (r) => {
           if (!r.ok) return;
           const j = await r.json();
-          const row = (Array.isArray(j.items) ? j.items : []).find((o: OrderRow) => o.id === order.id);
+          const row = (Array.isArray(j.items) ? j.items : []).find(
+            (o: OrderRow) => o.id === order.id,
+          );
           if (row && row.status === "paid") {
             setShowQris(false);
             setOrder(null);
-            setNotice(`Pembayaran tercatat otomatis. Kuota ${chosen ? `${chosen.prompts} prompt` : "paket"} sudah aktif.`);
+            setNotice(
+              `Pembayaran tercatat otomatis. Kuota ${chosen ? `${chosen.prompts} prompt` : "paket"} sudah aktif.`,
+            );
             loadOrders();
-            fetch("/api/python/user/me").then(async (r2) => { if (r2.ok) setUser(await r2.json()); }).catch(() => {});
+            fetch("/api/python/user/me")
+              .then(async (r2) => {
+                if (r2.ok) setUser(await r2.json());
+              })
+              .catch(() => {});
           }
         })
         .catch(() => {});
@@ -156,25 +191,49 @@ export default function PricingPage() {
       <header className="mb-9 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-white/[0.12] bg-zinc-900">
-            <Image src="/image/favicon.png" alt="ITZ" width={40} height={40} className="h-full w-full object-cover" priority />
+            <Image
+              src="/image/favicon.png"
+              alt="ITZ"
+              width={40}
+              height={40}
+              className="h-full w-full object-cover"
+              priority
+            />
           </div>
           <div>
             <h1 className="text-[22px] font-semibold tracking-tight text-zinc-50">Harga & Paket</h1>
-            <p className="mt-0.5 text-[13px] text-zinc-500">Kuota prompt ITZ AI. Kuota aktif otomatis begitu pembayaran tercatat — tanpa konfirmasi manual.</p>
+            <p className="mt-0.5 text-[13px] text-zinc-500">
+              Kuota prompt ITZ AI. Kuota aktif otomatis begitu pembayaran tercatat — tanpa
+              konfirmasi manual.
+            </p>
           </div>
         </div>
-        <Link href="/chat" className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-1.5 text-[13px] text-zinc-300 transition-colors hover:bg-white/[0.06]">
+        <Link
+          href="/chat"
+          className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-1.5 text-[13px] text-zinc-300 transition-colors hover:bg-white/[0.06]"
+        >
           <ArrowLeft className="h-3.5 w-3.5" /> Ke chat
         </Link>
       </header>
 
       {user && (
         <section className="mb-7 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-[13px] text-zinc-400">
-          Kamu login sebagai <span className="font-medium text-zinc-200">{user.display_name || user.username}</span>.
+          Kamu login sebagai{" "}
+          <span className="font-medium text-zinc-200">{user.display_name || user.username}</span>.
           {typeof user.remaining === "number" ? (
-            <> Sisa kuota saat ini <span className="font-medium tabular-nums text-emerald-300">{user.remaining}</span> prompt.</>
+            <>
+              {" "}
+              Sisa kuota saat ini{" "}
+              <span className="font-medium tabular-nums text-emerald-300">
+                {user.remaining}
+              </span>{" "}
+              prompt.
+            </>
           ) : (
-            <> Kuota akunmu <span className="text-zinc-300">tanpa batas</span>.</>
+            <>
+              {" "}
+              Kuota akunmu <span className="text-zinc-300">tanpa batas</span>.
+            </>
           )}
         </section>
       )}
@@ -185,18 +244,26 @@ export default function PricingPage() {
         </p>
       )}
       {!error && !data && (
-        <p className="flex items-center gap-2 text-[13px] text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" /> Memuat paket...</p>
+        <p className="flex items-center gap-2 text-[13px] text-zinc-500">
+          <Loader2 className="h-4 w-4 animate-spin" /> Memuat paket...
+        </p>
       )}
 
       {data && plans.length > 0 && (
-        <section aria-label="Pilih paket" role="radiogroup" className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+        <section
+          aria-label="Pilih paket"
+          role="radiogroup"
+          className="grid grid-cols-1 gap-3.5 sm:grid-cols-3"
+        >
           {plans.map((p) => {
             const active = activeId === p.id;
             const perPrompt = p.prompts > 0 ? Math.round(p.amount / p.prompts) : 0;
             // Diskon aktif hanya kalau harga coret di atas harga akhir.
             const off =
-              typeof p.discount_percent === "number" && p.discount_percent > 0 &&
-              typeof p.original_amount === "number" && p.original_amount > p.amount;
+              typeof p.discount_percent === "number" &&
+              p.discount_percent > 0 &&
+              typeof p.original_amount === "number" &&
+              p.original_amount > p.amount;
             return (
               <motion.button
                 key={p.id}
@@ -243,9 +310,13 @@ export default function PricingPage() {
                   <span className="ml-1.5 text-[13px] font-normal text-zinc-500">prompt</span>
                 </p>
                 <p className="mt-3 flex items-baseline gap-2 border-t border-white/[0.07] pt-3">
-                  <span className="text-[17px] font-medium tabular-nums text-zinc-200">{rupiah(p.amount)}</span>
+                  <span className="text-[17px] font-medium tabular-nums text-zinc-200">
+                    {rupiah(p.amount)}
+                  </span>
                   {off && (
-                    <span className="text-[13px] tabular-nums text-zinc-600 line-through">{rupiah(p.original_amount!)}</span>
+                    <span className="text-[13px] tabular-nums text-zinc-600 line-through">
+                      {rupiah(p.original_amount!)}
+                    </span>
                   )}
                 </p>
                 <p className="mt-1 text-[12px] tabular-nums text-zinc-500">
@@ -274,10 +345,18 @@ export default function PricingPage() {
                 disabled={submitting || !chosen}
                 className="flex h-12 w-full max-w-[360px] items-center justify-center gap-2 rounded-xl bg-white text-[15px] font-semibold text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+                {submitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <QrCode className="h-4 w-4" />
+                )}
                 Ambil paket{chosen ? ` ${chosen.prompts} prompt` : ""}
               </motion.button>
-              {data.order_note && <p className="max-w-[460px] text-center text-[12.5px] leading-relaxed text-zinc-500">{data.order_note}</p>}
+              {data.order_note && (
+                <p className="max-w-[460px] text-center text-[12.5px] leading-relaxed text-zinc-500">
+                  {data.order_note}
+                </p>
+              )}
             </>
           ) : (
             <Link
@@ -287,7 +366,9 @@ export default function PricingPage() {
               Login untuk membeli paket
             </Link>
           )}
-          {notice && <p className="max-w-[520px] text-center text-[13px] text-emerald-300">{notice}</p>}
+          {notice && (
+            <p className="max-w-[520px] text-center text-[13px] text-emerald-300">{notice}</p>
+          )}
         </section>
       )}
 
@@ -302,7 +383,7 @@ export default function PricingPage() {
         </div>
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-5">
           <h2 className="mb-3 text-[14px] font-medium text-zinc-200">Pembayaran</h2>
-          {(data?.payment_qris || data?.payment_instructions) ? (
+          {data?.payment_qris || data?.payment_instructions ? (
             <div className="space-y-3 text-[13.5px] leading-relaxed text-zinc-400">
               {data?.payment_qris && (
                 <button
@@ -312,7 +393,9 @@ export default function PricingPage() {
                   <QrCode className="h-4 w-4" /> Lihat QRIS
                 </button>
               )}
-              {data?.payment_instructions && <p className="whitespace-pre-wrap">{data.payment_instructions}</p>}
+              {data?.payment_instructions && (
+                <p className="whitespace-pre-wrap">{data.payment_instructions}</p>
+              )}
               {data?.contact_wa ? (
                 <a
                   href={`${data.contact_wa}?text=${encodeURIComponent("Halo admin ITZ AI, saya mau tanya soal pembayaran paket prompt.")}`}
@@ -331,7 +414,9 @@ export default function PricingPage() {
               )}
             </div>
           ) : (
-            <p className="text-[13.5px] leading-relaxed text-zinc-500">Info pembayaran belum diatur. Hubungi admin.</p>
+            <p className="text-[13.5px] leading-relaxed text-zinc-500">
+              Info pembayaran belum diatur. Hubungi admin.
+            </p>
           )}
         </div>
       </section>
@@ -346,10 +431,18 @@ export default function PricingPage() {
               <table className="w-full min-w-[560px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-white/[0.08] bg-white/[0.02]">
-                    <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Paket</th>
-                    <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Nominal</th>
-                    <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Status</th>
-                    <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Tanggal</th>
+                    <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                      Paket
+                    </th>
+                    <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                      Nominal
+                    </th>
+                    <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                      Status
+                    </th>
+                    <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                      Tanggal
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.06]">
@@ -358,19 +451,36 @@ export default function PricingPage() {
                       o.status === "paid"
                         ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
                         : o.status === "cancelled"
-                        ? "border-red-500/20 bg-red-500/10 text-red-300"
-                        : "border-amber-500/20 bg-amber-500/10 text-amber-300";
+                          ? "border-red-500/20 bg-red-500/10 text-red-300"
+                          : "border-amber-500/20 bg-amber-500/10 text-amber-300";
                     return (
                       <tr key={o.id}>
-                        <td className="px-4 py-3 text-[13.5px] text-zinc-200">{o.plan_label || o.plan_id}<span className="ml-1.5 text-zinc-500">· {o.prompts} prompt</span></td>
-                        <td className="px-4 py-3 text-[13.5px] tabular-nums text-zinc-300">{rupiah(o.amount)}</td>
+                        <td className="px-4 py-3 text-[13.5px] text-zinc-200">
+                          {o.plan_label || o.plan_id}
+                          <span className="ml-1.5 text-zinc-500">· {o.prompts} prompt</span>
+                        </td>
+                        <td className="px-4 py-3 text-[13.5px] tabular-nums text-zinc-300">
+                          {rupiah(o.amount)}
+                        </td>
                         <td className="px-4 py-3">
-                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${badge}`}>
-                            {o.status === "paid" ? "AKTIF" : o.status === "cancelled" ? "DIBATALKAN" : "BELUM DIBAYAR"}
+                          <span
+                            className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${badge}`}
+                          >
+                            {o.status === "paid"
+                              ? "AKTIF"
+                              : o.status === "cancelled"
+                                ? "DIBATALKAN"
+                                : "BELUM DIBAYAR"}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-[12.5px] text-zinc-500">
-                          {o.created_at ? new Date(o.created_at).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "-"}
+                          {o.created_at
+                            ? new Date(o.created_at).toLocaleDateString("id-ID", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                              })
+                            : "-"}
                         </td>
                       </tr>
                     );
@@ -391,7 +501,11 @@ export default function PricingPage() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
           >
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-[5px]" onClick={() => setShowQris(false)} aria-hidden />
+            <div
+              className="absolute inset-0 bg-black/70 backdrop-blur-[5px]"
+              onClick={() => setShowQris(false)}
+              aria-hidden
+            />
             <motion.div
               role="dialog"
               aria-modal="true"
@@ -402,29 +516,48 @@ export default function PricingPage() {
               transition={{ type: "spring", stiffness: 340, damping: 30, mass: 0.9 }}
               className="relative w-full max-w-[460px] overflow-hidden rounded-2xl border border-white/[0.1] bg-[#0c0c10] shadow-[0_32px_100px_-24px_rgba(0,0,0,0.85)]"
             >
-              <button onClick={() => setShowQris(false)} aria-label="Tutup" className="absolute right-3.5 top-3.5 z-10 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
+              <button
+                onClick={() => setShowQris(false)}
+                aria-label="Tutup"
+                className="absolute right-3.5 top-3.5 z-10 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
+              >
                 <X className="h-4 w-4" />
               </button>
               <div className="px-6 pb-6 pt-7">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">ITZ AI · Pembayaran</p>
-                <h2 className="mt-3 text-[22px] font-semibold tracking-tight text-white">{payUrl ? "Selesaikan pembayaran" : "Scan untuk bayar"}</h2>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  ITZ AI · Pembayaran
+                </p>
+                <h2 className="mt-3 text-[22px] font-semibold tracking-tight text-white">
+                  {payUrl ? "Selesaikan pembayaran" : "Scan untuk bayar"}
+                </h2>
                 {chosen && (
                   <p className="mt-1.5 text-[14px] text-zinc-400">
-                    {chosen.label} · <span className="font-medium tabular-nums text-zinc-200">{rupiah(chosen.amount)}</span>
+                    {chosen.label} ·{" "}
+                    <span className="font-medium tabular-nums text-zinc-200">
+                      {rupiah(chosen.amount)}
+                    </span>
                   </p>
                 )}
 
                 {payUrl ? (
                   <p className="mt-5 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-[13px] leading-relaxed text-emerald-200">
-                    Klik tombol di bawah untuk membuka halaman pembayaran. Kuota aktif otomatis begitu dana masuk — tidak perlu konfirmasi apa pun.
+                    Klik tombol di bawah untuk membuka halaman pembayaran. Kuota aktif otomatis
+                    begitu dana masuk — tidak perlu konfirmasi apa pun.
                   </p>
                 ) : data?.payment_qris ? (
-                  data.payment_qris.startsWith("data:image") || data.payment_qris.startsWith("http") ? (
+                  data.payment_qris.startsWith("data:image") ||
+                  data.payment_qris.startsWith("http") ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={data.payment_qris} alt="QRIS ITZ AI" className="mx-auto mt-5 h-56 w-56 rounded-xl border border-white/[0.1] bg-white object-contain p-2" />
+                    <img
+                      src={data.payment_qris}
+                      alt="QRIS ITZ AI"
+                      className="mx-auto mt-5 h-56 w-56 rounded-xl border border-white/[0.1] bg-white object-contain p-2"
+                    />
                   ) : (
                     <div className="mx-auto mt-5 flex h-56 w-56 items-center justify-center rounded-xl border border-white/[0.1] bg-white p-3">
-                      <p className="break-all text-center font-mono text-[10px] leading-tight text-black">{data.payment_qris}</p>
+                      <p className="break-all text-center font-mono text-[10px] leading-tight text-black">
+                        {data.payment_qris}
+                      </p>
                     </div>
                   )
                 ) : (
@@ -434,7 +567,9 @@ export default function PricingPage() {
                 )}
 
                 {data?.payment_instructions && (
-                  <p className="mt-4 whitespace-pre-wrap text-[13px] leading-relaxed text-zinc-400">{data.payment_instructions}</p>
+                  <p className="mt-4 whitespace-pre-wrap text-[13px] leading-relaxed text-zinc-400">
+                    {data.payment_instructions}
+                  </p>
                 )}
 
                 <div className="mt-5 space-y-2.5">
@@ -449,7 +584,8 @@ export default function PricingPage() {
                     </a>
                   ) : (
                     <p className="rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2.5 text-center text-[13px] leading-relaxed text-zinc-400">
-                      Bayar dengan nominal persis, lalu tunggu. Pembayaran tercatat otomatis dan kuota aktif sendiri.
+                      Bayar dengan nominal persis, lalu tunggu. Pembayaran tercatat otomatis dan
+                      kuota aktif sendiri.
                     </p>
                   )}
                   {receiptWa ? (
@@ -470,18 +606,22 @@ export default function PricingPage() {
                       {copied ? "Tersalin, kirim ke admin" : "Salin ringkasan order"}
                     </button>
                   )}
-                  <button onClick={() => setShowQris(false)} className="h-10 w-full rounded-xl text-[14px] font-medium text-zinc-500 transition-colors hover:bg-white/[0.04] hover:text-zinc-300">
+                  <button
+                    onClick={() => setShowQris(false)}
+                    className="h-10 w-full rounded-xl text-[14px] font-medium text-zinc-500 transition-colors hover:bg-white/[0.04] hover:text-zinc-300"
+                  >
                     Tutup
                   </button>
                 </div>
 
                 <p className="mt-4 flex items-start gap-2 text-[12px] leading-relaxed text-zinc-600">
                   <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  Kuota aktif otomatis begitu pembayaran tercatat — tidak perlu klik apa pun. Simpan bukti transfer sampai kuota bertambah; admin hanya jaga-jaga bila ada gangguan.
+                  Kuota aktif otomatis begitu pembayaran tercatat — tidak perlu klik apa pun. Simpan
+                  bukti transfer sampai kuota bertambah; admin hanya jaga-jaga bila ada gangguan.
                 </p>
               </div>
-              </motion.div>
             </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </main>

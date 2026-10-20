@@ -123,9 +123,17 @@ def test_research_block_forbids_fake_browsing():
 def test_prompt_builder_injects_active_command_block(monkeypatch):
     from backend.knowledge import context_builder as cb
 
-    monkeypatch.setattr(cb, "_get_cached_configs", lambda: {
-        "identity": {}, "personal": {}, "personality": {}, "comm": {}, "sys_instr": {},
-    })
+    monkeypatch.setattr(
+        cb,
+        "_get_cached_configs",
+        lambda: {
+            "identity": {},
+            "personal": {},
+            "personality": {},
+            "comm": {},
+            "sys_instr": {},
+        },
+    )
     monkeypatch.setattr(cb.DatabaseService, "get_app_settings", staticmethod(lambda: {}))
     monkeypatch.setattr(cb.KnowledgeService, "semantic_search", staticmethod(lambda *a, **k: []))
     monkeypatch.setattr(cb.rag_cache, "get", lambda k: None)
@@ -137,8 +145,10 @@ def test_prompt_builder_injects_active_command_block(monkeypatch):
     assert "## Mode /explain" in with_cmd
     assert "# Active Command Mode" not in without
 
+
 def test_command_details_endpoint_lists_all_commands():
     from backend.agent.commands import list_command_details
+
     details = list_command_details()
     assert {d["name"] for d in details} == set(COMMANDS)
     for d in details:
@@ -147,6 +157,7 @@ def test_command_details_endpoint_lists_all_commands():
 
 def test_help_response_is_static_and_skips_quota(monkeypatch):
     from fastapi.testclient import TestClient
+
     from backend.api import chat as chat_api
     from backend.api.main import app
 
@@ -167,6 +178,7 @@ def test_help_response_is_static_and_skips_quota(monkeypatch):
 
 def test_commands_endpoint_returns_registry():
     from fastapi.testclient import TestClient
+
     from backend.api.main import app
 
     res = TestClient(app).get("/api/commands")

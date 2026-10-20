@@ -9,11 +9,29 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { SectionHeader } from "../SectionHeader";
 import {
-  cardBase, cardHeaderCls, cardContentCls, tCard, tLabel,
-  cSky, cViolet, cAmber, cEmerald, cRose, cZinc, textareaCls,
+  cardBase,
+  cardHeaderCls,
+  cardContentCls,
+  tCard,
+  tLabel,
+  cSky,
+  cViolet,
+  cAmber,
+  cEmerald,
+  cRose,
+  cZinc,
+  textareaCls,
 } from "../adminStyles";
 
-export type PersonalData = { profile: string; background: string; interests: string; experience: string; projects: string; preferences: string; relevant_context: string };
+export type PersonalData = {
+  profile: string;
+  background: string;
+  interests: string;
+  experience: string;
+  projects: string;
+  preferences: string;
+  relevant_context: string;
+};
 
 const FIELDS = [
   { key: "profile", label: "Profil", Icon: User, color: cSky },
@@ -37,8 +55,15 @@ export function PersonalTab({
   saving: boolean;
 }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <SectionHeader title="Informasi Personal" desc="Informasi mengenai owner yang dipakai sebagai konteks AI." />
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-6"
+    >
+      <SectionHeader
+        title="Informasi Personal"
+        desc="Informasi mengenai owner yang dipakai sebagai konteks AI."
+      />
       <Card className={cardBase}>
         <CardHeader className={cardHeaderCls}>
           <CardTitle className={tCard}>Personal Information</CardTitle>
@@ -48,14 +73,28 @@ export function PersonalTab({
             const Ico = item.Icon;
             return (
               <div key={item.key} className="space-y-2">
-                <Label className={tLabel}><span className="flex items-center gap-1.5"><Ico className={`h-3.5 w-3.5 ${item.color}`} />{item.label}</span></Label>
-                <Textarea rows={2} value={data[item.key] || ""} onChange={(e) => onChange({ ...data, [item.key]: e.target.value })} className={textareaCls} />
+                <Label className={tLabel}>
+                  <span className="flex items-center gap-1.5">
+                    <Ico className={`h-3.5 w-3.5 ${item.color}`} />
+                    {item.label}
+                  </span>
+                </Label>
+                <Textarea
+                  rows={2}
+                  value={data[item.key] || ""}
+                  onChange={(e) => onChange({ ...data, [item.key]: e.target.value })}
+                  className={textareaCls}
+                />
               </div>
             );
           })}
         </CardContent>
         <CardFooter className="justify-end p-5 pt-0">
-          <Button onClick={onSave} disabled={saving} className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5">
+          <Button
+            onClick={onSave}
+            disabled={saving}
+            className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5"
+          >
             <Save className="h-4 w-4" />
             <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
           </Button>

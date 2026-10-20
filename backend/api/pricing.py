@@ -8,26 +8,28 @@ paid + kuota ditambah otomatis. User TIDAK bisa menandai sendiri: endpoint
 yang dipantau admin. Admin confirm/cancel tetap ada sebagai jaga-jaga (notifikasi
 gangguan, order nyangkut, koreksi).
 """
-import re
 
-from fastapi import APIRouter, HTTPException, Depends, Request
+import re
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
 
 try:
+    from backend.api.admin import get_current_admin
+    from backend.api.users import get_current_user
     from backend.database.db import DatabaseService
     from backend.payment import duitku
-    from backend.security.rate_limiter import get_client_ip, check_rate_limit
     from backend.security.audit import log_action as audit_log
-    from backend.api.users import get_current_user
-    from backend.api.admin import get_current_admin
+    from backend.security.rate_limiter import check_rate_limit, get_client_ip
 except ImportError:
     from database.db import DatabaseService  # type: ignore
     from payment import duitku  # type: ignore
-    from security.rate_limiter import get_client_ip, check_rate_limit  # type: ignore
     from security.audit import log_action as audit_log  # type: ignore
-    from api.users import get_current_user  # type: ignore
+    from security.rate_limiter import check_rate_limit, get_client_ip  # type: ignore
+
     from api.admin import get_current_admin  # type: ignore
+    from api.users import get_current_user  # type: ignore
 
 router = APIRouter(prefix="/api", tags=["Pricing"])
 admin_router = APIRouter(prefix="/api/admin", tags=["Admin Pricing"])
@@ -58,10 +60,10 @@ def wa_link(contact: str) -> str:
     return f"https://wa.me/{digits}"
 
 
-def _public_pricing() -> Dict[str, Any]:
+def _public_pricing() -> dict[str, Any]:
     cfg = DatabaseService.get_pricing()
     plans = []
-    for p in (cfg.get("plans") or []):
+    for p in cfg.get("plans") or []:
         if not isinstance(p, dict):
             continue
         try:
@@ -77,15 +79,17 @@ def _public_pricing() -> Dict[str, Any]:
             original = 0
         # Diskon aktif hanya kalau harga coret benar-benar di atas harga akhir.
         discounted = original > amount > 0
-        plans.append({
-            "id": str(p.get("id")),
-            "label": str(p.get("label") or f"Paket {prompts} Prompt"),
-            "prompts": prompts,
-            "amount": amount,
-            "popular": bool(p.get("popular")),
-            "original_amount": original if discounted else None,
-            "discount_percent": round((1 - amount / original) * 100) if discounted else None,
-        })
+        plans.append(
+            {
+                "id": str(p.get("id")),
+                "label": str(p.get("label") or f"Paket {prompts} Prompt"),
+                "prompts": prompts,
+                "amount": amount,
+                "popular": bool(p.get("popular")),
+                "original_amount": original if discounted else None,
+                "discount_percent": round((1 - amount / original) * 100) if discounted else None,
+            }
+        )
     contact = str(cfg.get("contact") or "").strip()
     note = str(cfg.get("order_note") or "")
     # Legacy: instalasi lama masih menyimpan teks default alur manual -> tukar diam-diam.
@@ -106,12 +110,13 @@ def _public_pricing() -> Dict[str, Any]:
 
 # ── user endpoints ──
 
+
 class OrderCreate(BaseModel):
     plan_id: str = Field(min_length=1, max_length=64)
-    note: Optional[str] = Field(default=None, max_length=500)
+    note: str | None = Field(default=None, max_length=500)
 
 
-def _grant_order_quota(order: Dict[str, Any], user_row: Dict[str, Any], confirmed_by: str) -> int:
+def _grant_order_quota(order: dict[str, Any], user_row: dict[str, Any], confirmed_by: str) -> int:
     """Satu-satunya jalur aktivasi: tambah kuota user dari order + tandai paid.
 
     max_prompts 0 = unlimited: jangan tambah, cukup tandai paid. Return max_prompts baru.
@@ -136,7 +141,9 @@ def user_create_order(payload: OrderCreate, request: Request, user: dict = Depen
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"order:{user.get('id')}:{ip}", 10, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
 
     plan = DatabaseService.find_plan(payload.plan_id)
     if plan is None:
@@ -174,11 +181,19 @@ def user_create_order(payload: OrderCreate, request: Request, user: dict = Depen
             payment_url = invoice["payment_url"]
             DatabaseService.update_order(str(order["id"]), {"proof": f"duitku:{invoice['reference']}"})
             order = DatabaseService.get_order(str(order["id"])) or order
-            audit_log(str(user.get("username") or user.get("id")), "order_invoice_created",
-                      detail=f"order={order['id']} reference={invoice['reference']}", ip=ip)
+            audit_log(
+                str(user.get("username") or user.get("id")),
+                "order_invoice_created",
+                detail=f"order={order['id']} reference={invoice['reference']}",
+                ip=ip,
+            )
         except duitku.DuitkuError as exc:
-            audit_log(str(user.get("username") or user.get("id")), "order_invoice_failed",
-                      detail=f"order={order['id']} err={exc}", ip=ip)
+            audit_log(
+                str(user.get("username") or user.get("id")),
+                "order_invoice_failed",
+                detail=f"order={order['id']} err={exc}",
+                ip=ip,
+            )
 
     return {"status": "success", "order": order, "payment_url": payment_url}
 
@@ -206,7 +221,8 @@ def user_list_orders(user: dict = Depends(get_current_user)):
 
 # ── callback gateway: satu-satunya jalur aktivasi otomatis ──
 
-def _parse_form(raw: bytes) -> Dict[str, str]:
+
+def _parse_form(raw: bytes) -> dict[str, str]:
     """Parse body x-www-form-urlencoded tanpa dependensi python-multipart."""
     from urllib.parse import parse_qs
 
@@ -245,8 +261,12 @@ async def duitku_payment_callback(request: Request):
 
     # Nominal wajib persis: tolak notifikasi salah tagih / salah order.
     if int(amount or 0) != int(order.get("amount") or 0):
-        audit_log("gateway", "callback_amount_mismatch",
-                  detail=f"order={order_id} callback={amount} order_amount={order.get('amount')}", ip=ip)
+        audit_log(
+            "gateway",
+            "callback_amount_mismatch",
+            detail=f"order={order_id} callback={amount} order_amount={order.get('amount')}",
+            ip=ip,
+        )
         raise HTTPException(status_code=403, detail="Nominal tidak sesuai order")
 
     if str(form.get("resultCode") or "") != "00":
@@ -259,8 +279,12 @@ async def duitku_payment_callback(request: Request):
     if status == "cancelled":
         # Order diganti user saat menunggu, tapi dana tetap masuk. Jangan
         # aktifkan sendiri — lempar ke admin (jaga-jaga), kuota tidak hilang.
-        audit_log("gateway", "callback_paid_after_cancel",
-                  detail=f"order={order_id} user={order.get('user_id')} amount={amount}", ip=ip)
+        audit_log(
+            "gateway",
+            "callback_paid_after_cancel",
+            detail=f"order={order_id} user={order.get('user_id')} amount={amount}",
+            ip=ip,
+        )
         return {"status": "needs_admin"}
 
     user_row = DatabaseService.get_user_by_id(str(order.get("user_id")))
@@ -269,25 +293,30 @@ async def duitku_payment_callback(request: Request):
         raise HTTPException(status_code=404, detail="User pemilik order tidak ditemukan")
 
     new_max = _grant_order_quota(order, user_row, confirmed_by="duitku")
-    audit_log("gateway", "order_paid_auto",
-              detail=f"order={order_id} user={user_row.get('username')} prompts={order.get('prompts')} max_prompts={new_max}", ip=ip)
+    audit_log(
+        "gateway",
+        "order_paid_auto",
+        detail=f"order={order_id} user={user_row.get('username')} prompts={order.get('prompts')} max_prompts={new_max}",
+        ip=ip,
+    )
     return {"status": "success", "max_prompts": new_max}
 
 
 # ── admin endpoints ──
 
+
 class PricingUpdate(BaseModel):
-    plans: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=MAX_PLANS)
+    plans: list[dict[str, Any]] | None = Field(default=None, max_length=MAX_PLANS)
     # QRIS disimpan sebagai URL gambar / data URL base64. Gambar QR kecil (~100 KB)
     # jadi base64 bisa ratusan ribu karakter - batas 20k lama membuat simpan selalu gagal.
-    payment_qris: Optional[str] = Field(default=None, max_length=MAX_QRIS_CHARS)
-    payment_instructions: Optional[str] = Field(default=None, max_length=4000)
-    contact: Optional[str] = Field(default=None, max_length=200)
-    order_note: Optional[str] = Field(default=None, max_length=500)
+    payment_qris: str | None = Field(default=None, max_length=MAX_QRIS_CHARS)
+    payment_instructions: str | None = Field(default=None, max_length=4000)
+    contact: str | None = Field(default=None, max_length=200)
+    order_note: str | None = Field(default=None, max_length=500)
 
 
-def _clean_plans(plans: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
+def _clean_plans(plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     seen = set()
     for p in plans:
         if not isinstance(p, dict):
@@ -311,18 +340,29 @@ def _clean_plans(plans: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             raise HTTPException(status_code=400, detail=f"harga tidak valid: {pid}")
         # Harga coret (diskon): opsional, harus angka dan di atas harga akhir.
         raw_original = p.get("original_amount")
-        original: Optional[int] = None
+        original: int | None = None
         if raw_original not in (None, "", 0, "0"):
             try:
                 original = int(raw_original)
             except Exception:
                 raise HTTPException(status_code=400, detail=f"harga coret harus angka: {pid}")
             if original <= amount:
-                raise HTTPException(status_code=400, detail=f"harga coret harus lebih besar dari harga akhir ({amount}): {pid}")
+                raise HTTPException(
+                    status_code=400, detail=f"harga coret harus lebih besar dari harga akhir ({amount}): {pid}"
+                )
             if original > MAX_AMOUNT:
                 raise HTTPException(status_code=400, detail=f"harga coret terlalu besar: {pid}")
         seen.add(pid)
-        out.append({"id": pid, "label": label, "prompts": prompts, "amount": amount, "popular": bool(p.get("popular")), "original_amount": original})
+        out.append(
+            {
+                "id": pid,
+                "label": label,
+                "prompts": prompts,
+                "amount": amount,
+                "popular": bool(p.get("popular")),
+                "original_amount": original,
+            }
+        )
     return out
 
 
@@ -336,9 +376,11 @@ def admin_update_pricing(payload: PricingUpdate, request: Request, admin: str = 
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:pricing:{ip}", 20, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
 
-    patch: Dict[str, Any] = {}
+    patch: dict[str, Any] = {}
     if payload.plans is not None:
         patch["plans"] = _clean_plans(payload.plans)
     if payload.payment_qris is not None:
@@ -356,7 +398,7 @@ def admin_update_pricing(payload: PricingUpdate, request: Request, admin: str = 
 
 
 @admin_router.get("/orders")
-def admin_list_orders(status: Optional[str] = None, admin: str = Depends(get_current_admin)):
+def admin_list_orders(status: str | None = None, admin: str = Depends(get_current_admin)):
     rows = DatabaseService.list_orders(None, limit=200)
     if status in ("pending", "paid", "cancelled"):
         rows = [o for o in rows if str(o.get("status")) == status]
@@ -364,11 +406,27 @@ def admin_list_orders(status: Optional[str] = None, admin: str = Depends(get_cur
     items = []
     for o in rows:
         u = users.get(str(o.get("user_id"))) or {}
-        items.append({
-            **{k: o.get(k) for k in ("id", "plan_id", "plan_label", "prompts", "amount", "status", "note", "created_at", "paid_at", "confirmed_by")},
-            "username": u.get("username"),
-            "display_name": u.get("display_name"),
-        })
+        items.append(
+            {
+                **{
+                    k: o.get(k)
+                    for k in (
+                        "id",
+                        "plan_id",
+                        "plan_label",
+                        "prompts",
+                        "amount",
+                        "status",
+                        "note",
+                        "created_at",
+                        "paid_at",
+                        "confirmed_by",
+                    )
+                },
+                "username": u.get("username"),
+                "display_name": u.get("display_name"),
+            }
+        )
     return {"items": items, "counts": DatabaseService.count_orders_by_status()}
 
 

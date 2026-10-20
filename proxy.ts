@@ -10,7 +10,12 @@ function getIp(req: NextRequest): string {
   // Vercel menambahkan IP client di akhir X-Forwarded-For; entri awal bisa dipalsukan.
   const xri = req.headers.get("x-real-ip")?.trim();
   if (xri) return xri;
-  const xff = req.headers.get("x-forwarded-for")?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+  const xff =
+    req.headers
+      .get("x-forwarded-for")
+      ?.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean) ?? [];
   return xff[xff.length - 1] || (req as unknown as { ip?: string }).ip || "unknown";
 }
 

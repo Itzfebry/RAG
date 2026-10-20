@@ -1,25 +1,38 @@
+import contextlib
 import os
+
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 try:
     from backend.api.admin import router as admin_router
-    from backend.api.chat import router as chat_router, v1_router
-    from backend.api.users import router as user_router, admin_router as admin_users_router
     from backend.api.auth import router as auth_router
-    from backend.api.pricing import router as pricing_router, admin_router as admin_pricing_router, payment_router
+    from backend.api.chat import router as chat_router
+    from backend.api.chat import v1_router
+    from backend.api.pricing import admin_router as admin_pricing_router
+    from backend.api.pricing import payment_router
+    from backend.api.pricing import router as pricing_router
+    from backend.api.users import admin_router as admin_users_router
+    from backend.api.users import router as user_router
     from backend.config.config import settings
-    from backend.security.middleware import SecurityHeadersMiddleware, BodySizeLimitMiddleware
+    from backend.core.logging_config import configure_logging
+    from backend.security.middleware import BodySizeLimitMiddleware, SecurityHeadersMiddleware
 except ImportError:
-    from api.admin import router as admin_router
-    from api.chat import router as chat_router, v1_router
-    from api.users import router as user_router, admin_router as admin_users_router  # type: ignore
-    from api.auth import router as auth_router  # type: ignore
-    from api.pricing import router as pricing_router, admin_router as admin_pricing_router, payment_router  # type: ignore
     from config.config import settings  # type: ignore
-    from security.middleware import SecurityHeadersMiddleware, BodySizeLimitMiddleware  # type: ignore
+    from security.middleware import BodySizeLimitMiddleware, SecurityHeadersMiddleware  # type: ignore
+
+    from api.admin import router as admin_router
+    from api.auth import router as auth_router  # type: ignore
+    from api.chat import router as chat_router
+    from api.chat import v1_router
+    from api.pricing import admin_router as admin_pricing_router
+    from api.pricing import payment_router
+    from api.pricing import router as pricing_router  # type: ignore
+    from api.users import admin_router as admin_users_router
+    from api.users import router as user_router  # type: ignore
+    from backend.core.logging_config import configure_logging  # type: ignore
 
 app = FastAPI(
     title="ITZ AI Backend API",
@@ -29,6 +42,9 @@ app = FastAPI(
     redoc_url=None if os.getenv("NODE_ENV") == "production" else "/redoc",
     openapi_url="/openapi.json" if os.getenv("NODE_ENV") != "production" else None,
 )
+
+# Initialize structured logging before any module logs anything.
+configure_logging()
 
 # Security headers + body limit (order: outermost first)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -83,6 +99,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": _friendly_validation_error(exc)},
     )
 
+
 # CORS - explicit, no wildcard when credentials involved. Rewrites are same-origin.
 app.add_middleware(
     CORSMiddleware,
@@ -106,19 +123,17 @@ app.include_router(admin_pricing_router)
 app.include_router(payment_router)
 app.include_router(auth_router)
 
+
 @app.get("/")
 def root():
-    return {
-        "app": "ITZ AI",
-        "version": "1.0.0",
-        "status": "online",
-        "docs": "/docs"
-    }
+    return {"app": "ITZ AI", "version": "1.0.0", "status": "online", "docs": "/docs"}
+
 
 @app.get("/health")
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
 
 @app.get("/api/cron/warmup")
 def cron_warmup(request: Request):
@@ -132,22 +147,22 @@ def cron_warmup(request: Request):
     if not secret or request.headers.get("authorization", "") != f"Bearer {secret}":
         raise HTTPException(status_code=401, detail="Unauthorized")
     try:
-        from backend.knowledge.knowledge_service import KnowledgeService
         from backend.database.db import DatabaseService
+        from backend.knowledge.knowledge_service import KnowledgeService
     except ImportError:
-        from knowledge.knowledge_service import KnowledgeService
         from database.db import DatabaseService  # type: ignore
+        from knowledge.knowledge_service import KnowledgeService
     vec = KnowledgeService.get_embedding("warmup")
     is_dummy = not vec or all(x == 0.0 for x in vec[:20])
     # bersihkan baris rate limit yang sudah kedaluwarsa (sekali sehari)
-    try:
+    with contextlib.suppress(Exception):
         DatabaseService.prune_rate_limits()
-    except Exception:
-        pass
     return {"status": "ok" if not is_dummy else "embedding-fallback"}
+
 
 if __name__ == "__main__":
     import uvicorn
+
     # UVICORN_RELOAD=0 kalau ingin server stabil (tanpa auto-reload - cocok
     # saat sedang dipakai chat; reload bikin server mati beberapa detik)
     _reload = os.getenv("UVICORN_RELOAD", "1") == "1"

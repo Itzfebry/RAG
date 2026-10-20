@@ -36,10 +36,10 @@ export interface OrbitalSphereRenderer {
 
 export function createOrbitalSphereRenderer(
   canvas: HTMLCanvasElement,
-  getOptions: () => OrbitalSphereOptions
+  getOptions: () => OrbitalSphereOptions,
 ): OrbitalSphereRenderer | null {
   let renderer: THREE.WebGLRenderer;
-  
+
   try {
     renderer = new THREE.WebGLRenderer({
       canvas,
@@ -61,9 +61,7 @@ export function createOrbitalSphereRenderer(
 
   // Particle sphere
   const particleGeometry = new THREE.BufferGeometry();
-  const particlePositions = new Float32Array(
-    ORBITAL_SPHERE_DEFAULTS.particleCount * 3
-  );
+  const particlePositions = new Float32Array(ORBITAL_SPHERE_DEFAULTS.particleCount * 3);
 
   for (let i = 0; i < ORBITAL_SPHERE_DEFAULTS.particleCount; i++) {
     const i3 = i * 3;
@@ -76,10 +74,7 @@ export function createOrbitalSphereRenderer(
     particlePositions[i3 + 2] = radius * Math.cos(phi);
   }
 
-  particleGeometry.setAttribute(
-    "position",
-    new THREE.BufferAttribute(particlePositions, 3)
-  );
+  particleGeometry.setAttribute("position", new THREE.BufferAttribute(particlePositions, 3));
 
   const particleMaterial = new THREE.PointsMaterial({
     color: 0x8b5cf6,
@@ -102,10 +97,8 @@ export function createOrbitalSphereRenderer(
 
     for (let j = 0; j <= segments; j++) {
       const theta = (j / segments) * Math.PI * 2;
-      const x =
-        ORBITAL_SPHERE_DEFAULTS.orbitRadius * Math.cos(theta) * Math.sin(angle);
-      const y =
-        ORBITAL_SPHERE_DEFAULTS.orbitRadius * Math.sin(theta) * Math.sin(angle);
+      const x = ORBITAL_SPHERE_DEFAULTS.orbitRadius * Math.cos(theta) * Math.sin(angle);
+      const y = ORBITAL_SPHERE_DEFAULTS.orbitRadius * Math.sin(theta) * Math.sin(angle);
       const z = ORBITAL_SPHERE_DEFAULTS.orbitRadius * Math.cos(angle);
       ringPoints.push(new THREE.Vector3(x, y, z));
     }
@@ -125,11 +118,7 @@ export function createOrbitalSphereRenderer(
   // Luminous nodes
   const nodes: THREE.Mesh[] = [];
   for (let i = 0; i < ORBITAL_SPHERE_DEFAULTS.nodeCount; i++) {
-    const nodeGeometry = new THREE.SphereGeometry(
-      ORBITAL_SPHERE_DEFAULTS.nodeSize / 100,
-      16,
-      16
-    );
+    const nodeGeometry = new THREE.SphereGeometry(ORBITAL_SPHERE_DEFAULTS.nodeSize / 100, 16, 16);
     const nodeMaterial = new THREE.MeshBasicMaterial({
       color: 0xa78bfa,
       transparent: true,
@@ -145,7 +134,7 @@ export function createOrbitalSphereRenderer(
     node.position.set(
       r * Math.sin(phi) * Math.cos(theta),
       r * Math.sin(phi) * Math.sin(theta),
-      r * Math.cos(phi)
+      r * Math.cos(phi),
     );
 
     nodes.push(node);
@@ -189,7 +178,7 @@ export function createOrbitalSphereRenderer(
       nodes.forEach((node, i) => {
         const offset = (i / nodes.length) * Math.PI * 2;
         node.position.y += Math.sin(time * 2 + offset) * 0.01;
-        
+
         const material = node.material as THREE.MeshBasicMaterial;
         material.opacity = 0.6 + Math.sin(time * 3 + offset) * 0.2;
       });

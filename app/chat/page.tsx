@@ -41,11 +41,31 @@ function pickSuggestions(): string[] {
 // Flag "sudah pernah lihat" per akun disimpan di localStorage (Lewati = permanen).
 // Nomor urut ditampilkan kartu ("Langkah X dari Y") - judul tanpa angka.
 const TOUR_STEPS: TourStep[] = [
-  { target: "itz-chat-input", title: "Disini tempat untuk prompt", desc: "Ketik pertanyaan atau perintah kamu di kolom ini, lalu tekan Enter untuk mengirim." },
-  { target: "itz-chat-input", title: "Mode command", desc: "Ketik / untuk membuka daftar command: /analyze, /summarize, /code, /debug, /translate, dan lainnya (13 mode). Pilih dengan tombol panah lalu Tab atau Enter. Boleh kombinasi maksimal 2 command." },
-  { target: "itz-logo", title: "Riwayat chat", desc: "Klik logo ITZ di kiri atas untuk membuka chat yang tersimpan." },
-  { target: "btn-new-chat", title: "Chat baru", desc: "Mulai percakapan baru dari awal kapan saja." },
-  { target: "btn-profile", title: "Profil & pengaturan", desc: "Atur nama tampilan, tujuan pakai AI, dan cek sisa prompt lewat ikon ini." },
+  {
+    target: "itz-chat-input",
+    title: "Disini tempat untuk prompt",
+    desc: "Ketik pertanyaan atau perintah kamu di kolom ini, lalu tekan Enter untuk mengirim.",
+  },
+  {
+    target: "itz-chat-input",
+    title: "Mode command",
+    desc: "Ketik / untuk membuka daftar command: /analyze, /summarize, /code, /debug, /translate, dan lainnya (13 mode). Pilih dengan tombol panah lalu Tab atau Enter. Boleh kombinasi maksimal 2 command.",
+  },
+  {
+    target: "itz-logo",
+    title: "Riwayat chat",
+    desc: "Klik logo ITZ di kiri atas untuk membuka chat yang tersimpan.",
+  },
+  {
+    target: "btn-new-chat",
+    title: "Chat baru",
+    desc: "Mulai percakapan baru dari awal kapan saja.",
+  },
+  {
+    target: "btn-profile",
+    title: "Profil & pengaturan",
+    desc: "Atur nama tampilan, tujuan pakai AI, dan cek sisa prompt lewat ikon ini.",
+  },
 ];
 
 export default function ChatPage() {
@@ -53,8 +73,25 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [userInfo, setUserInfo] = useState<{ username: string; display_name?: string | null; email?: string | null; email_verified?: boolean; max_prompts: number; prompts_used: number; remaining: number | null; has_password?: boolean; goal?: string; style_id?: string; gender?: string } | null>(null);
-  const [trialInfo, setTrialInfo] = useState<{ trial_prompts: number; used: number; remaining: number; allowed: boolean } | null>(null);
+  const [userInfo, setUserInfo] = useState<{
+    username: string;
+    display_name?: string | null;
+    email?: string | null;
+    email_verified?: boolean;
+    max_prompts: number;
+    prompts_used: number;
+    remaining: number | null;
+    has_password?: boolean;
+    goal?: string;
+    style_id?: string;
+    gender?: string;
+  } | null>(null);
+  const [trialInfo, setTrialInfo] = useState<{
+    trial_prompts: number;
+    used: number;
+    remaining: number;
+    allowed: boolean;
+  } | null>(null);
   const [quotaAlert, setQuotaAlert] = useState<string | null>(null);
   const [quotaOffer, setQuotaOffer] = useState<QuotaOfferVariant | null>(null);
   // Notice inline bergaya GPT: aktif saat kuota habis, sampai user tutup.
@@ -68,7 +105,9 @@ export default function ChatPage() {
   const [profileGoal, setProfileGoal] = useState("");
   const [profileStyle, setProfileStyle] = useState("");
   const [profileGender, setProfileGender] = useState("");
-  const [styleOptions, setStyleOptions] = useState<{ id: string; name: string; description: string; prompt: string }[]>([]);
+  const [styleOptions, setStyleOptions] = useState<
+    { id: string; name: string; description: string; prompt: string }[]
+  >([]);
   const [profileSaving, setProfileSaving] = useState(false);
   const [pwOld, setPwOld] = useState("");
   const [pwNew, setPwNew] = useState("");
@@ -108,7 +147,9 @@ export default function ChatPage() {
     const onDocMouseDown = (e: MouseEvent) => {
       if (!infoRef.current?.contains(e.target as Node)) setInfoOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setInfoOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setInfoOpen(false);
+    };
     document.addEventListener("mousedown", onDocMouseDown);
     document.addEventListener("keydown", onKey);
     return () => {
@@ -162,7 +203,10 @@ export default function ChatPage() {
               tourUserRef.current = j.username;
               window.setTimeout(() => {
                 const valid = TOUR_STEPS.filter((s) => document.getElementById(s.target));
-                if (valid.length) { setTourSteps(valid); setTourOpen(true); }
+                if (valid.length) {
+                  setTourSteps(valid);
+                  setTourOpen(true);
+                }
               }, 900);
             }
           } catch {}
@@ -179,11 +223,15 @@ export default function ChatPage() {
           return;
         }
         // guest -> fetch trial info
-        const t = await fetch("/api/python/trial").then((x) => x.json()).catch(() => null);
+        const t = await fetch("/api/python/trial")
+          .then((x) => x.json())
+          .catch(() => null);
         if (t) setTrialInfo(t);
       })
       .catch(async () => {
-        const t = await fetch("/api/python/trial").then((x) => x.json()).catch(() => null);
+        const t = await fetch("/api/python/trial")
+          .then((x) => x.json())
+          .catch(() => null);
         if (t) setTrialInfo(t);
       });
   }, []);
@@ -203,7 +251,9 @@ export default function ChatPage() {
 
   const doLogout = async () => {
     setConfirmLogout(false);
-    try { await fetch("/api/python/user/logout", { method: "POST" }); } catch {}
+    try {
+      await fetch("/api/python/user/logout", { method: "POST" });
+    } catch {}
     window.location.href = "/login";
   };
 
@@ -226,9 +276,17 @@ export default function ChatPage() {
     if (isLoading) return;
     try {
       const r = await fetch(`/api/python/user/chats/${id}`);
-      if (!r.ok) { setError("Chat tidak ditemukan"); return; }
+      if (!r.ok) {
+        setError("Chat tidak ditemukan");
+        return;
+      }
       const j = await r.json();
-      setMessages((j.messages || []).map((m: { role: "user" | "assistant"; content: string }) => ({ role: m.role, content: m.content })));
+      setMessages(
+        (j.messages || []).map((m: { role: "user" | "assistant"; content: string }) => ({
+          role: m.role,
+          content: m.content,
+        })),
+      );
       setActiveChatId(id);
       setError(null);
       setHistoryOpen(false);
@@ -241,8 +299,14 @@ export default function ChatPage() {
     // Konfirmasi hapus ditangani ChatHistoryPanel (dialog sendiri).
     try {
       const r = await fetch(`/api/python/user/chats/${id}`, { method: "DELETE" });
-      if (!r.ok) { setError("Gagal menghapus chat"); return; }
-      if (activeChatId === id) { setActiveChatId(null); setMessages([]); }
+      if (!r.ok) {
+        setError("Gagal menghapus chat");
+        return;
+      }
+      if (activeChatId === id) {
+        setActiveChatId(null);
+        setMessages([]);
+      }
       await loadChatList();
     } catch {
       setError("Gagal menghapus chat");
@@ -261,7 +325,8 @@ export default function ChatPage() {
   const endTour = useCallback(() => {
     setTourOpen(false);
     try {
-      if (tourUserRef.current) localStorage.setItem(`itz_onboarding_done:${tourUserRef.current}`, "1");
+      if (tourUserRef.current)
+        localStorage.setItem(`itz_onboarding_done:${tourUserRef.current}`, "1");
     } catch {}
   }, []);
 
@@ -275,7 +340,12 @@ export default function ChatPage() {
     setProfileOpen(true);
     if (styleOptions.length === 0) {
       fetch("/api/python/user/styles")
-        .then(async (r) => { if (r.ok) { const j = await r.json(); setStyleOptions(j.styles || []); } })
+        .then(async (r) => {
+          if (r.ok) {
+            const j = await r.json();
+            setStyleOptions(j.styles || []);
+          }
+        })
         .catch(() => {});
     }
   }, [userInfo, styleOptions.length]);
@@ -318,14 +388,29 @@ export default function ChatPage() {
       const r = await fetch("/api/python/user/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ display_name: profileName, goal: profileGoal, style_id: profileStyle, gender: profileGender }),
+        body: JSON.stringify({
+          display_name: profileName,
+          goal: profileGoal,
+          style_id: profileStyle,
+          gender: profileGender,
+        }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) {
         setProfileMsg(typeof j.detail === "string" ? j.detail : "Gagal menyimpan profil");
         return;
       }
-      setUserInfo((p) => (p ? { ...p, display_name: j.display_name, goal: j.goal, style_id: j.style_id, gender: j.gender } : p));
+      setUserInfo((p) =>
+        p
+          ? {
+              ...p,
+              display_name: j.display_name,
+              goal: j.goal,
+              style_id: j.style_id,
+              gender: j.gender,
+            }
+          : p,
+      );
       setProfileMsg("Tersimpan");
       setTimeout(() => setProfileOpen(false), 700);
     } catch {
@@ -359,7 +444,9 @@ export default function ChatPage() {
     const idx = messages.map((m) => m.role).lastIndexOf("user");
     if (idx < 0) return;
     if (userInfo && activeChatId) {
-      await fetch(`/api/python/user/chats/${activeChatId}/truncate-last-turn`, { method: "POST" }).catch(() => {});
+      await fetch(`/api/python/user/chats/${activeChatId}/truncate-last-turn`, {
+        method: "POST",
+      }).catch(() => {});
     }
     await runChat(String(messages[idx].content), messages.slice(0, idx));
   };
@@ -375,7 +462,10 @@ export default function ChatPage() {
         });
         if (!r.ok) {
           // batas 3 chat tercapai: jawaban tetap tampil, tapi tidak disimpan
-          if (r.status === 409) setQuotaAlert((await r.json().catch(() => ({}))).detail || "Maksimal 3 chat tersimpan.");
+          if (r.status === 409)
+            setQuotaAlert(
+              (await r.json().catch(() => ({}))).detail || "Maksimal 3 chat tersimpan.",
+            );
           return;
         }
         const j = await r.json();
@@ -410,22 +500,47 @@ export default function ChatPage() {
       const res = await fetch("/api/python/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage, history: next.slice(0, -1).slice(-MAX_HISTORY_MESSAGES) }),
+        body: JSON.stringify({
+          message: userMessage,
+          history: next.slice(0, -1).slice(-MAX_HISTORY_MESSAGES),
+        }),
       });
       if (!res.ok) {
         let msg = `Server ${res.status}`;
-        try { const j = await res.json(); msg = (j.detail || j.message || msg) as string; } catch {}
+        try {
+          const j = await res.json();
+          msg = (j.detail || j.message || msg) as string;
+        } catch {}
         if (msg.includes("Trial habis") || msg.includes("Trial")) {
           openQuotaOffer(msg);
           // refresh trial info
-          fetch("/api/python/trial").then((x) => x.json()).then(setTrialInfo).catch(() => {});
+          fetch("/api/python/trial")
+            .then((x) => x.json())
+            .then(setTrialInfo)
+            .catch(() => {});
           throw new Error(msg);
         }
-        if (res.status === 403 && msg.includes("Batas prompt habis")) { openQuotaOffer(msg); throw new Error(msg); }
-        if (res.status === 403 && msg.includes("Verifikasi email")) { window.location.href = "/login?mode=verify"; throw new Error(msg); }
-        if (res.status === 401 && msg.includes("Login diperlukan")) { openQuotaOffer(msg); throw new Error(msg); }
-        if (res.status === 428) { setProfileMsg(null); openProfile(); throw new Error(msg); }
-        if (res.status === 503) { setQuotaAlert(msg); throw new Error(msg); }
+        if (res.status === 403 && msg.includes("Batas prompt habis")) {
+          openQuotaOffer(msg);
+          throw new Error(msg);
+        }
+        if (res.status === 403 && msg.includes("Verifikasi email")) {
+          window.location.href = "/login?mode=verify";
+          throw new Error(msg);
+        }
+        if (res.status === 401 && msg.includes("Login diperlukan")) {
+          openQuotaOffer(msg);
+          throw new Error(msg);
+        }
+        if (res.status === 428) {
+          setProfileMsg(null);
+          openProfile();
+          throw new Error(msg);
+        }
+        if (res.status === 503) {
+          setQuotaAlert(msg);
+          throw new Error(msg);
+        }
         throw new Error(msg);
       }
       const isStatic = res.headers.get("X-Command-Mode") === "static";
@@ -459,8 +574,24 @@ export default function ChatPage() {
           } catch {}
         }
       }
-      if (userInfo) fetch("/api/python/user/me").then(async (r) => { if (r.ok) { const j = await r.json(); setUserInfo(j); if (j.remaining === 0) { setQuotaOut("quota"); setQuotaNoticeHidden(false); } } }).catch(() => {});
-      else fetch("/api/python/trial").then((x) => x.json()).then(setTrialInfo).catch(() => {});
+      if (userInfo)
+        fetch("/api/python/user/me")
+          .then(async (r) => {
+            if (r.ok) {
+              const j = await r.json();
+              setUserInfo(j);
+              if (j.remaining === 0) {
+                setQuotaOut("quota");
+                setQuotaNoticeHidden(false);
+              }
+            }
+          })
+          .catch(() => {});
+      else
+        fetch("/api/python/trial")
+          .then((x) => x.json())
+          .then(setTrialInfo)
+          .catch(() => {});
       if (userInfo && acc.trim() && !isStatic) {
         void saveTurn(userMessage, acc);
       }
@@ -473,7 +604,12 @@ export default function ChatPage() {
       });
     } catch (e: any) {
       const m = e.message || "Gagal terhubung ke backend.";
-      if (m.includes("Batas prompt habis") || m.includes("Trial habis") || m.includes("Login diperlukan")) openQuotaOffer(m);
+      if (
+        m.includes("Batas prompt habis") ||
+        m.includes("Trial habis") ||
+        m.includes("Login diperlukan")
+      )
+        openQuotaOffer(m);
       else setError(m);
       setMessages((prev) => prev.slice(0, -1));
     } finally {
@@ -489,10 +625,54 @@ export default function ChatPage() {
         className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(900px_500px_at_50%_-10%,rgba(255,255,255,0.035),transparent_70%)]"
       />
       <div aria-hidden className="itz-particles z-[1]">
-        <span className="itz-dot" style={{ left: "14%", top: "10%", width: 4, height: 4, color: "rgba(255,255,255,0.35)", animationDelay: "0s", ["--dur" as any]: "5s" }} />
-        <span className="itz-dot" style={{ left: "68%", top: "12%", width: 3, height: 3, color: "rgba(255,255,255,0.25)", animationDelay: "1.1s", ["--dur" as any]: "5.5s" }} />
-        <span className="itz-dot" style={{ left: "28%", top: "26%", width: 3, height: 3, color: "rgba(255,255,255,0.2)", animationDelay: "1.6s", ["--dur" as any]: "4.8s" }} />
-        <span className="itz-dot" style={{ left: "74%", top: "38%", width: 4, height: 4, color: "rgba(255,255,255,0.25)", animationDelay: "1.3s", ["--dur" as any]: "5.2s" }} />
+        <span
+          className="itz-dot"
+          style={{
+            left: "14%",
+            top: "10%",
+            width: 4,
+            height: 4,
+            color: "rgba(255,255,255,0.35)",
+            animationDelay: "0s",
+            ["--dur" as any]: "5s",
+          }}
+        />
+        <span
+          className="itz-dot"
+          style={{
+            left: "68%",
+            top: "12%",
+            width: 3,
+            height: 3,
+            color: "rgba(255,255,255,0.25)",
+            animationDelay: "1.1s",
+            ["--dur" as any]: "5.5s",
+          }}
+        />
+        <span
+          className="itz-dot"
+          style={{
+            left: "28%",
+            top: "26%",
+            width: 3,
+            height: 3,
+            color: "rgba(255,255,255,0.2)",
+            animationDelay: "1.6s",
+            ["--dur" as any]: "4.8s",
+          }}
+        />
+        <span
+          className="itz-dot"
+          style={{
+            left: "74%",
+            top: "38%",
+            width: 4,
+            height: 4,
+            color: "rgba(255,255,255,0.25)",
+            animationDelay: "1.3s",
+            ["--dur" as any]: "5.2s",
+          }}
+        />
       </div>
 
       <header className="relative z-30 flex h-[56px] shrink-0 items-center justify-between border-b border-white/[0.08] bg-[rgba(14,14,19,0.13)] px-4 backdrop-blur-xl supports-[backdrop-filter]:bg-[rgba(14,14,19,0.13)] sm:px-6">
@@ -502,12 +682,23 @@ export default function ChatPage() {
             id="itz-logo"
             whileHover={{ rotate: [0, -8, 8, 0], scale: 1.06 }}
             transition={{ duration: 0.6, ease: "easeInOut" }}
-            onClick={() => { if (!userInfo) return; setHistoryOpen(true); loadChatList(); }}
+            onClick={() => {
+              if (!userInfo) return;
+              setHistoryOpen(true);
+              loadChatList();
+            }}
             title={userInfo ? "Riwayat chat" : "ITZ AI"}
             aria-label={userInfo ? "Riwayat chat" : "ITZ AI"}
             className="itz-logo itz-logo-sheen relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-white/[0.12] bg-zinc-900 shadow-lg"
           >
-            <Image src="/image/favicon.png" alt="ITZ" width={36} height={36} className="h-full w-full object-cover" priority />
+            <Image
+              src="/image/favicon.png"
+              alt="ITZ"
+              width={36}
+              height={36}
+              className="h-full w-full object-cover"
+              priority
+            />
           </motion.button>
           <span className="itz-brand text-[15.5px] font-semibold tracking-[0.14em]">ITZ AI</span>
         </div>
@@ -515,13 +706,20 @@ export default function ChatPage() {
           {(() => {
             const rem = userInfo ? userInfo.remaining : trialInfo ? trialInfo.remaining : null;
             return (
-              <span className="mr-2 hidden items-center gap-2 sm:flex" title={rem === null ? "Kuota tanpa batas" : `Sisa ${rem} prompt`}>
+              <span
+                className="mr-2 hidden items-center gap-2 sm:flex"
+                title={rem === null ? "Kuota tanpa batas" : `Sisa ${rem} prompt`}
+              >
                 <span className="relative flex h-2 w-2" aria-hidden>
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40 bg-emerald-400" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
                 </span>
                 <span className="font-mono text-[12.5px] tracking-tight text-zinc-200">
-                  {userInfo ? (userInfo.display_name || userInfo.username) : trialInfo ? "TRIAL" : "GUEST"}
+                  {userInfo
+                    ? userInfo.display_name || userInfo.username
+                    : trialInfo
+                      ? "TRIAL"
+                      : "GUEST"}
                   <span className="text-zinc-500"> · {rem === null ? "∞" : `${rem} sisa`}</span>
                 </span>
               </span>
@@ -542,7 +740,9 @@ export default function ChatPage() {
             {infoOpen && (
               <div className="fixed inset-x-3 top-[64px] z-40 overflow-hidden rounded-xl border border-white/10 bg-[#16161c] shadow-[0_16px_48px_rgba(0,0,0,0.65)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-60">
                 <div className="flex items-center justify-between border-b border-white/[0.07] bg-white/[0.03] px-4 py-2.5">
-                  <span className="text-[10.5px] font-medium uppercase tracking-wider text-zinc-500">Info Kuota</span>
+                  <span className="text-[10.5px] font-medium uppercase tracking-wider text-zinc-500">
+                    Info Kuota
+                  </span>
                   <span className="relative flex h-1.5 w-1.5" aria-hidden>
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40 bg-emerald-400" />
                     <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -550,14 +750,19 @@ export default function ChatPage() {
                 </div>
                 <div className="px-4 py-3.5">
                   <p className="font-mono text-[14px] font-medium tracking-tight text-zinc-100">
-                    {userInfo ? (userInfo.display_name || userInfo.username) : trialInfo ? "Pengunjung Trial" : "Tamu"}
+                    {userInfo
+                      ? userInfo.display_name || userInfo.username
+                      : trialInfo
+                        ? "Pengunjung Trial"
+                        : "Tamu"}
                   </p>
                   <p className="mt-1 text-[11.5px] text-zinc-400">
-                    Status prompt:{" "}
-                    <span className={remStatus.color}>{remStatus.label}</span>
+                    Status prompt: <span className={remStatus.color}>{remStatus.label}</span>
                   </p>
                   <div className="mt-3.5 border-t border-white/[0.07] pt-3.5">
-                    <p className="text-[11.5px] leading-5 text-zinc-400">Sisa kuota anda sekarang</p>
+                    <p className="text-[11.5px] leading-5 text-zinc-400">
+                      Sisa kuota anda sekarang
+                    </p>
                     <p className="mt-1 font-mono text-[26px] font-semibold leading-none tracking-tight text-zinc-50">
                       {quotaRem === null ? "∞" : quotaRem}
                     </p>
@@ -572,29 +777,100 @@ export default function ChatPage() {
             aria-label="Harga dan paket"
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
           >
-            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M7 15h4"/></svg>
+            <svg
+              className="h-4 w-4 shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <path d="M3 10h18" />
+              <path d="M7 15h4" />
+            </svg>
             <span className="hidden sm:inline">Harga</span>
           </a>
-          <button 
+          <button
             type="button"
             id="btn-new-chat"
-            onClick={() => { startNewChat(); setSuggestions(pickSuggestions()); refreshSuggestions(); }}
+            onClick={() => {
+              startNewChat();
+              setSuggestions(pickSuggestions());
+              refreshSuggestions();
+            }}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
           >
-            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            <svg
+              className="h-4 w-4 shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+            </svg>
             <span className="hidden sm:inline">New Chat</span>
           </button>
           {userInfo ? (
             <>
-              <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.92 }} onClick={openProfile} id="btn-profile" title="Pengaturan profil" aria-label="Pengaturan profil" className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
-                <motion.svg whileHover={{ rotate: 90 }} transition={{ type: "spring", stiffness: 260, damping: 16 }} className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></motion.svg>
+              <motion.button
+                whileHover={{ scale: 1.06 }}
+                whileTap={{ scale: 0.92 }}
+                onClick={openProfile}
+                id="btn-profile"
+                title="Pengaturan profil"
+                aria-label="Pengaturan profil"
+                className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
+              >
+                <motion.svg
+                  whileHover={{ rotate: 90 }}
+                  transition={{ type: "spring", stiffness: 260, damping: 16 }}
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </motion.svg>
               </motion.button>
-              <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.92 }} onClick={() => setConfirmLogout(true)} title="Keluar" aria-label="Keluar" className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
-                <motion.svg whileHover={{ x: 3 }} transition={{ type: "spring", stiffness: 300, damping: 15 }} className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></motion.svg>
+              <motion.button
+                whileHover={{ scale: 1.06 }}
+                whileTap={{ scale: 0.92 }}
+                onClick={() => setConfirmLogout(true)}
+                title="Keluar"
+                aria-label="Keluar"
+                className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
+              >
+                <motion.svg
+                  whileHover={{ x: 3 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 15 }}
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+                </motion.svg>
               </motion.button>
             </>
           ) : (
-            <a href="/login" className="ml-1 rounded-lg bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-black transition-colors hover:bg-zinc-200">Login</a>
+            <a
+              href="/login"
+              className="ml-1 rounded-lg bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-black transition-colors hover:bg-zinc-200"
+            >
+              Login
+            </a>
           )}
         </div>
       </header>
@@ -612,7 +888,9 @@ export default function ChatPage() {
             <p className="text-[14.5px] font-semibold tracking-[-0.01em] text-white">
               Selamat Datang, {welcomeName}
             </p>
-            <p className="mt-0.5 text-[12.5px] text-zinc-500">Senang bertemu lagi. Tanyakan apa saja.</p>
+            <p className="mt-0.5 text-[12.5px] text-zinc-500">
+              Senang bertemu lagi. Tanyakan apa saja.
+            </p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -642,7 +920,10 @@ export default function ChatPage() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
           >
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-[5px]" onClick={() => setConfirmLogout(false)} />
+            <div
+              className="absolute inset-0 bg-black/70 backdrop-blur-[5px]"
+              onClick={() => setConfirmLogout(false)}
+            />
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 14 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -652,7 +933,9 @@ export default function ChatPage() {
               aria-modal="true"
               className="relative w-full max-w-[360px] rounded-2xl border border-white/[0.1] bg-[#0c0c10] p-6 shadow-[0_32px_100px_-24px_rgba(0,0,0,0.85)]"
             >
-              <h3 className="text-[17px] font-semibold tracking-[-0.01em] text-white">Keluar dari akun?</h3>
+              <h3 className="text-[17px] font-semibold tracking-[-0.01em] text-white">
+                Keluar dari akun?
+              </h3>
               <p className="mt-1.5 text-[13.5px] leading-relaxed text-zinc-500">
                 Sesi kamu akan berakhir dan kamu kembali ke halaman login.
               </p>
@@ -683,7 +966,12 @@ export default function ChatPage() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
           >
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-[5px]" onClick={() => { if (userInfo?.display_name) setProfileOpen(false); }} />
+            <div
+              className="absolute inset-0 bg-black/70 backdrop-blur-[5px]"
+              onClick={() => {
+                if (userInfo?.display_name) setProfileOpen(false);
+              }}
+            />
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 14 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -695,15 +983,34 @@ export default function ChatPage() {
               className="relative flex max-h-[86vh] w-full max-w-[440px] flex-col overflow-hidden rounded-2xl border border-white/[0.1] bg-[#0c0c10] shadow-[0_32px_100px_-24px_rgba(0,0,0,0.85)]"
             >
               <div className="flex items-center justify-between border-b border-white/[0.07] px-6 py-4">
-                <h3 className="text-[16px] font-semibold tracking-[-0.01em] text-white">Pengaturan Profil</h3>
-                <button onClick={() => { if (userInfo?.display_name) setProfileOpen(false); }} aria-label="Tutup" className="rounded-lg px-2 py-1 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200">
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                <h3 className="text-[16px] font-semibold tracking-[-0.01em] text-white">
+                  Pengaturan Profil
+                </h3>
+                <button
+                  onClick={() => {
+                    if (userInfo?.display_name) setProfileOpen(false);
+                  }}
+                  aria-label="Tutup"
+                  className="rounded-lg px-2 py-1 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  >
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
 
               <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
                 <div className="space-y-1.5">
-                  <label htmlFor="pf-name" className="text-[12.5px] font-medium text-zinc-400">Nama tampilan</label>
+                  <label htmlFor="pf-name" className="text-[12.5px] font-medium text-zinc-400">
+                    Nama tampilan
+                  </label>
                   <input
                     id="pf-name"
                     value={profileName}
@@ -715,7 +1022,9 @@ export default function ChatPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label htmlFor="pf-goal" className="text-[12.5px] font-medium text-zinc-400">Tujuan kamu pakai ITZ AI</label>
+                  <label htmlFor="pf-goal" className="text-[12.5px] font-medium text-zinc-400">
+                    Tujuan kamu pakai ITZ AI
+                  </label>
                   <textarea
                     id="pf-goal"
                     value={profileGoal}
@@ -725,7 +1034,9 @@ export default function ChatPage() {
                     className="w-full resize-none rounded-xl border border-white/[0.1] bg-zinc-900/70 px-3.5 py-2.5 text-[14px] leading-relaxed text-white placeholder:text-zinc-600 outline-none transition-colors focus:border-white/25"
                     placeholder="Contoh: bantu riset kuliah, brainstorm konten, belajar coding"
                   />
-                  <p className="text-[11.5px] text-zinc-600">AI memakai tujuan ini agar jawaban lebih relevan.</p>
+                  <p className="text-[11.5px] text-zinc-600">
+                    AI memakai tujuan ini agar jawaban lebih relevan.
+                  </p>
                 </div>
 
                 <div className="space-y-1.5">
@@ -745,7 +1056,9 @@ export default function ChatPage() {
                 <div className="space-y-2">
                   <span className="text-[12.5px] font-medium text-zinc-400">Kata sandi</span>
                   <p className="text-[11.5px] text-zinc-600">
-                    {userInfo?.has_password ? "Ubah sandi untuk login username + sandi." : "Akun ini belum punya sandi. Atur sandi agar bisa login dengan username."}
+                    {userInfo?.has_password
+                      ? "Ubah sandi untuk login username + sandi."
+                      : "Akun ini belum punya sandi. Atur sandi agar bisa login dengan username."}
                   </p>
                   {userInfo?.has_password && (
                     <input
@@ -769,13 +1082,19 @@ export default function ChatPage() {
                     <button
                       type="button"
                       onClick={savePassword}
-                      disabled={pwSaving || pwNew.length < 8 || (!!userInfo?.has_password && !pwOld)}
+                      disabled={
+                        pwSaving || pwNew.length < 8 || (!!userInfo?.has_password && !pwOld)
+                      }
                       className="h-9 rounded-xl border border-white/[0.1] px-4 text-[13px] font-medium text-zinc-200 transition-colors hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {pwSaving ? "Menyimpan..." : "Simpan sandi"}
                     </button>
                     {pwMsg && (
-                      <span className={`text-[12px] ${pwMsg === "Sandi diperbarui" ? "text-emerald-400" : "text-rose-400"}`}>{pwMsg}</span>
+                      <span
+                        className={`text-[12px] ${pwMsg === "Sandi diperbarui" ? "text-emerald-400" : "text-rose-400"}`}
+                      >
+                        {pwMsg}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -792,36 +1111,58 @@ export default function ChatPage() {
                           onClick={() => setProfileStyle(active ? "" : s.id)}
                           aria-pressed={active}
                           className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
-                            active ? "border-white/60 bg-white/[0.07]" : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20 hover:bg-white/[0.03]"
+                            active
+                              ? "border-white/60 bg-white/[0.07]"
+                              : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20 hover:bg-white/[0.03]"
                           }`}
                         >
                           <div className="flex items-center justify-between gap-3">
-                            <span className={`text-[14px] font-semibold ${active ? "text-white" : "text-zinc-300"}`}>{s.name}</span>
-                            <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${active ? "border-white bg-white" : "border-zinc-600"}`}>
+                            <span
+                              className={`text-[14px] font-semibold ${active ? "text-white" : "text-zinc-300"}`}
+                            >
+                              {s.name}
+                            </span>
+                            <span
+                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${active ? "border-white bg-white" : "border-zinc-600"}`}
+                            >
                               {active && <span className="h-1.5 w-1.5 rounded-full bg-black" />}
                             </span>
                           </div>
-                          {s.description && <p className="mt-0.5 text-[12.5px] leading-relaxed text-zinc-500">{s.description}</p>}
+                          {s.description && (
+                            <p className="mt-0.5 text-[12.5px] leading-relaxed text-zinc-500">
+                              {s.description}
+                            </p>
+                          )}
                         </button>
                       );
                     })}
                     {styleOptions.length === 0 && (
-                      <p className="rounded-xl border border-white/[0.06] bg-zinc-900/30 px-4 py-3 text-[12.5px] text-zinc-600">Memuat pilihan gaya...</p>
+                      <p className="rounded-xl border border-white/[0.06] bg-zinc-900/30 px-4 py-3 text-[12.5px] text-zinc-600">
+                        Memuat pilihan gaya...
+                      </p>
                     )}
                   </div>
                   {profileStyle && (
-                    <p className="text-[11.5px] text-zinc-600">Klik lagi untuk kembali ke gaya default.</p>
+                    <p className="text-[11.5px] text-zinc-600">
+                      Klik lagi untuk kembali ke gaya default.
+                    </p>
                   )}
                 </div>
               </div>
 
               <div className="flex items-center gap-2.5 border-t border-white/[0.07] px-6 py-4">
                 {profileMsg && (
-                  <span className={`text-[12.5px] ${profileMsg === "Tersimpan" ? "text-emerald-400" : "text-rose-400"}`}>{profileMsg}</span>
+                  <span
+                    className={`text-[12.5px] ${profileMsg === "Tersimpan" ? "text-emerald-400" : "text-rose-400"}`}
+                  >
+                    {profileMsg}
+                  </span>
                 )}
                 <div className="ml-auto flex gap-2.5">
                   <button
-                    onClick={() => { if (userInfo?.display_name) setProfileOpen(false); }}
+                    onClick={() => {
+                      if (userInfo?.display_name) setProfileOpen(false);
+                    }}
                     className="h-10 rounded-xl border border-white/[0.1] px-4 text-[14px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05] hover:text-white"
                   >
                     Batal
@@ -850,7 +1191,10 @@ export default function ChatPage() {
             transition={{ type: "spring", stiffness: 380, damping: 30 }}
             className="relative z-20 mx-auto w-full max-w-[720px] overflow-hidden px-4 pt-3 sm:px-6"
           >
-            <div role="alert" className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[13px] leading-5 text-amber-200">
+            <div
+              role="alert"
+              className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[13px] leading-5 text-amber-200"
+            >
               <motion.span
                 aria-hidden
                 animate={{ rotate: [0, -12, 12, -8, 8, 0] }}
@@ -859,7 +1203,19 @@ export default function ChatPage() {
               >
                 <AlertTriangle className="h-3.5 w-3.5" />
               </motion.span>
-              <span className="flex-1">{quotaAlert.includes("Budget token") ? <>Batas harian ITZ AI sudah tercapai. Coba lagi besok atau hubungi admin.</> : <>{quotaAlert} <a href="/login" className="underline underline-offset-2 hover:text-amber-100">Login</a> atau hubungi admin.</>}</span>
+              <span className="flex-1">
+                {quotaAlert.includes("Budget token") ? (
+                  <>Batas harian ITZ AI sudah tercapai. Coba lagi besok atau hubungi admin.</>
+                ) : (
+                  <>
+                    {quotaAlert}{" "}
+                    <a href="/login" className="underline underline-offset-2 hover:text-amber-100">
+                      Login
+                    </a>{" "}
+                    atau hubungi admin.
+                  </>
+                )}
+              </span>
               <motion.button
                 type="button"
                 onClick={() => setQuotaAlert(null)}
@@ -889,7 +1245,13 @@ export default function ChatPage() {
           <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-12 sm:py-20">
             <div className="flex w-full max-w-[720px] flex-col items-center">
               <div className="itz-logo itz-logo-sheen mb-8 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border-2 border-white/[0.15] bg-zinc-900 shadow-[0_0_48px_rgba(56,189,248,0.2),0_0_96px_rgba(124,92,255,0.12)]">
-                <Image src="/image/favicon.png" alt="ITZ" width={64} height={64} className="h-full w-full object-cover" />
+                <Image
+                  src="/image/favicon.png"
+                  alt="ITZ"
+                  width={64}
+                  height={64}
+                  className="h-full w-full object-cover"
+                />
               </div>
 
               <h1 className="text-center text-[36px] font-bold leading-[1.08] tracking-[-0.048em] text-zinc-50 sm:text-[44px]">
@@ -902,13 +1264,13 @@ export default function ChatPage() {
                 Private intelligence for your knowledge
               </p>
 
-                <div className="mt-12 w-full space-y-4">
-                  <QuotaNotice
-                    visible={quotaOut !== null && !quotaNoticeHidden}
-                    onOpenOffer={() => setQuotaOffer(quotaOut ?? "quota")}
-                    onDismiss={() => setQuotaNoticeHidden(true)}
-                  />
-                  <div className="mb-5 flex flex-wrap justify-center gap-2.5">
+              <div className="mt-12 w-full space-y-4">
+                <QuotaNotice
+                  visible={quotaOut !== null && !quotaNoticeHidden}
+                  onOpenOffer={() => setQuotaOffer(quotaOut ?? "quota")}
+                  onDismiss={() => setQuotaNoticeHidden(true)}
+                />
+                <div className="mb-5 flex flex-wrap justify-center gap-2.5">
                   {suggestions.map((s) => (
                     <button
                       key={s}
@@ -919,10 +1281,18 @@ export default function ChatPage() {
                     </button>
                   ))}
                 </div>
-                <AIChatInput value={input} onChange={setInput} onSubmit={handleSend} isLoading={isLoading} />
+                <AIChatInput
+                  value={input}
+                  onChange={setInput}
+                  onSubmit={handleSend}
+                  isLoading={isLoading}
+                />
               </div>
 
-              <p suppressHydrationWarning className="mt-8 text-center text-[11px] tracking-[0.06em] text-zinc-600">
+              <p
+                suppressHydrationWarning
+                className="mt-8 text-center text-[11px] tracking-[0.06em] text-zinc-600"
+              >
                 © {new Date().getFullYear()} Mochammad Ginata Febryansyah
               </p>
             </div>
@@ -933,7 +1303,8 @@ export default function ChatPage() {
               <div className="mx-auto w-full max-w-[800px] px-4 py-8 sm:px-6 sm:py-10">
                 <div className="mx-auto flex max-w-[720px] flex-col gap-8">
                   {messages.map((m, i) => {
-                    const streaming = isLoading && i === messages.length - 1 && m.role === "assistant";
+                    const streaming =
+                      isLoading && i === messages.length - 1 && m.role === "assistant";
                     return (
                       <MessageBubble
                         key={i}
@@ -941,7 +1312,14 @@ export default function ChatPage() {
                         content={m.content}
                         isStreaming={streaming}
                         durationMs={streaming && !m.durationMs ? elapsedMs : m.durationMs}
-                        onRegenerate={i === messages.length - 1 && m.role === "assistant" && !isLoading && messages.length > 1 ? handleRegenerate : undefined}
+                        onRegenerate={
+                          i === messages.length - 1 &&
+                          m.role === "assistant" &&
+                          !isLoading &&
+                          messages.length > 1
+                            ? handleRegenerate
+                            : undefined
+                        }
                       />
                     );
                   })}
@@ -963,8 +1341,18 @@ export default function ChatPage() {
             <div className="shrink-0 border-t border-white/[0.08] bg-[rgba(5,3,10,0.85)] backdrop-blur-xl">
               <div className="mx-auto w-full max-w-[800px] px-4 pb-5 pt-4 sm:px-6">
                 <div className="mx-auto max-w-[720px]">
-                  <AIChatInput value={input} onChange={setInput} onSubmit={handleSend} isLoading={isLoading} />
-                  <p suppressHydrationWarning className="mt-3 text-center text-[11px] tracking-[0.06em] text-zinc-600">© {new Date().getFullYear()} Mochammad Ginata Febryansyah</p>
+                  <AIChatInput
+                    value={input}
+                    onChange={setInput}
+                    onSubmit={handleSend}
+                    isLoading={isLoading}
+                  />
+                  <p
+                    suppressHydrationWarning
+                    className="mt-3 text-center text-[11px] tracking-[0.06em] text-zinc-600"
+                  >
+                    © {new Date().getFullYear()} Mochammad Ginata Febryansyah
+                  </p>
                 </div>
               </div>
             </div>

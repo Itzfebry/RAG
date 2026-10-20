@@ -7,6 +7,7 @@
     2. Resend: RESEND_API_KEY (perlu domain terverifikasi untuk kirim ke luar akun).
     3. Dev only: kode dicetak ke console. Di production tanpa keduanya, pengiriman gagal.
 """
+
 import hashlib
 import hmac
 import logging
@@ -14,7 +15,7 @@ import os
 import secrets
 import smtplib
 import ssl
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 
 import httpx
@@ -41,12 +42,12 @@ def generate_code() -> str:
 
 
 def hash_code(email: str, purpose: str, code: str) -> str:
-    msg = f"{email.lower()}|{purpose}|{code}".encode("utf-8")
+    msg = f"{email.lower()}|{purpose}|{code}".encode()
     return hmac.new(settings.JWT_SECRET_KEY.encode("utf-8"), msg, hashlib.sha256).hexdigest()
 
 
 def expires_at_iso() -> str:
-    return (datetime.now(timezone.utc) + timedelta(minutes=OTP_TTL_MINUTES)).isoformat()
+    return (datetime.now(UTC) + timedelta(minutes=OTP_TTL_MINUTES)).isoformat()
 
 
 def is_expired(expires_at: str) -> bool:
@@ -55,8 +56,8 @@ def is_expired(expires_at: str) -> bool:
     except ValueError:
         return True
     if exp.tzinfo is None:
-        exp = exp.replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) > exp
+        exp = exp.replace(tzinfo=UTC)
+    return datetime.now(UTC) > exp
 
 
 def _send_smtp(to: str, subject: str, html: str) -> None:

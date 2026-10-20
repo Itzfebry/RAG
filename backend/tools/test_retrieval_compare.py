@@ -8,6 +8,7 @@ Usage:
   python -m backend.tools.test_retrieval_compare                     # query bawaan
   python -m backend.tools.test_retrieval_compare "biaya servis" "harga perbaikan"
 """
+
 import sys
 import time
 
@@ -37,8 +38,8 @@ def main() -> None:
     queries = [a for a in sys.argv[1:] if not a.startswith("-")] or DEFAULT_QUERIES
 
     import backend.knowledge.knowledge_service as ks
-    from backend.knowledge.knowledge_service import KnowledgeService, MATCH_THRESHOLD
     from backend.database.db import supabase_client
+    from backend.knowledge.knowledge_service import MATCH_THRESHOLD, KnowledgeService
 
     if not supabase_client:
         print("Supabase client tidak tersedia - cek .env")
@@ -78,7 +79,7 @@ def main() -> None:
         t_off = time.perf_counter() - t0
         ks.EMBEDDING_PROVIDER = active
 
-        print(f"\n[ON = {active}]  {len(rows_on)} chunk | embed {t_embed*1000:.0f}ms + rpc {t_rpc*1000:.0f}ms")
+        print(f"\n[ON = {active}]  {len(rows_on)} chunk | embed {t_embed * 1000:.0f}ms + rpc {t_rpc * 1000:.0f}ms")
         if rows_on:
             for r in rows_on:
                 sim = r.get("similarity")
@@ -87,7 +88,7 @@ def main() -> None:
         else:
             print("  (tidak ada chunk di atas threshold)")
 
-        print(f"\n[OFF = keyword only]  {len(rows_off)} chunk | {t_off*1000:.0f}ms")
+        print(f"\n[OFF = keyword only]  {len(rows_off)} chunk | {t_off * 1000:.0f}ms")
         if rows_off:
             for c in rows_off:
                 print(f"  - {short(c)}")

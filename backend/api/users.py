@@ -1,43 +1,68 @@
+import contextlib
 import hmac
 import re
-from typing import Optional, List, Dict, Any
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
 try:
+    from backend.api.admin import (
+        admin_list_models,
+        get_config,
+        get_current_admin,
+        get_knowledge_categories,
+        get_knowledge_entries,
+    )
     from backend.config.config import settings
     from backend.database.db import DatabaseService
     from backend.security import otp
+    from backend.security.audit import log_action as audit_log
     from backend.security.auth import (
-        verify_password,
-        hash_password,
-        create_user_jwt,
-        verify_user_jwt,
         USER_COOKIE_NAME,
+        create_user_jwt,
+        hash_password,
         is_valid_password,
+        verify_password,
+        verify_user_jwt,
     )
     from backend.security.rate_limiter import (
-        get_client_ip, check_rate_limit, check_rate_limit_durable,
-        is_locked_out, is_locked_out_durable,
-        record_failed_login, record_failed_login_durable,
-        clear_failed_login, clear_failed_login_durable,
+        check_rate_limit,
+        check_rate_limit_durable,
+        clear_failed_login_durable,
+        get_client_ip,
+        is_locked_out_durable,
+        record_failed_login_durable,
     )
-    from backend.security.audit import log_action as audit_log
-    from backend.api.admin import get_current_admin, get_config, get_knowledge_categories, get_knowledge_entries, admin_list_models
 except ImportError:
     from config.config import settings  # type: ignore
     from database.db import DatabaseService  # type: ignore
     from security import otp  # type: ignore
-    from security.auth import verify_password, hash_password, create_user_jwt, verify_user_jwt, USER_COOKIE_NAME, is_valid_password  # type: ignore
-    from security.rate_limiter import (
-        get_client_ip, check_rate_limit, check_rate_limit_durable,
-        is_locked_out, is_locked_out_durable,
-        record_failed_login, record_failed_login_durable,
-        clear_failed_login, clear_failed_login_durable,
-    )  # type: ignore
     from security.audit import log_action as audit_log  # type: ignore
-    from api.admin import get_current_admin, get_config, get_knowledge_categories, get_knowledge_entries, admin_list_models  # type: ignore
+    from security.auth import (  # type: ignore
+        USER_COOKIE_NAME,
+        create_user_jwt,
+        hash_password,
+        is_valid_password,
+        verify_password,
+        verify_user_jwt,
+    )
+    from security.rate_limiter import (
+        check_rate_limit,
+        check_rate_limit_durable,
+        clear_failed_login_durable,
+        get_client_ip,
+        is_locked_out_durable,
+        record_failed_login_durable,
+    )  # type: ignore
+
+    from api.admin import (  # type: ignore
+        admin_list_models,
+        get_config,
+        get_current_admin,
+        get_knowledge_categories,
+        get_knowledge_entries,
+    )
 
 router = APIRouter(prefix="/api", tags=["Users"])
 admin_router = APIRouter(prefix="/api/admin", tags=["Admin Users"])
@@ -49,10 +74,11 @@ USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,32}$")
 # Email selalu dinormalisasi (lowercase) sebelum match, jadi regex ini cukup.
 EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$")
 
+
 class UserCreateRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     password: str = Field(min_length=8, max_length=128)
-    display_name: Optional[str] = Field(default=None, max_length=64)
+    display_name: str | None = Field(default=None, max_length=64)
     max_prompts: int = Field(default=50, ge=0, le=100000)
     is_active: bool = True
 
@@ -79,11 +105,12 @@ class UserCreateRequest(BaseModel):
         v = str(v).strip()
         return v or None
 
+
 class UserUpdateRequest(BaseModel):
-    display_name: Optional[str] = Field(default=None, max_length=64)
-    max_prompts: Optional[int] = Field(default=None, ge=0, le=100000)
-    is_active: Optional[bool] = None
-    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    display_name: str | None = Field(default=None, max_length=64)
+    max_prompts: int | None = Field(default=None, ge=0, le=100000)
+    is_active: bool | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=128)
 
     @field_validator("password")
     @classmethod
@@ -102,6 +129,7 @@ class UserUpdateRequest(BaseModel):
         v = str(v).strip()
         return v or None
 
+
 class UserLoginRequest(BaseModel):
     username: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=128)
@@ -118,8 +146,9 @@ class UserLoginRequest(BaseModel):
             raise ValueError("Invalid username")
         return v
 
+
 class UserPasswordChangeRequest(BaseModel):
-    current_password: Optional[str] = Field(default=None, max_length=128)
+    current_password: str | None = Field(default=None, max_length=128)
     new_password: str = Field(min_length=8, max_length=128)
 
     @field_validator("new_password")
@@ -129,17 +158,19 @@ class UserPasswordChangeRequest(BaseModel):
             raise ValueError("Password harus minimal 8 karakter, mengandung huruf besar dan angka")
         return v
 
+
 class AppSettingsUpdateRequest(BaseModel):
     user_token_expiry_hours: int = Field(ge=1, le=720)
     trial_prompts: int = Field(ge=0, le=100)
-    rag_match_count_short: Optional[int] = Field(default=None, ge=1, le=30)
-    rag_match_count_long: Optional[int] = Field(default=None, ge=1, le=30)
-    rag_match_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    rag_match_count_short: int | None = Field(default=None, ge=1, le=30)
+    rag_match_count_long: int | None = Field(default=None, ge=1, le=30)
+    rag_match_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 # ── user auth dependency ──
 
-def get_current_user(request: Request) -> Dict[str, Any]:
+
+def get_current_user(request: Request) -> dict[str, Any]:
     token = request.cookies.get(USER_COOKIE_NAME)
     if not token:
         auth = request.headers.get("Authorization") or ""
@@ -163,6 +194,7 @@ def get_current_user(request: Request) -> Dict[str, Any]:
 
 # ── User endpoints (login / verify / logout) ──
 
+
 @router.post("/user/login")
 def user_login(payload: UserLoginRequest, request: Request, response: Response):
     ip = get_client_ip(request)
@@ -175,15 +207,29 @@ def user_login(payload: UserLoginRequest, request: Request, response: Response):
     lock_key = f"user:{(user or {}).get('username') or payload.username}:{ip}"
     locked, retry = is_locked_out_durable(lock_key)
     if locked:
-        raise HTTPException(status_code=429, detail=f"Account locked. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Account locked. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
     allowed, retry = check_rate_limit_durable(f"user:login:{ip}", 10, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many login attempts. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many login attempts. Retry after {retry}s",
+            headers={"Retry-After": str(retry)},
+        )
     if not user or not verify_password(payload.password, user.get("password_hash") or ""):
         record_failed_login_durable(lock_key)
-        audit_log(payload.username, "user_login_failed", target="user", detail="unknown user" if not user else "wrong password", ip=ip)
+        audit_log(
+            payload.username,
+            "user_login_failed",
+            target="user",
+            detail="unknown user" if not user else "wrong password",
+            ip=ip,
+        )
         if user and user.get("provider") == "google" and not user.get("password_hash"):
-            raise HTTPException(status_code=401, detail="Akun ini daftar lewat Google. Atur kata sandi dulu lewat Lupa kata sandi.")
+            raise HTTPException(
+                status_code=401, detail="Akun ini daftar lewat Google. Atur kata sandi dulu lewat Lupa kata sandi."
+            )
         raise HTTPException(status_code=401, detail="Invalid username or password")
     if not bool(user.get("is_active", True)):
         audit_log(payload.username, "user_login_failed", target="user", detail="account disabled", ip=ip)
@@ -203,13 +249,22 @@ def user_login(payload: UserLoginRequest, request: Request, response: Response):
         max_age=hours * 3600,
         path="/",
     )
-    return {"status": "success", "username": user["username"], "display_name": user.get("display_name"), "email": user.get("email"), "email_verified": bool(user.get("email_verified", False)), "max_prompts": user.get("max_prompts"), "prompts_used": user.get("prompts_used", 0)}
+    return {
+        "status": "success",
+        "username": user["username"],
+        "display_name": user.get("display_name"),
+        "email": user.get("email"),
+        "email_verified": bool(user.get("email_verified", False)),
+        "max_prompts": user.get("max_prompts"),
+        "prompts_used": user.get("prompts_used", 0),
+    }
+
 
 class UserRegisterRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     email: str = Field(min_length=5, max_length=254)
     password: str = Field(min_length=8, max_length=128)
-    display_name: Optional[str] = Field(default=None, max_length=64)
+    display_name: str | None = Field(default=None, max_length=64)
 
     @field_validator("password")
     @classmethod
@@ -252,7 +307,7 @@ def _issue_otp(email: str, purpose: str) -> None:
         raise HTTPException(status_code=502, detail=str(e))
 
 
-def _set_user_cookie(response: Response, user: Dict[str, Any]) -> None:
+def _set_user_cookie(response: Response, user: dict[str, Any]) -> None:
     hours = max(1, min(720, int(DatabaseService.get_app_settings().get("user_token_expiry_hours", 24))))
     token = create_user_jwt(user["username"], expiry_hours=hours, session_version=int(user.get("session_version") or 0))
     response.set_cookie(
@@ -271,23 +326,29 @@ def user_register(payload: UserRegisterRequest, request: Request, response: Resp
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit_durable(f"user:register:{ip}", 5, 600)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Terlalu banyak pendaftaran. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429,
+            detail=f"Terlalu banyak pendaftaran. Coba lagi dalam {retry}s",
+            headers={"Retry-After": str(retry)},
+        )
     if DatabaseService.get_user_by_username(payload.username):
         raise HTTPException(status_code=409, detail="Nama pengguna sudah dipakai")
     if DatabaseService.get_user_by_email(payload.email):
         raise HTTPException(status_code=409, detail="Email sudah terdaftar")
     trial = max(0, int(DatabaseService.get_app_settings().get("trial_prompts", 3)))
-    user = DatabaseService.create_user({
-        "username": payload.username,
-        "password_hash": hash_password(payload.password),
-        "display_name": payload.display_name or payload.username,
-        "email": payload.email,
-        "email_verified": False,
-        "provider": "manual",
-        "max_prompts": trial,
-        "prompts_used": 0,
-        "is_active": True,
-    })
+    user = DatabaseService.create_user(
+        {
+            "username": payload.username,
+            "password_hash": hash_password(payload.password),
+            "display_name": payload.display_name or payload.username,
+            "email": payload.email,
+            "email_verified": False,
+            "provider": "manual",
+            "max_prompts": trial,
+            "prompts_used": 0,
+            "is_active": True,
+        }
+    )
     # Kirim OTP best-effort: kalau layanan email belum dikonfigurasi, jangan
     # gagalkan registrasi (akun sudah terbuat). User tetap bisa "Kirim ulang".
     email_sent = True
@@ -366,7 +427,11 @@ def user_send_verify(request: Request, user: dict = Depends(get_current_user)):
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit_durable(f"user:otp_send:{ip}", 3, 600)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Terlalu sering meminta kode. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429,
+            detail=f"Terlalu sering meminta kode. Coba lagi dalam {retry}s",
+            headers={"Retry-After": str(retry)},
+        )
     if user.get("email_verified"):
         return {"status": "already_verified"}
     if not user.get("email"):
@@ -380,7 +445,11 @@ def user_verify_email(payload: OtpVerifyRequest, request: Request, user: dict = 
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit_durable(f"user:otp_verify:{ip}", 10, 600)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429,
+            detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s",
+            headers={"Retry-After": str(retry)},
+        )
     if not user.get("email") or str(user["email"]).lower() != payload.email:
         raise HTTPException(status_code=400, detail="Email tidak cocok dengan akun")
     _check_otp(payload.email, otp.PURPOSE_VERIFY, payload.code)
@@ -393,13 +462,15 @@ def user_password_forgot(payload: EmailOnlyRequest, request: Request):
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit_durable(f"user:reset_send:{ip}", 3, 600)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Terlalu sering meminta kode. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429,
+            detail=f"Terlalu sering meminta kode. Coba lagi dalam {retry}s",
+            headers={"Retry-After": str(retry)},
+        )
     # Respons selalu sama agar tidak membocorkan email terdaftar atau tidak.
     if DatabaseService.get_user_by_email(payload.email):
-        try:
+        with contextlib.suppress(HTTPException):
             _issue_otp(payload.email, otp.PURPOSE_RESET)
-        except HTTPException:
-            pass
     return {"status": "sent", "message": "Jika email terdaftar, kode reset sudah dikirim."}
 
 
@@ -408,30 +479,53 @@ def user_password_reset(payload: PasswordResetRequest, request: Request, respons
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit_durable(f"user:reset_verify:{ip}", 10, 600)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429,
+            detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s",
+            headers={"Retry-After": str(retry)},
+        )
     user = DatabaseService.get_user_by_email(payload.email)
     if not user or not user.get("is_active", True):
         raise HTTPException(status_code=400, detail="Kode tidak valid. Minta kode baru.")
     _check_otp(payload.email, otp.PURPOSE_RESET, payload.code)
     new_version = int(user.get("session_version") or 0) + 1
-    updated = DatabaseService.update_user(str(user["id"]), {
-        "password_hash": hash_password(payload.new_password),
-        "session_version": new_version,
-        "email_verified": True,
-    }) or {**user, "session_version": new_version}
+    updated = DatabaseService.update_user(
+        str(user["id"]),
+        {
+            "password_hash": hash_password(payload.new_password),
+            "session_version": new_version,
+            "email_verified": True,
+        },
+    ) or {**user, "session_version": new_version}
     _set_user_cookie(response, updated)
     return {"status": "success"}
 
+
 @router.get("/user/verify")
 def user_verify(request: Request, user: dict = Depends(get_current_user)):
-    remaining = max(0, int(user.get("max_prompts", 0)) - int(user.get("prompts_used", 0))) if int(user.get("max_prompts", 0)) > 0 else None
-    return {"status": "authenticated", "username": user["username"], "display_name": user.get("display_name"), "email": user.get("email"), "email_verified": bool(user.get("email_verified", False)), "max_prompts": user.get("max_prompts"), "prompts_used": user.get("prompts_used", 0), "remaining": remaining}
+    remaining = (
+        max(0, int(user.get("max_prompts", 0)) - int(user.get("prompts_used", 0)))
+        if int(user.get("max_prompts", 0)) > 0
+        else None
+    )
+    return {
+        "status": "authenticated",
+        "username": user["username"],
+        "display_name": user.get("display_name"),
+        "email": user.get("email"),
+        "email_verified": bool(user.get("email_verified", False)),
+        "max_prompts": user.get("max_prompts"),
+        "prompts_used": user.get("prompts_used", 0),
+        "remaining": remaining,
+    }
+
 
 @router.post("/user/logout")
 def user_logout(request: Request, response: Response, user: dict = Depends(get_current_user)):
     DatabaseService.update_user(str(user["id"]), {"session_version": int(user.get("session_version") or 0) + 1})
     response.delete_cookie(USER_COOKIE_NAME, path="/")
     return {"status": "success"}
+
 
 @router.get("/user/me")
 def user_me(request: Request, user: dict = Depends(get_current_user)):
@@ -443,7 +537,9 @@ def user_me(request: Request, user: dict = Depends(get_current_user)):
         "email_verified": bool(user.get("email_verified", False)),
         "max_prompts": user.get("max_prompts"),
         "prompts_used": user.get("prompts_used", 0),
-        "remaining": max(0, int(user.get("max_prompts", 0)) - int(user.get("prompts_used", 0))) if int(user.get("max_prompts", 0)) else None,
+        "remaining": max(0, int(user.get("max_prompts", 0)) - int(user.get("prompts_used", 0)))
+        if int(user.get("max_prompts", 0))
+        else None,
         "is_active": user.get("is_active", True),
         "has_password": bool(user.get("password_hash")),
         "goal": str(profile.get("goal") or "").strip(),
@@ -454,11 +550,12 @@ def user_me(request: Request, user: dict = Depends(get_current_user)):
 
 # ── User profile (nama, tujuan, gaya respons) ──
 
+
 class UserProfileUpdateRequest(BaseModel):
-    display_name: Optional[str] = Field(default=None, max_length=64)
-    goal: Optional[str] = Field(default=None, max_length=300)
-    style_id: Optional[str] = Field(default=None, max_length=32)
-    gender: Optional[str] = Field(default=None, max_length=10)
+    display_name: str | None = Field(default=None, max_length=64)
+    goal: str | None = Field(default=None, max_length=300)
+    style_id: str | None = Field(default=None, max_length=32)
+    gender: str | None = Field(default=None, max_length=10)
 
     @field_validator("display_name")
     @classmethod
@@ -497,7 +594,7 @@ class UserProfileUpdateRequest(BaseModel):
         return v
 
 
-def _valid_style_ids() -> List[str]:
+def _valid_style_ids() -> list[str]:
     cfg = DatabaseService.get_config_table("response_styles")
     styles = cfg.get("styles") if isinstance(cfg, dict) else None
     if not isinstance(styles, list):
@@ -514,28 +611,37 @@ def user_list_styles(user: dict = Depends(get_current_user)):
     if isinstance(styles, list):
         for s in styles:
             if isinstance(s, dict) and s.get("id"):
-                out.append({
-                    "id": str(s.get("id")),
-                    "name": str(s.get("name") or "").strip(),
-                    "description": str(s.get("description") or "").strip(),
-                    "prompt": str(s.get("prompt") or "").strip(),
-                })
+                out.append(
+                    {
+                        "id": str(s.get("id")),
+                        "name": str(s.get("name") or "").strip(),
+                        "description": str(s.get("description") or "").strip(),
+                        "prompt": str(s.get("prompt") or "").strip(),
+                    }
+                )
     return {"styles": out}
 
 
 @router.put("/user/password")
-def user_change_password(payload: UserPasswordChangeRequest, request: Request, response: Response, user: dict = Depends(get_current_user)):
+def user_change_password(
+    payload: UserPasswordChangeRequest, request: Request, response: Response, user: dict = Depends(get_current_user)
+):
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit_durable(f"user:password:{ip}", 5, 300)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429,
+            detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s",
+            headers={"Retry-After": str(retry)},
+        )
 
     current_hash = user.get("password_hash") or ""
-    if current_hash:
-        if not payload.current_password or not verify_password(payload.current_password, current_hash):
-            raise HTTPException(status_code=400, detail="Sandi lama salah")
+    if current_hash and (not payload.current_password or not verify_password(payload.current_password, current_hash)):
+        raise HTTPException(status_code=400, detail="Sandi lama salah")
     new_version = int(user.get("session_version") or 0) + 1
-    DatabaseService.update_user(str(user["id"]), {"password_hash": hash_password(payload.new_password), "session_version": new_version})
+    DatabaseService.update_user(
+        str(user["id"]), {"password_hash": hash_password(payload.new_password), "session_version": new_version}
+    )
     hours = max(1, min(720, int(DatabaseService.get_app_settings().get("user_token_expiry_hours", 24))))
     token = create_user_jwt(user["username"], expiry_hours=hours, session_version=new_version)
     response.set_cookie(
@@ -555,15 +661,17 @@ def user_update_profile(payload: UserProfileUpdateRequest, request: Request, use
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"user:profile:{ip}", 10, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
 
-    updates: Dict[str, Any] = {}
+    updates: dict[str, Any] = {}
     if payload.display_name is not None:
         if not payload.display_name:
             raise HTTPException(status_code=400, detail="Nama tampilan tidak boleh kosong")
         updates["display_name"] = payload.display_name
 
-    profile_patch: Dict[str, Any] = {}
+    profile_patch: dict[str, Any] = {}
     if payload.goal is not None:
         profile_patch["goal"] = payload.goal
     if payload.style_id is not None:
@@ -593,8 +701,9 @@ def user_update_profile(payload: UserProfileUpdateRequest, request: Request, use
 
 # ── Riwayat chat user login (retensi 7 hari, maks 3 chat) ──
 
+
 class ChatSessionCreate(BaseModel):
-    title: Optional[str] = Field(default=None, max_length=120)
+    title: str | None = Field(default=None, max_length=120)
 
 
 class ChatMessageItem(BaseModel):
@@ -603,14 +712,16 @@ class ChatMessageItem(BaseModel):
 
 
 class ChatMessagesAppend(BaseModel):
-    messages: List[ChatMessageItem] = Field(min_length=1, max_length=2)
+    messages: list[ChatMessageItem] = Field(min_length=1, max_length=2)
 
 
 @router.get("/user/chats")
 def user_list_chats(user: dict = Depends(get_current_user)):
     rows = DatabaseService.list_chat_sessions(str(user["id"]))
     return {
-        "items": [{"id": s["id"], "title": s.get("title") or "Chat baru", "updated_at": s.get("updated_at")} for s in rows],
+        "items": [
+            {"id": s["id"], "title": s.get("title") or "Chat baru", "updated_at": s.get("updated_at")} for s in rows
+        ],
         "limit": DatabaseService.CHAT_MAX_PER_USER,
         "retention_days": DatabaseService.CHAT_RETENTION_DAYS,
     }
@@ -620,7 +731,10 @@ def user_list_chats(user: dict = Depends(get_current_user)):
 def user_create_chat(payload: ChatSessionCreate, user: dict = Depends(get_current_user)):
     uid = str(user["id"])
     if DatabaseService.count_chat_sessions(uid) >= DatabaseService.CHAT_MAX_PER_USER:
-        raise HTTPException(status_code=409, detail=f"Maksimal {DatabaseService.CHAT_MAX_PER_USER} chat tersimpan. Hapus salah satu dulu.")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Maksimal {DatabaseService.CHAT_MAX_PER_USER} chat tersimpan. Hapus salah satu dulu.",
+        )
     s = DatabaseService.create_chat_session(uid, (payload.title or "").strip() or "Chat baru")
     return {"id": s["id"], "title": s.get("title"), "updated_at": s.get("updated_at")}
 
@@ -671,6 +785,7 @@ def user_delete_chat(session_id: str, user: dict = Depends(get_current_user)):
 
 # ── Admin CRUD users + settings ──
 
+
 @admin_router.get("/bootstrap")
 def admin_bootstrap(request: Request, admin: str = Depends(get_current_admin)):
     return {
@@ -690,42 +805,77 @@ def admin_bootstrap(request: Request, admin: str = Depends(get_current_admin)):
         "settings": admin_get_settings(admin),
     }
 
+
 @admin_router.get("/users")
 def admin_list_users(admin: str = Depends(get_current_admin)):
     users = DatabaseService.list_users()
     # never leak password_hash
-    return [{"id": u.get("id"), "username": u.get("username"), "display_name": u.get("display_name"), "email": u.get("email"), "provider": u.get("provider") or "manual", "max_prompts": u.get("max_prompts"), "prompts_used": u.get("prompts_used", 0), "is_active": u.get("is_active", True), "created_at": u.get("created_at"), "updated_at": u.get("updated_at")} for u in users]
+    return [
+        {
+            "id": u.get("id"),
+            "username": u.get("username"),
+            "display_name": u.get("display_name"),
+            "email": u.get("email"),
+            "provider": u.get("provider") or "manual",
+            "max_prompts": u.get("max_prompts"),
+            "prompts_used": u.get("prompts_used", 0),
+            "is_active": u.get("is_active", True),
+            "created_at": u.get("created_at"),
+            "updated_at": u.get("updated_at"),
+        }
+        for u in users
+    ]
+
 
 @admin_router.post("/users")
 def admin_create_user(payload: UserCreateRequest, request: Request, admin: str = Depends(get_current_admin)):
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:users_create:{ip}", 20, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
     username = payload.username.strip().lower()
     if DatabaseService.get_user_by_username(username):
         raise HTTPException(status_code=409, detail="Username already exists")
     pw_hash = hash_password(payload.password)
-    user = DatabaseService.create_user({
-        "username": username,
-        "password_hash": pw_hash,
-        "display_name": payload.display_name,
-        "max_prompts": int(payload.max_prompts),
-        "prompts_used": 0,
-        "is_active": bool(payload.is_active),
-    })
-    return {"status": "success", "user": {"id": user.get("id"), "username": user.get("username"), "display_name": user.get("display_name"), "max_prompts": user.get("max_prompts"), "prompts_used": 0, "is_active": user.get("is_active")}}
+    user = DatabaseService.create_user(
+        {
+            "username": username,
+            "password_hash": pw_hash,
+            "display_name": payload.display_name,
+            "max_prompts": int(payload.max_prompts),
+            "prompts_used": 0,
+            "is_active": bool(payload.is_active),
+        }
+    )
+    return {
+        "status": "success",
+        "user": {
+            "id": user.get("id"),
+            "username": user.get("username"),
+            "display_name": user.get("display_name"),
+            "max_prompts": user.get("max_prompts"),
+            "prompts_used": 0,
+            "is_active": user.get("is_active"),
+        },
+    }
+
 
 @admin_router.put("/users/{user_id}")
-def admin_update_user(user_id: str, payload: UserUpdateRequest, request: Request, admin: str = Depends(get_current_admin)):
+def admin_update_user(
+    user_id: str, payload: UserUpdateRequest, request: Request, admin: str = Depends(get_current_admin)
+):
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:users_update:{ip}", 30, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
     existing = DatabaseService.get_user_by_id(user_id)
     if not existing:
         raise HTTPException(status_code=404, detail="User not found")
-    updates: Dict[str, Any] = {}
+    updates: dict[str, Any] = {}
     if payload.display_name is not None:
         updates["display_name"] = payload.display_name
     if payload.max_prompts is not None:
@@ -736,18 +886,32 @@ def admin_update_user(user_id: str, payload: UserUpdateRequest, request: Request
         updates["password_hash"] = hash_password(payload.password)
         updates["prompts_used"] = existing.get("prompts_used", 0)  # keep counter unless reset explicitly
     updated = DatabaseService.update_user(user_id, updates)
-    return {"status": "success", "user": {"id": updated.get("id"), "username": updated.get("username"), "display_name": updated.get("display_name"), "max_prompts": updated.get("max_prompts"), "prompts_used": updated.get("prompts_used", 0), "is_active": updated.get("is_active")}}
+    return {
+        "status": "success",
+        "user": {
+            "id": updated.get("id"),
+            "username": updated.get("username"),
+            "display_name": updated.get("display_name"),
+            "max_prompts": updated.get("max_prompts"),
+            "prompts_used": updated.get("prompts_used", 0),
+            "is_active": updated.get("is_active"),
+        },
+    }
+
 
 @admin_router.delete("/users/{user_id}")
 def admin_delete_user(user_id: str, request: Request, admin: str = Depends(get_current_admin)):
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:users_del:{ip}", 20, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
     ok = DatabaseService.delete_user(user_id)
     if not ok:
         raise HTTPException(status_code=404, detail="User not found")
     return {"status": "success"}
+
 
 @admin_router.post("/users/{user_id}/reset-usage")
 def admin_reset_usage(user_id: str, request: Request, admin: str = Depends(get_current_admin)):
@@ -755,12 +919,17 @@ def admin_reset_usage(user_id: str, request: Request, admin: str = Depends(get_c
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
     updated = DatabaseService.update_user(user_id, {"prompts_used": 0})
-    return {"status": "success", "user": {"id": updated.get("id"), "username": updated.get("username"), "prompts_used": 0}}
+    return {
+        "status": "success",
+        "user": {"id": updated.get("id"), "username": updated.get("username"), "prompts_used": 0},
+    }
+
 
 @admin_router.get("/settings")
 def admin_get_settings(admin: str = Depends(get_current_admin)):
     s = DatabaseService.get_app_settings()
     return s
+
 
 @admin_router.post("/users/sync-local")
 def admin_sync_local_users(request: Request, admin: str = Depends(get_current_admin)):
@@ -769,6 +938,7 @@ def admin_sync_local_users(request: Request, admin: str = Depends(get_current_ad
     created = DatabaseService.sync_local_users_to_supabase()
     audit_log(admin, "users_sync_local", detail=f"created={created}", ip=get_client_ip(request))
     return {"status": "success", "created": created}
+
 
 @router.get("/trial")
 def trial_info_public(request: Request):
@@ -781,6 +951,7 @@ def trial_info_public(request: Request):
     remaining = max(0, limit - used)
     return {"trial_prompts": limit, "used": used, "remaining": remaining, "allowed": used < limit}
 
+
 @admin_router.get("/trial")
 def trial_info_admin(request: Request, admin: str = Depends(get_current_admin)):
     s = DatabaseService.get_app_settings()
@@ -792,13 +963,19 @@ def trial_info_admin(request: Request, admin: str = Depends(get_current_admin)):
         "rag_match_threshold": s.get("rag_match_threshold"),
     }
 
+
 @admin_router.put("/settings")
 def admin_update_settings(payload: AppSettingsUpdateRequest, request: Request, admin: str = Depends(get_current_admin)):
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:settings:{ip}", 20, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
-    patch = {"user_token_expiry_hours": int(payload.user_token_expiry_hours), "trial_prompts": int(payload.trial_prompts)}
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
+    patch = {
+        "user_token_expiry_hours": int(payload.user_token_expiry_hours),
+        "trial_prompts": int(payload.trial_prompts),
+    }
     for k in ("rag_match_count_short", "rag_match_count_long"):
         if k in payload.model_fields_set and getattr(payload, k) is not None:
             patch[k] = getattr(payload, k)

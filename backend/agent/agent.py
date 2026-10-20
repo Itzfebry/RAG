@@ -3,12 +3,15 @@ Dynamic, provider-agnostic orchestrator.
 - Any OpenAI-compatible base_url + any model ID via settings / DB config / per-request override.
 - No hardcoded Gemini/OpenRouter model IDs. Fallback chain is fully configurable.
 """
+
+import contextlib
 import json
 import os
 import re
 import time
-import asyncio
-from typing import AsyncGenerator, List, Dict, Optional, Any, Union
+from collections.abc import AsyncGenerator
+from typing import Any
+
 from openai import OpenAI
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
@@ -27,44 +30,55 @@ def _clean_chunk(text: str) -> str:
     # Drop common reasoning preamble lines that leak raw trace
     if "Analyze User Input:" in text or "Formulate Response" in text:
         return ""
-    # Aturan gaya: em dash (—) dan en dash (–) diganti tanda hubung biasa.
+    # Aturan gaya: em dash (-) dan en dash (-) diganti tanda hubung biasa.
     # Tanda hubung Unicode (U+2010, U+2011, U+2012, U+2212) juga dinormalisasi.
     for ch in ("\u2010", "\u2011", "\u2012", "\u2212"):
         text = text.replace(ch, "-")
     return text.replace("\u2014", ", ").replace("\u2013", "-")
 
+
 try:
     from backend.config.config import settings
-    from backend.knowledge.context_builder import build_system_prompt
     from backend.database.db import DatabaseService
+    from backend.knowledge.context_builder import build_system_prompt
 except ImportError:
     from config.config import settings
-    from knowledge.context_builder import build_system_prompt
     from database.db import DatabaseService
+    from knowledge.context_builder import build_system_prompt
 
 
 def _strip_key(v: str) -> str:
     return (v or "").strip().strip('"').strip("'").strip()
 
+
 def _resolve_api_key(provider: str = "") -> str:
     p = (provider or "").lower()
     groq = _strip_key(getattr(settings, "GROQ_API_KEY", "") or "") or _strip_key(os.getenv("GROQ_API_KEY", "") or "")
-    openrouter = _strip_key(getattr(settings, "OPENROUTER_API_KEY", "") or "") or _strip_key(os.getenv("OPENROUTER_API_KEY", "") or "")
+    openrouter = _strip_key(getattr(settings, "OPENROUTER_API_KEY", "") or "") or _strip_key(
+        os.getenv("OPENROUTER_API_KEY", "") or ""
+    )
     # also accept OPENROUTER_API_KEY from 9router alias if user uses that naming
-    nine = _strip_key(os.getenv("OPENROUTER_API_KEY", "") or "") or _strip_key(os.getenv("NINE_ROUTER_API_KEY", "") or "")
-    gemini = _strip_key(getattr(settings, "GEMINI_API_KEY", "") or "") or _strip_key(os.getenv("GEMINI_API_KEY", "") or "")
+    nine = _strip_key(os.getenv("OPENROUTER_API_KEY", "") or "") or _strip_key(
+        os.getenv("NINE_ROUTER_API_KEY", "") or ""
+    )
+    gemini = _strip_key(getattr(settings, "GEMINI_API_KEY", "") or "") or _strip_key(
+        os.getenv("GEMINI_API_KEY", "") or ""
+    )
     if p == "groq":
         return groq or openrouter or nine or gemini
     return openrouter or nine or groq or gemini
 
+
 def _resolve_nvidia_api_key() -> str:
-    return (getattr(settings, "NVIDIA_API_KEY", "") or "").strip() \
-        or os.getenv("NVIDIA_API_KEY", "").strip()
+    return (getattr(settings, "NVIDIA_API_KEY", "") or "").strip() or os.getenv("NVIDIA_API_KEY", "").strip()
+
 
 def _resolve_provider() -> str:
-    return (getattr(settings, "MODEL_PROVIDER", "") or "").strip() \
-        or os.getenv("MODEL_PROVIDER", "").strip() \
+    return (
+        (getattr(settings, "MODEL_PROVIDER", "") or "").strip()
+        or os.getenv("MODEL_PROVIDER", "").strip()
         or "openrouter"
+    )
 
 
 def _resolve_base_url(provider: str = "") -> str:
@@ -79,11 +93,14 @@ def _resolve_base_url(provider: str = "") -> str:
 
 def _resolve_default_model(provider: str = "") -> str:
     if (provider or "").lower() == "groq":
-        return (getattr(settings, "GROQ_MODEL", "") or "").strip() \
-            or os.getenv("GROQ_MODEL", "").strip() \
+        return (
+            (getattr(settings, "GROQ_MODEL", "") or "").strip()
+            or os.getenv("GROQ_MODEL", "").strip()
             or (getattr(settings, "ACTIVE_MODEL", "") or "").strip()
-    return (getattr(settings, "ACTIVE_MODEL", "") or "").strip() \
-        or (getattr(settings, "GEMINI_MODEL", "") or "").strip()
+        )
+    return (getattr(settings, "ACTIVE_MODEL", "") or "").strip() or (
+        getattr(settings, "GEMINI_MODEL", "") or ""
+    ).strip()
 
 
 class AgentOrchestrator:
@@ -93,12 +110,13 @@ class AgentOrchestrator:
         self.nvidia_api_key = _resolve_nvidia_api_key()
         self.model = _resolve_default_model(self.provider)
         self.base_url = _resolve_base_url(self.provider)
-        self.client: Union[OpenAI, Any] = None
-        
+        self.client: OpenAI | Any = None
+
         # Initialize client based on provider
         if self.provider.lower() == "nvidia" and self.nvidia_api_key:
             try:
                 from langchain_nvidia_ai_endpoints import ChatNVIDIA
+
                 self.client = ChatNVIDIA(
                     model=settings.NVIDIA_MODEL,
                     api_key=self.nvidia_api_key,
@@ -129,14 +147,16 @@ class AgentOrchestrator:
     async def stream_chat_response(
         self,
         query: str,
-        session_history: List[Dict[str, str]],
-        model_override: Optional[str] = None,
-        user_profile: Optional[Dict[str, Any]] = None,
-        command_names: Optional[List[str]] = None,
+        session_history: list[dict[str, str]],
+        model_override: str | None = None,
+        user_profile: dict[str, Any] | None = None,
+        command_names: list[str] | None = None,
     ) -> AsyncGenerator[str, None]:
         start = time.perf_counter()
-        ttft_ms: Optional[int] = None
-        system_prompt = build_system_prompt(query, session_history, user_profile=user_profile, command_names=command_names)
+        ttft_ms: int | None = None
+        system_prompt = build_system_prompt(
+            query, session_history, user_profile=user_profile, command_names=command_names
+        )
 
         openai_messages = [{"role": "system", "content": system_prompt}]
         for msg in session_history[-10:]:
@@ -144,13 +164,13 @@ class AgentOrchestrator:
             content = msg.get("content", "")
             if isinstance(content, list):
                 content = " ".join([str(c.get("text", "")) if isinstance(c, dict) else str(c) for c in content])
-            
+
             # Map roles properly
             if role in ["user", "assistant", "system"]:
                 openai_messages.append({"role": role, "content": str(content)})
             else:
                 openai_messages.append({"role": "user", "content": str(content)})
-        
+
         openai_messages.append({"role": "user", "content": query})
 
         # Check client availability based on provider
@@ -166,37 +186,34 @@ class AgentOrchestrator:
 
         # Fetch dynamic model configuration from database (cached)
         model_config = {}
-        try:
+        with contextlib.suppress(Exception):
             model_config = DatabaseService.get_config_table("ai_model_config")
-        except Exception:
-            pass
 
-        primary_model = (model_override or "").strip() \
-            or (model_config.get("active_model") or "").strip() \
-            or self.model
+        primary_model = (model_override or "").strip() or (model_config.get("active_model") or "").strip() or self.model
         provider = (model_config.get("provider") or "").strip() or self.provider or _resolve_provider()
         base_url = (model_config.get("api_base_url") or "").strip() or self.base_url or _resolve_base_url(provider)
-        
+
         # Rebuild client if provider or base_url changed via admin config
         api_key = _resolve_api_key(provider)
         nvidia_api_key = _resolve_nvidia_api_key()
-        
+
         needs_rebuild = (
-            base_url != getattr(self, "base_url", "") or 
-            api_key != getattr(self, "api_key", "") or
-            provider != getattr(self, "provider", "") or
-            nvidia_api_key != getattr(self, "nvidia_api_key", "")
+            base_url != getattr(self, "base_url", "")
+            or api_key != getattr(self, "api_key", "")
+            or provider != getattr(self, "provider", "")
+            or nvidia_api_key != getattr(self, "nvidia_api_key", "")
         )
-        
+
         if needs_rebuild:
             self.base_url = base_url
             self.api_key = api_key
             self.nvidia_api_key = nvidia_api_key
             self.provider = provider
-            
+
             if provider.lower() == "nvidia" and nvidia_api_key:
                 try:
                     from langchain_nvidia_ai_endpoints import ChatNVIDIA
+
                     self.client = ChatNVIDIA(
                         model=settings.NVIDIA_MODEL,
                         api_key=nvidia_api_key,
@@ -251,14 +268,14 @@ class AgentOrchestrator:
                             langchain_messages.append({"role": "user", "content": f"[System]: {msg['content']}"})
                         else:
                             langchain_messages.append({"role": msg["role"], "content": msg["content"]})
-                    
+
                     response = self.client.invoke(langchain_messages)
 
                     # Extract content from LangChain response
-                    if hasattr(response, 'content'):
+                    if hasattr(response, "content"):
                         content_text = response.content
-                    elif isinstance(response, dict) and 'content' in response:
-                        content_text = response['content']
+                    elif isinstance(response, dict) and "content" in response:
+                        content_text = response["content"]
                     else:
                         content_text = str(response)
 
@@ -271,7 +288,7 @@ class AgentOrchestrator:
                             "completion_tokens": int(_um.get("output_tokens", 0) or 0),
                             "total_tokens": int(_um.get("total_tokens", 0) or 0),
                         }
-                    
+
                     # Stream content in chunks - 12 chars smooth, tanpa sleep
                     content_text = _CLOSING_RE.sub("", _clean_chunk(content_text))
                     if ttft_ms is None:
@@ -283,7 +300,7 @@ class AgentOrchestrator:
                         if len(buffer) >= buffer_size:
                             yield f"data: {json.dumps({'content': buffer})}\n\n"
                             buffer = ""
-                    
+
                     # Flush remaining
                     if buffer:
                         yield f"data: {json.dumps({'content': buffer})}\n\n"
@@ -320,7 +337,7 @@ class AgentOrchestrator:
                         max_tokens=max_tokens,
                         stream=True,
                         stream_options={"include_usage": True},
-                        extra_body=extra_body_params if extra_body_params else None
+                        extra_body=extra_body_params if extra_body_params else None,
                     )
 
                     # Buffer 12 chars = 2-3 kata per flush, smooth tanpa flicker. Tanpa sleep.
@@ -364,7 +381,9 @@ class AgentOrchestrator:
                         yield f"data: {json.dumps({'content': tail})}\n\n"
 
                     if _finish_reason == "length":
-                        print(f"Warning: jawaban terpotong (finish_reason=length, max_tokens={max_tokens}, model={current_model})")
+                        print(
+                            f"Warning: jawaban terpotong (finish_reason=length, max_tokens={max_tokens}, model={current_model})"
+                        )
 
                     if _usage:
                         yield f"data: {json.dumps({'usage': _usage})}\n\n"

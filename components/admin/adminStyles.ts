@@ -16,7 +16,8 @@ export const tLabelPlain = "text-[14px] font-medium text-zinc-400";
 export const tBody = "text-[16px] leading-relaxed text-zinc-300";
 export const tSmall = "text-[15px] leading-relaxed text-zinc-500";
 export const tMono = "font-mono text-[15px]";
-export const tStat = "mt-1.5 text-[28px] font-semibold tracking-tight text-white leading-none tabular-nums";
+export const tStat =
+  "mt-1.5 text-[28px] font-semibold tracking-tight text-white leading-none tabular-nums";
 export const tValue = "text-[16px] font-semibold tabular-nums text-zinc-200";
 
 /* identity colors */
@@ -31,7 +32,9 @@ export const cEmerald = "text-emerald-400";
 export const cRose = "text-rose-400";
 export const cZinc = "text-zinc-500";
 
-export const inputCls = "h-9 border-white/10 bg-zinc-900 text-white placeholder:text-zinc-500 text-[16px]";
-export const textareaCls = "border-white/10 bg-zinc-900 text-white placeholder:text-zinc-500 text-[16px] leading-relaxed";
+export const inputCls =
+  "h-9 border-white/10 bg-zinc-900 text-white placeholder:text-zinc-500 text-[16px]";
+export const textareaCls =
+  "border-white/10 bg-zinc-900 text-white placeholder:text-zinc-500 text-[16px] leading-relaxed";
 export const sectionHeaderWrap = "border-b border-white/[0.06] pb-4";
 export const sectionDescCls = "mt-1.5 text-[16px] leading-relaxed text-zinc-500";

@@ -3,6 +3,7 @@
 Tanpa Supabase / provider LLM. Jalankan:
   python -m pytest backend/tests/test_pricing.py -q
 """
+
 import os
 import sys
 
@@ -95,11 +96,14 @@ def test_count_orders_by_status(db):
 
 def test_confirm_endpoint_adds_prompts_and_is_idempotent(db, monkeypatch):
     from fastapi.testclient import TestClient
+
     from backend.api.admin import get_current_admin
     from backend.api.main import app
 
     db.update_pricing({"plans": DEFAULT_PLANS})
-    user = db.create_user({"username": "buyer", "password_hash": "x", "max_prompts": 50, "prompts_used": 10, "is_active": True})
+    user = db.create_user(
+        {"username": "buyer", "password_hash": "x", "max_prompts": 50, "prompts_used": 10, "is_active": True}
+    )
     order = db.create_order(str(user["id"]), db.find_plan("100"))
 
     app.dependency_overrides[get_current_admin] = lambda: "admin"
@@ -120,11 +124,14 @@ def test_confirm_endpoint_adds_prompts_and_is_idempotent(db, monkeypatch):
 
 def test_confirm_unlimited_user_does_not_add(db, monkeypatch):
     from fastapi.testclient import TestClient
+
     from backend.api.admin import get_current_admin
     from backend.api.main import app
 
     db.update_pricing({"plans": DEFAULT_PLANS})
-    user = db.create_user({"username": "unlimited", "password_hash": "x", "max_prompts": 0, "prompts_used": 0, "is_active": True})
+    user = db.create_user(
+        {"username": "unlimited", "password_hash": "x", "max_prompts": 0, "prompts_used": 0, "is_active": True}
+    )
     order = db.create_order(str(user["id"]), db.find_plan("100"))
 
     app.dependency_overrides[get_current_admin] = lambda: "admin"
@@ -141,28 +148,40 @@ def test_confirm_unlimited_user_does_not_add(db, monkeypatch):
 def test_public_pricing_filters_invalid_plans(db, monkeypatch):
     from backend.api import pricing as pricing_api
 
-    monkeypatch.setattr(pricing_api.DatabaseService, "get_pricing", staticmethod(lambda: {
-        "plans": [
-            {"id": "ok", "label": "Valid", "prompts": 50, "amount": 10000},
-            {"id": "zero", "label": "Bad", "prompts": 0, "amount": 10000},
-            {"id": "", "label": "No id", "prompts": 10, "amount": 10000},
-            "not-a-dict",
-        ],
-        "payment_qris": "",
-        "payment_instructions": "",
-        "contact": "",
-        "order_note": "",
-    }))
+    monkeypatch.setattr(
+        pricing_api.DatabaseService,
+        "get_pricing",
+        staticmethod(
+            lambda: {
+                "plans": [
+                    {"id": "ok", "label": "Valid", "prompts": 50, "amount": 10000},
+                    {"id": "zero", "label": "Bad", "prompts": 0, "amount": 10000},
+                    {"id": "", "label": "No id", "prompts": 10, "amount": 10000},
+                    "not-a-dict",
+                ],
+                "payment_qris": "",
+                "payment_instructions": "",
+                "contact": "",
+                "order_note": "",
+            }
+        ),
+    )
     out = pricing_api._public_pricing()
     assert [p["id"] for p in out["plans"]] == ["ok"]
 
 
 def test_clean_plans_rejects_duplicates_and_bad_numbers():
-    from backend.api import pricing as pricing_api
     from fastapi import HTTPException
 
+    from backend.api import pricing as pricing_api
+
     with pytest.raises(HTTPException):
-        pricing_api._clean_plans([{"id": "a", "label": "A", "prompts": 1, "amount": 1000}, {"id": "a", "label": "B", "prompts": 1, "amount": 1000}])
+        pricing_api._clean_plans(
+            [
+                {"id": "a", "label": "A", "prompts": 1, "amount": 1000},
+                {"id": "a", "label": "B", "prompts": 1, "amount": 1000},
+            ]
+        )
     with pytest.raises(HTTPException):
         pricing_api._clean_plans([{"id": "b", "label": "B", "prompts": -5, "amount": 1000}])
     ok = pricing_api._clean_plans([{"id": "c", "label": "C", "prompts": 5, "amount": 1000}])
@@ -172,6 +191,7 @@ def test_clean_plans_rejects_duplicates_and_bad_numbers():
 def test_admin_update_accepts_large_qris_data_url(db, monkeypatch):
     """Regresi: data URL QRIS > 20000 char dulu ditolak 422 (gagal simpan)."""
     from fastapi.testclient import TestClient
+
     from backend.api.admin import get_current_admin
     from backend.api.main import app
 
@@ -189,6 +209,7 @@ def test_admin_update_accepts_large_qris_data_url(db, monkeypatch):
 
 def test_admin_update_rejects_too_long_qris_with_field_message(db, monkeypatch):
     from fastapi.testclient import TestClient
+
     from backend.api.admin import get_current_admin
     from backend.api.main import app
     from backend.api.pricing import MAX_QRIS_CHARS
@@ -197,7 +218,9 @@ def test_admin_update_rejects_too_long_qris_with_field_message(db, monkeypatch):
     app.dependency_overrides[get_current_admin] = lambda: "admin"
     try:
         client = TestClient(app)
-        res = client.put("/api/admin/pricing", json={"plans": DEFAULT_PLANS, "payment_qris": "x" * (MAX_QRIS_CHARS + 10)})
+        res = client.put(
+            "/api/admin/pricing", json={"plans": DEFAULT_PLANS, "payment_qris": "x" * (MAX_QRIS_CHARS + 10)}
+        )
         assert res.status_code == 422
         assert "QRIS" in res.json()["detail"]
     finally:
@@ -206,6 +229,7 @@ def test_admin_update_rejects_too_long_qris_with_field_message(db, monkeypatch):
 
 def test_admin_update_rejects_too_many_plans_with_field_message(db, monkeypatch):
     from fastapi.testclient import TestClient
+
     from backend.api.admin import get_current_admin
     from backend.api.main import app
     from backend.api.pricing import MAX_PLANS
@@ -224,16 +248,21 @@ def test_admin_update_rejects_too_many_plans_with_field_message(db, monkeypatch)
 
 def test_validation_message_is_friendly():
     """Pesan 422 tidak boleh bocorkan struktur schema Pydantic (loc/ctx/type)."""
-    from backend.api.main import _friendly_validation_error
     from fastapi.exceptions import RequestValidationError
 
-    exc = RequestValidationError([{
-        "type": "string_too_long",
-        "loc": ("body", "payment_qris"),
-        "msg": "String should have at most 600000 characters",
-        "input": "secret-payload",
-        "ctx": {"max_length": 600000},
-    }])
+    from backend.api.main import _friendly_validation_error
+
+    exc = RequestValidationError(
+        [
+            {
+                "type": "string_too_long",
+                "loc": ("body", "payment_qris"),
+                "msg": "String should have at most 600000 characters",
+                "input": "secret-payload",
+                "ctx": {"max_length": 600000},
+            }
+        ]
+    )
     msg = _friendly_validation_error(exc)
     assert "QRIS" in msg
     assert "600000" in msg
@@ -244,9 +273,14 @@ def test_pricing_block_uses_live_config(db, monkeypatch):
     """Blok harga di system prompt harus ikut pricing_config, bukan hardcode KB."""
     from backend.knowledge import context_builder as cb
 
-    db.update_pricing({"plans": [
-        {"id": "77", "label": "Paket 77 Prompt", "prompts": 77, "amount": 77777, "popular": False},
-    ], "contact": "WA 0800"})
+    db.update_pricing(
+        {
+            "plans": [
+                {"id": "77", "label": "Paket 77 Prompt", "prompts": 77, "amount": 77777, "popular": False},
+            ],
+            "contact": "WA 0800",
+        }
+    )
     real = db.get_pricing
     monkeypatch.setattr(cb.DatabaseService, "get_pricing", staticmethod(lambda: real()))
     block = cb._build_pricing_block()
@@ -258,11 +292,13 @@ def test_pricing_block_uses_live_config(db, monkeypatch):
 
 def test_pricing_block_empty_when_no_plans(monkeypatch):
     from backend.knowledge import context_builder as cb
+
     monkeypatch.setattr(cb.DatabaseService, "get_pricing", staticmethod(lambda: {"plans": []}))
     assert cb._build_pricing_block() == ""
 
 
 # ── alur bayar otomatis: user tidak boleh acc, callback gateway yang aktivasi ──
+
 
 def _enable_gateway(monkeypatch, *, signature_ok: bool = True):
     from backend.api import pricing as pricing_api
@@ -283,6 +319,7 @@ def _callback_payload(order, **over):
     body.update(over)
     return body
 
+
 def test_wa_link_normalizes_contact():
     from backend.api.pricing import wa_link
 
@@ -299,13 +336,19 @@ def test_wa_link_normalizes_contact():
 def test_public_pricing_exposes_contact_wa(db, monkeypatch):
     from backend.api import pricing as pricing_api
 
-    monkeypatch.setattr(pricing_api.DatabaseService, "get_pricing", staticmethod(lambda: {
-        "plans": [{"id": "ok", "label": "Valid", "prompts": 50, "amount": 10000}],
-        "payment_qris": "",
-        "payment_instructions": "",
-        "contact": "087776445013",
-        "order_note": "",
-    }))
+    monkeypatch.setattr(
+        pricing_api.DatabaseService,
+        "get_pricing",
+        staticmethod(
+            lambda: {
+                "plans": [{"id": "ok", "label": "Valid", "prompts": 50, "amount": 10000}],
+                "payment_qris": "",
+                "payment_instructions": "",
+                "contact": "087776445013",
+                "order_note": "",
+            }
+        ),
+    )
     out = pricing_api._public_pricing()
     assert out["contact_wa"] == "https://wa.me/6287776445013"
 
@@ -313,11 +356,14 @@ def test_public_pricing_exposes_contact_wa(db, monkeypatch):
 def test_user_cannot_self_mark_paid(db):
     """Endpoint 'Sudah Bayar' dihapus: user tidak boleh acc pembayarannya sendiri."""
     from fastapi.testclient import TestClient
-    from backend.api.users import get_current_user
+
     from backend.api.main import app
+    from backend.api.users import get_current_user
 
     db.update_pricing({"plans": DEFAULT_PLANS})
-    user = db.create_user({"username": "selfbuyer", "password_hash": "x", "max_prompts": 10, "prompts_used": 5, "is_active": True})
+    user = db.create_user(
+        {"username": "selfbuyer", "password_hash": "x", "max_prompts": 10, "prompts_used": 5, "is_active": True}
+    )
     order = db.create_order(str(user["id"]), db.find_plan("100"))
 
     app.dependency_overrides[get_current_user] = lambda: {"id": str(user["id"]), "username": "selfbuyer"}
@@ -334,10 +380,13 @@ def test_user_cannot_self_mark_paid(db):
 def test_callback_auto_activates_quota_and_is_idempotent(db, monkeypatch):
     """Dana masuk -> callback gateway -> paid + kuota naik, tanpa acc user."""
     from fastapi.testclient import TestClient
+
     from backend.api.main import app
 
     db.update_pricing({"plans": DEFAULT_PLANS})
-    user = db.create_user({"username": "autobuyer", "password_hash": "x", "max_prompts": 10, "prompts_used": 5, "is_active": True})
+    user = db.create_user(
+        {"username": "autobuyer", "password_hash": "x", "max_prompts": 10, "prompts_used": 5, "is_active": True}
+    )
     order = db.create_order(str(user["id"]), db.find_plan("100"))
     _enable_gateway(monkeypatch)
 
@@ -362,10 +411,13 @@ def test_callback_auto_activates_quota_and_is_idempotent(db, monkeypatch):
 
 def test_callback_bad_signature_rejected(db, monkeypatch):
     from fastapi.testclient import TestClient
+
     from backend.api.main import app
 
     db.update_pricing({"plans": DEFAULT_PLANS})
-    user = db.create_user({"username": "forged", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
+    user = db.create_user(
+        {"username": "forged", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True}
+    )
     order = db.create_order(str(user["id"]), db.find_plan("100"))
     _enable_gateway(monkeypatch, signature_ok=False)
 
@@ -378,10 +430,13 @@ def test_callback_bad_signature_rejected(db, monkeypatch):
 
 def test_callback_amount_mismatch_rejected(db, monkeypatch):
     from fastapi.testclient import TestClient
+
     from backend.api.main import app
 
     db.update_pricing({"plans": DEFAULT_PLANS})
-    user = db.create_user({"username": "shortpay", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
+    user = db.create_user(
+        {"username": "shortpay", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True}
+    )
     order = db.create_order(str(user["id"]), db.find_plan("100"))
     _enable_gateway(monkeypatch)
 
@@ -394,22 +449,29 @@ def test_callback_amount_mismatch_rejected(db, monkeypatch):
 
 def test_callback_unknown_order_returns_404(db, monkeypatch):
     from fastapi.testclient import TestClient
+
     from backend.api.main import app
 
     db.update_pricing({"plans": DEFAULT_PLANS})
     _enable_gateway(monkeypatch)
 
     client = TestClient(app)
-    res = client.post("/api/payment/duitku/callback", data=_callback_payload({"id": "00000000-0000-0000-0000-000000000000", "amount": 30000}))
+    res = client.post(
+        "/api/payment/duitku/callback",
+        data=_callback_payload({"id": "00000000-0000-0000-0000-000000000000", "amount": 30000}),
+    )
     assert res.status_code == 404
 
 
 def test_callback_failed_payment_keeps_order_pending(db, monkeypatch):
     from fastapi.testclient import TestClient
+
     from backend.api.main import app
 
     db.update_pricing({"plans": DEFAULT_PLANS})
-    user = db.create_user({"username": "failpay", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
+    user = db.create_user(
+        {"username": "failpay", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True}
+    )
     order = db.create_order(str(user["id"]), db.find_plan("100"))
     _enable_gateway(monkeypatch)
 
@@ -424,10 +486,13 @@ def test_callback_failed_payment_keeps_order_pending(db, monkeypatch):
 def test_callback_disabled_when_gateway_unconfigured(db):
     """Tanpa credential, callback ditolak (bukan diam-diam jadi trustless)."""
     from fastapi.testclient import TestClient
+
     from backend.api.main import app
 
     db.update_pricing({"plans": DEFAULT_PLANS})
-    user = db.create_user({"username": "nogw", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
+    user = db.create_user(
+        {"username": "nogw", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True}
+    )
     order = db.create_order(str(user["id"]), db.find_plan("100"))
 
     client = TestClient(app)
@@ -439,10 +504,13 @@ def test_callback_disabled_when_gateway_unconfigured(db):
 def test_callback_paid_after_cancel_needs_admin(db, monkeypatch):
     """Order diganti saat menunggu tapi dana masuk: jangan auto-aktif, lempar admin."""
     from fastapi.testclient import TestClient
+
     from backend.api.main import app
 
     db.update_pricing({"plans": DEFAULT_PLANS})
-    user = db.create_user({"username": "latepay", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True})
+    user = db.create_user(
+        {"username": "latepay", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True}
+    )
     order = db.create_order(str(user["id"]), db.find_plan("100"))
     db.set_order_status(order["id"], "cancelled")
     _enable_gateway(monkeypatch)
@@ -457,16 +525,30 @@ def test_callback_paid_after_cancel_needs_admin(db, monkeypatch):
 
 def test_create_order_with_gateway_returns_payment_url(db, monkeypatch):
     from fastapi.testclient import TestClient
-    from backend.api.users import get_current_user
-    from backend.api.main import app
+
     from backend.api import pricing as pricing_api
+    from backend.api.main import app
+    from backend.api.users import get_current_user
 
     db.update_pricing({"plans": DEFAULT_PLANS})
-    user = db.create_user({"username": "gwbuyer", "password_hash": "x", "max_prompts": 10, "prompts_used": 0, "is_active": True, "email": "gw@example.com"})
+    user = db.create_user(
+        {
+            "username": "gwbuyer",
+            "password_hash": "x",
+            "max_prompts": 10,
+            "prompts_used": 0,
+            "is_active": True,
+            "email": "gw@example.com",
+        }
+    )
     monkeypatch.setattr(pricing_api.duitku, "configured", lambda: True)
     monkeypatch.setattr(
-        pricing_api.duitku, "create_invoice",
-        lambda **kw: {"reference": "REF777", "payment_url": "https://app-sandbox.duitku.com/redirect_checkout?reference=REF777"},
+        pricing_api.duitku,
+        "create_invoice",
+        lambda **kw: {
+            "reference": "REF777",
+            "payment_url": "https://app-sandbox.duitku.com/redirect_checkout?reference=REF777",
+        },
     )
 
     app.dependency_overrides[get_current_user] = lambda: {"id": str(user["id"]), "username": "gwbuyer"}
@@ -485,11 +567,14 @@ def test_create_order_with_gateway_returns_payment_url(db, monkeypatch):
 def test_create_order_clears_stale_pending_instead_of_409(db, monkeypatch):
     """Order baru menggantikan pending lama (user tutup tab sebelum bayar)."""
     from fastapi.testclient import TestClient
-    from backend.api.users import get_current_user
+
     from backend.api.main import app
+    from backend.api.users import get_current_user
 
     db.update_pricing({"plans": DEFAULT_PLANS})
-    user = db.create_user({"username": "replacer", "password_hash": "x", "max_prompts": 5, "prompts_used": 0, "is_active": True})
+    user = db.create_user(
+        {"username": "replacer", "password_hash": "x", "max_prompts": 5, "prompts_used": 0, "is_active": True}
+    )
 
     app.dependency_overrides[get_current_user] = lambda: {"id": str(user["id"]), "username": "replacer"}
     try:
@@ -507,6 +592,7 @@ def test_create_order_clears_stale_pending_instead_of_409(db, monkeypatch):
 
 # ── user list merge + local sync ──
 
+
 def test_list_users_merges_local_only_users(db):
     local = db.create_user({"username": "local_only", "password_hash": "x", "max_prompts": 5, "is_active": True})
     rows = db.list_users()
@@ -515,6 +601,7 @@ def test_list_users_merges_local_only_users(db):
 
 def test_create_user_mirrors_to_local(db):
     from backend.database import db as m
+
     u = db.create_user({"username": "mirrorme", "password_hash": "x", "max_prompts": 1, "is_active": True})
     local = m._read_local_json(db._users_file(), [])
     assert any(str(x.get("id")) == str(u["id"]) for x in local)
@@ -522,6 +609,7 @@ def test_create_user_mirrors_to_local(db):
 
 def test_delete_user_removes_from_local(tmp_path, monkeypatch):
     from backend.database import db as m
+
     monkeypatch.setattr(m, "supabase_client", None)
     monkeypatch.setattr(m, "LOCAL_DATA_DIR", str(tmp_path))
     u = m.DatabaseService.create_user({"username": "gone", "password_hash": "x", "max_prompts": 1, "is_active": True})
@@ -541,32 +629,45 @@ def test_sync_local_users_pushes_missing(monkeypatch):
         def __init__(self, rows):
             self._rows = rows
             self._pending = None
+
         def select(self, *a, **k):
             return self
+
         def execute(self):
             if self._pending is not None:
                 m._sync_inserts.append(self._pending)
                 return type("R", (), {"data": [self._pending]})()
             return type("R", (), {"data": list(self._rows)})()
+
         def insert(self, row):
             self._pending = row
             return self
+
         def eq(self, *a, **k):
             return self
 
     class _Client:
         def __init__(self, existing):
             self._existing = existing
+
         def table(self, name):
             return _Q(self._existing)
 
     m._sync_inserts = []
     monkeypatch.setattr(m, "supabase_client", _Client([{"id": "already-there"}]))
     monkeypatch.setattr(m, "LOCAL_DATA_DIR", m.LOCAL_DATA_DIR)
-    monkeypatch.setattr(m, "_read_local_json", lambda f, d: [
-        {"id": "already-there", "username": "a"},
-        {"id": "missing-1", "username": "b"},
-    ] if f == m.DatabaseService._users_file() else d)
+    monkeypatch.setattr(
+        m,
+        "_read_local_json",
+        lambda f, d: (
+            [
+                {"id": "already-there", "username": "a"},
+                {"id": "missing-1", "username": "b"},
+            ]
+            if f == m.DatabaseService._users_file()
+            else d
+        ),
+    )
     created = m.DatabaseService.sync_local_users_to_supabase()
     assert created == 1
     assert any(r.get("id") == "missing-1" for r in m._sync_inserts)

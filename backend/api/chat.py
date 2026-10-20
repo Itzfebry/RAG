@@ -1,38 +1,41 @@
-from fastapi import APIRouter, Request, Query, HTTPException, Depends, UploadFile, File
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, field_validator
-from typing import List, Dict, Optional
+import contextlib
 import json
 import os
-import re
 import random
+import re
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field, field_validator
 
 try:
-    from backend.security.rate_limiter import get_client_ip, check_rate_limit
-    from backend.security.auth import USER_COOKIE_NAME, verify_user_jwt
+    from backend.api.admin import get_current_admin
     from backend.database.db import DatabaseService
     from backend.knowledge.knowledge_service import KnowledgeService
-    from backend.api.admin import get_current_admin
+    from backend.security.auth import USER_COOKIE_NAME, verify_user_jwt
+    from backend.security.rate_limiter import check_rate_limit, get_client_ip
 except ImportError:
-    from security.rate_limiter import get_client_ip, check_rate_limit  # type: ignore
-    from security.auth import USER_COOKIE_NAME, verify_user_jwt  # type: ignore
     from database.db import DatabaseService  # type: ignore
     from knowledge.knowledge_service import KnowledgeService  # type: ignore
+    from security.auth import USER_COOKIE_NAME, verify_user_jwt  # type: ignore
+    from security.rate_limiter import check_rate_limit, get_client_ip  # type: ignore
+
     from api.admin import get_current_admin  # type: ignore
 
 try:
-    from backend.agent.agent import AgentOrchestrator, _resolve_base_url, _resolve_api_key, _resolve_default_model
-    from backend.agent.commands import parse_command, list_commands, list_command_details
+    from backend.agent.agent import AgentOrchestrator, _resolve_api_key, _resolve_base_url, _resolve_default_model
+    from backend.agent.commands import list_command_details, list_commands, parse_command
 except ImportError:
-    from agent.agent import AgentOrchestrator, _resolve_base_url, _resolve_api_key, _resolve_default_model # type: ignore
-    from agent.commands import parse_command, list_commands, list_command_details # type: ignore
+    from agent.agent import AgentOrchestrator, _resolve_api_key, _resolve_base_url, _resolve_default_model  # type: ignore
+    from agent.commands import list_command_details, list_commands, parse_command  # type: ignore
 
 router = APIRouter(prefix="/api", tags=["Chat"])
 v1_router = APIRouter(prefix="/v1", tags=["OpenAI Compatible"])
 agent_orchestrator = AgentOrchestrator()
 
-def _sanitize_model_list(models: List[str], active: str) -> List[str]:
-    out: List[str] = []
+
+def _sanitize_model_list(models: list[str], active: str) -> list[str]:
+    out: list[str] = []
     for m in models:
         m = str(m).strip()
         if m and m not in out:
@@ -42,7 +45,7 @@ def _sanitize_model_list(models: List[str], active: str) -> List[str]:
     return out
 
 
-def get_current_chat_user_optional(request: Request) -> Optional[Dict]:
+def get_current_chat_user_optional(request: Request) -> dict | None:
     token = request.cookies.get(USER_COOKIE_NAME)
     if not token:
         auth = request.headers.get("Authorization") or ""
@@ -65,7 +68,10 @@ def get_current_chat_user_optional(request: Request) -> Optional[Dict]:
     # tidak boleh chat sampai kode 6 digit dikonfirmasi. User tanpa email
     # (mis. dibuat admin) tidak terpengaruh.
     if str(user.get("email") or "").strip() and not bool(user.get("email_verified", False)):
-        raise HTTPException(status_code=403, detail="Verifikasi email dulu sebelum chat - masukkan kode 6 digit yang dikirim ke email Anda")
+        raise HTTPException(
+            status_code=403,
+            detail="Verifikasi email dulu sebelum chat - masukkan kode 6 digit yang dikirim ke email Anda",
+        )
     if DatabaseService.is_prompt_quota_exhausted(user):
         raise HTTPException(status_code=403, detail="Batas prompt habis - hubungi admin untuk menambah kuota")
     return user
@@ -74,10 +80,8 @@ def get_current_chat_user_optional(request: Request) -> Optional[Dict]:
 @v1_router.get("/models")
 def list_models():
     model_config = {}
-    try:
+    with contextlib.suppress(Exception):
         model_config = DatabaseService.get_config_table("ai_model_config")
-    except Exception:
-        pass
 
     active_model = (model_config.get("active_model") or "").strip() or _resolve_default_model()
     fallback_models = [str(m).strip() for m in (model_config.get("fallback_models") or []) if str(m).strip()]
@@ -87,13 +91,17 @@ def list_models():
 
     return {
         "object": "list",
-        "data": [{"id": mid, "object": "model", "owned_by": provider, "active": mid == active_model} for mid in model_ids],
+        "data": [
+            {"id": mid, "object": "model", "owned_by": provider, "active": mid == active_model} for mid in model_ids
+        ],
         "meta": {"active_model": active_model, "provider": provider, "api_base_url": base_url},
     }
 
 
 @v1_router.get("/models/available")
-def list_available_models(limit: int = Query(default=100, ge=1, le=200), include_free_only: bool = Query(default=False)):
+def list_available_models(
+    limit: int = Query(default=100, ge=1, le=200), include_free_only: bool = Query(default=False)
+):
     """
     Live discovery against the configured provider's /models endpoint.
     Sans hardcode. Returns whatever the provider lists - different providers,
@@ -102,11 +110,17 @@ def list_available_models(limit: int = Query(default=100, ge=1, le=200), include
     api_key = _resolve_api_key()
     base_url = (_resolve_base_url() or "https://openrouter.ai/api/v1").strip().rstrip("/")
 
-    if not api_key or "/api/" not in base_url or not (base_url.startswith("http://") or base_url.startswith("https://")):
+    if (
+        not api_key
+        or "/api/" not in base_url
+        or not (base_url.startswith("http://") or base_url.startswith("https://"))
+    ):
         return list_models()
 
-    def _try_urls(urls: list) -> Optional[list]:
-        import urllib.request, ssl
+    def _try_urls(urls: list) -> list | None:
+        import ssl
+        import urllib.request
+
         ctx = ssl.create_default_context()
         for u in urls:
             try:
@@ -124,7 +138,17 @@ def list_available_models(limit: int = Query(default=100, ge=1, le=200), include
 
     # OpenRouter-compatible: <origin>/api/v1/models. Also try OpenAI-style <base>/models.
     origin = base_url.split("/api/")[0]
-    candidates = [origin + "/api/v1/models"] if base_url != origin + "/api/v1/models" else [base_url + "/models" if False else base_url.replace("/api/v1", "/api/v1/models") if "/models" not in base_url else base_url]
+    candidates = (
+        [origin + "/api/v1/models"]
+        if base_url != origin + "/api/v1/models"
+        else [
+            base_url + "/models"
+            if False
+            else base_url.replace("/api/v1", "/api/v1/models")
+            if "/models" not in base_url
+            else base_url
+        ]
+    )
     if "/api/v1/models" not in candidates[0]:
         candidates.insert(0, origin + "/api/v1/models")
     candidates.append(base_url + "/models" if not base_url.endswith("/models") else base_url)
@@ -133,9 +157,23 @@ def list_available_models(limit: int = Query(default=100, ge=1, le=200), include
     try:
         items = _try_urls(candidates)
         if items is None:
-            return {"object": "list", "data": [], "error": "Provider /models discovery failed", "fallback": list_models()}
+            return {
+                "object": "list",
+                "data": [],
+                "error": "Provider /models discovery failed",
+                "fallback": list_models(),
+            }
         if include_free_only:
-            items = [it for it in items if isinstance(it, dict) and (":free" in str(it.get("id", "")) or str(it.get("pricing", {}).get("prompt", "x") if isinstance(it.get("pricing"), dict) else "") == "0")]
+            items = [
+                it
+                for it in items
+                if isinstance(it, dict)
+                and (
+                    ":free" in str(it.get("id", ""))
+                    or str(it.get("pricing", {}).get("prompt", "x") if isinstance(it.get("pricing"), dict) else "")
+                    == "0"
+                )
+            ]
         items = items[:limit]
         return {
             "object": "list",
@@ -148,11 +186,13 @@ def list_available_models(limit: int = Query(default=100, ge=1, le=200), include
                     "description": (it.get("description") or "")[:240],
                     "object": "model",
                 }
-                for it in items if isinstance(it, dict) and it.get("id")
+                for it in items
+                if isinstance(it, dict) and it.get("id")
             ],
         }
     except Exception as e:
         return {"object": "list", "data": [], "error": str(e), "fallback": list_models()}
+
 
 class ChatMessage(BaseModel):
     role: str = Field(pattern=r"^(user|assistant|system)$")
@@ -163,10 +203,11 @@ class ChatMessage(BaseModel):
     def strip_content(cls, v: str) -> str:
         return v.strip()
 
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
-    history: Optional[List[ChatMessage]] = Field(default=None, max_length=50)
-    model: Optional[str] = Field(default=None, max_length=256)
+    history: list[ChatMessage] | None = Field(default=None, max_length=50)
+    model: str | None = Field(default=None, max_length=256)
 
     @field_validator("message")
     @classmethod
@@ -186,7 +227,8 @@ class ChatRequest(BaseModel):
             raise ValueError("Invalid model ID")
         return v
 
-def _commands_help_text(unknown: Optional[str] = None) -> str:
+
+def _commands_help_text(unknown: str | None = None) -> str:
     lines = []
     if unknown:
         lines.append(f"Command `{unknown}` tidak dikenal. Daftar command yang tersedia:")
@@ -220,7 +262,12 @@ async def stream_chat(payload: ChatRequest, request: Request):
         return StreamingResponse(
             _help_stream(_commands_help_text(unknown_command)),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no", "X-Command-Mode": "static"},
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "X-Command-Mode": "static",
+            },
         )
     if command_names:
         payload.message = clean_message
@@ -228,7 +275,9 @@ async def stream_chat(payload: ChatRequest, request: Request):
     if user is not None:
         allowed, retry = check_rate_limit(f"chat:{user.get('id')}:{ip}", 30, 60)
         if not allowed:
-            raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+            raise HTTPException(
+                status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+            )
         fresh = DatabaseService.get_user_by_id(str(user.get("id")))
         if fresh and DatabaseService.is_prompt_quota_exhausted(fresh):
             raise HTTPException(status_code=403, detail="Batas prompt habis - hubungi admin untuk menambah kuota")
@@ -238,7 +287,9 @@ async def stream_chat(payload: ChatRequest, request: Request):
         # trial gate - soft setting trial_prompts (0 = trial disabled => require login)
         allowed, retry = check_rate_limit(f"chat:trial:{ip}", 30, 60)
         if not allowed:
-            raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+            raise HTTPException(
+                status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+            )
         s = DatabaseService.get_app_settings()
         limit = max(0, int(s.get("trial_prompts", 3)))
         if limit == 0:
@@ -265,17 +316,25 @@ async def stream_chat(payload: ChatRequest, request: Request):
         }
     # capture model/resolved latency for analytics - non-blocking
     import time as _t
+
     t0 = _t.perf_counter()
 
     usage_owner = str(user.get("id")) if user is not None else f"trial:{ip}"
 
     async def generate():
         answered = False
-        async for chunk in agent_orchestrator.stream_chat_response(payload.message, history_dicts, model_override=payload.model, user_profile=user_profile, command_names=command_names or None):
+        async for chunk in agent_orchestrator.stream_chat_response(
+            payload.message,
+            history_dicts,
+            model_override=payload.model,
+            user_profile=user_profile,
+            command_names=command_names or None,
+        ):
             # event token usage dari agent -> catat, jangan diteruskan ke client
             if chunk.startswith("data: ") and '"usage"' in chunk:
                 try:
                     import json as _json
+
                     u = _json.loads(chunk[6:].strip()).get("usage") or {}
                     DatabaseService.record_token_usage(
                         usage_owner,
@@ -311,10 +370,8 @@ async def stream_chat(payload: ChatRequest, request: Request):
                     mname = "unknown"
             DatabaseService.record_request_event(model=mname, latency_ms=elapsed)
         except Exception:
-            try:
+            with contextlib.suppress(Exception):
                 DatabaseService.record_request_event()
-            except Exception:
-                pass
 
     return StreamingResponse(
         generate(),
@@ -323,8 +380,9 @@ async def stream_chat(payload: ChatRequest, request: Request):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-        }
+        },
     )
+
 
 _DEFAULT_SUGGESTIONS = [
     "Ringkas knowledge base saya",
@@ -363,7 +421,7 @@ def get_suggestions(limit: int = 3):
     # 2) knowledge entry titles
     try:
         titles = []
-        for e in (DatabaseService.get_knowledge_entries() or []):
+        for e in DatabaseService.get_knowledge_entries() or []:
             if not e.get("is_active", True):
                 continue
             t = str(e.get("title") or "").strip()
@@ -397,29 +455,24 @@ async def upload_knowledge_file(
         if suffix == ".pdf":
             # Requires pypdf
             import pypdf
+
             reader = pypdf.PdfReader(file.file)
             content = "\n".join([page.extract_text() for page in reader.pages])
         else:
             # Text / Markdown
             content = (await file.read()).decode("utf-8")
-        
+
         if not content.strip():
             raise HTTPException(status_code=400, detail="File kosong")
 
         # Save to DB as new entry
-        entry_data = {
-            "category_id": category_id,
-            "title": file.filename,
-            "content": content,
-            "is_active": True
-        }
+        entry_data = {"category_id": category_id, "title": file.filename, "content": content, "is_active": True}
         entry = DatabaseService.create_or_update_knowledge_entry(entry_data)
-        
+
         # Trigger indexing
         KnowledgeService.index_entry(entry["id"], content)
-        
+
         return {"status": "success", "entry_id": entry["id"], "chars": len(content)}
     except Exception as e:
         print(f"[upload] gagal memproses file: {e}")
         raise HTTPException(status_code=500, detail="Gagal memproses file. Cek log server.")
-

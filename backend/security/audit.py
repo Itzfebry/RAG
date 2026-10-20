@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
-from typing import Any, Dict, List
+from datetime import UTC, datetime
+from typing import Any
 
 try:
     from backend.database.db import _read_local_json, _write_local_json, supabase_client
@@ -12,7 +12,7 @@ MAX_LOCAL_ROWS = 500
 
 def log_action(actor: str, action: str, target: str = "", detail: str = "", ip: str = "") -> None:
     row = {
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "actor": actor or "unknown",
         "action": action,
         "target": target or "",
@@ -30,7 +30,7 @@ def log_action(actor: str, action: str, target: str = "", detail: str = "", ip: 
     _write_local_json(AUDIT_FILE, rows[-MAX_LOCAL_ROWS:])
 
 
-def list_actions(limit: int = 100) -> List[Dict[str, Any]]:
+def list_actions(limit: int = 100) -> list[dict[str, Any]]:
     limit = max(1, min(500, int(limit)))
     if supabase_client:
         try:

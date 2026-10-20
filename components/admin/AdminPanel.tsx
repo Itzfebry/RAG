@@ -72,19 +72,73 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardFooter,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine } from "recharts";
+import {
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  ReferenceLine,
+} from "recharts";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  cardBase, cardHeaderCls, cardContentCls,
-  tPage, tSub, tCard, tLabel, tCardPlain, tLabelPlain, tBody, tSmall,
-  cUser, cModel, cSky, cViolet, cAmber, cEmerald, cRose, cZinc,
-  inputCls, textareaCls, sectionHeaderWrap,
+  cardBase,
+  cardHeaderCls,
+  cardContentCls,
+  tPage,
+  tSub,
+  tCard,
+  tLabel,
+  tCardPlain,
+  tLabelPlain,
+  tBody,
+  tSmall,
+  cUser,
+  cModel,
+  cSky,
+  cViolet,
+  cAmber,
+  cEmerald,
+  cRose,
+  cZinc,
+  inputCls,
+  textareaCls,
+  sectionHeaderWrap,
 } from "./adminStyles";
 import { IdentityTab } from "./tabs/IdentityTab";
 import { PersonalTab } from "./tabs/PersonalTab";
@@ -97,21 +151,44 @@ import { PricingTab } from "./tabs/PricingTab";
 import { SectionHeader } from "./SectionHeader";
 import { FieldInfo } from "./FieldInfo";
 
-type TabType = "dashboard" | "users" | "identity" | "personal" | "knowledge" | "personality" | "communication" | "instructions" | "models" | "styles" | "pricing";
+type TabType =
+  | "dashboard"
+  | "users"
+  | "identity"
+  | "personal"
+  | "knowledge"
+  | "personality"
+  | "communication"
+  | "instructions"
+  | "models"
+  | "styles"
+  | "pricing";
 
 type RealStats = {
-  totalRequests: number; totalUsers: number; activeUsers: number; disabledUsers: number;
-  knowledgeEntries: number; totalPromptsUsed: number; trialTotalUsed: number;
-  exhausted: number; unlimitedUsers: number; avgPrompts: number;
-  uptime: string; uptimeSeconds: number;
+  totalRequests: number;
+  totalUsers: number;
+  activeUsers: number;
+  disabledUsers: number;
+  knowledgeEntries: number;
+  totalPromptsUsed: number;
+  trialTotalUsed: number;
+  exhausted: number;
+  unlimitedUsers: number;
+  avgPrompts: number;
+  uptime: string;
+  uptimeSeconds: number;
   knowledgeByCategory: { name: string; value: number }[];
   topPrompts: { username: string; prompts_used: number; max_prompts: number }[];
   dailyRequests: { day: string; count: number }[];
-  dailyLatency: { day: string; avg_ms: number | null; models: { model: string; avg_ms: number; count: number }[] }[];
+  dailyLatency: {
+    day: string;
+    avg_ms: number | null;
+    models: { model: string; avg_ms: number; count: number }[];
+  }[];
   periodMeta?: { period: string; limit: number };
 };
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
 /* ---- format angka + tooltip chart (rapi, monospace, monokrom) ---- */
 const fmtNum = (n: number) => Number(n || 0).toLocaleString("id-ID");
@@ -129,7 +206,12 @@ const fmtDay = (iso: string) => {
 const fmtDayFull = (iso: string) => {
   const d = new Date(`${iso}T00:00:00`);
   if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("id-ID", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+  return d.toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
 };
 
 function ChartTooltip({ active, payload, label, unit }: any) {
@@ -139,21 +221,32 @@ function ChartTooltip({ active, payload, label, unit }: any) {
   return (
     <div className="min-w-[160px] rounded-lg border border-white/10 bg-[#0c0c10]/95 px-3 py-2.5 shadow-[0_16px_40px_-12px_rgba(0,0,0,0.85)] backdrop-blur">
       {label !== undefined && label !== null && (
-        <p className="mb-1.5 border-b border-white/[0.07] pb-1.5 font-mono text-[11px] uppercase tracking-wider text-zinc-500">{label}</p>
+        <p className="mb-1.5 border-b border-white/[0.07] pb-1.5 font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+          {label}
+        </p>
       )}
       {rows.map((p: any, i: number) => (
         <div key={i} className="flex items-center justify-between gap-5 py-0.5 text-[12.5px]">
           <span className="flex items-center gap-1.5 text-zinc-400">
-            <span className="h-2 w-2 shrink-0 rounded-[3px]" style={{ background: p.color || p.stroke || p.fill || "#a1a1aa" }} />
+            <span
+              className="h-2 w-2 shrink-0 rounded-[3px]"
+              style={{ background: p.color || p.stroke || p.fill || "#a1a1aa" }}
+            />
             {p.name || p.dataKey}
           </span>
-          <span className="font-mono tabular-nums text-zinc-100">{fmtNum(p.value)}{unit || ""}</span>
+          <span className="font-mono tabular-nums text-zinc-100">
+            {fmtNum(p.value)}
+            {unit || ""}
+          </span>
         </div>
       ))}
       {rows.length > 1 && (
         <div className="mt-1.5 flex items-center justify-between gap-5 border-t border-white/[0.07] pt-1.5 text-[12.5px]">
           <span className="text-zinc-500">Total</span>
-          <span className="font-mono font-semibold tabular-nums text-white">{fmtNum(total)}{unit || ""}</span>
+          <span className="font-mono font-semibold tabular-nums text-white">
+            {fmtNum(total)}
+            {unit || ""}
+          </span>
         </div>
       )}
     </div>
@@ -162,14 +255,20 @@ function ChartTooltip({ active, payload, label, unit }: any) {
 
 function DeltaChip({ v, vs }: { v: number | null; vs?: string }) {
   if (v === null || !Number.isFinite(v)) {
-    return <span className="inline-flex items-center rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[12.5px] text-zinc-500">-</span>;
+    return (
+      <span className="inline-flex items-center rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 text-[12.5px] text-zinc-500">
+        -
+      </span>
+    );
   }
   const up = v >= 0;
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12.5px] font-medium tabular-nums ${up ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12.5px] font-medium tabular-nums ${up ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}
+    >
       <span aria-hidden>{up ? "▲" : "▼"}</span>
-      {up ? "+" : ""}{v}%
-      {vs && <span className="font-normal text-zinc-500">{vs}</span>}
+      {up ? "+" : ""}
+      {v}%{vs && <span className="font-normal text-zinc-500">{vs}</span>}
     </span>
   );
 }
@@ -181,12 +280,34 @@ function BudgetGauge({ pct }: { pct: number }) {
   const color = p >= 90 ? "#fb7185" : p >= 70 ? "#fbbf24" : "#34d399";
   return (
     <div className="relative mx-auto w-full max-w-[230px]">
-      <svg viewBox="0 0 180 104" className="w-full" role="img" aria-label={`${Math.round(p)} persen terpakai`}>
-        <path d="M 22 92 A 68 68 0 0 1 158 92" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="12" strokeLinecap="round" />
-        <path d="M 22 92 A 68 68 0 0 1 158 92" fill="none" stroke={color} strokeWidth="12" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - p / 100)} style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(0.16,1,0.3,1)" }} />
+      <svg
+        viewBox="0 0 180 104"
+        className="w-full"
+        role="img"
+        aria-label={`${Math.round(p)} persen terpakai`}
+      >
+        <path
+          d="M 22 92 A 68 68 0 0 1 158 92"
+          fill="none"
+          stroke="rgba(255,255,255,0.07)"
+          strokeWidth="12"
+          strokeLinecap="round"
+        />
+        <path
+          d="M 22 92 A 68 68 0 0 1 158 92"
+          fill="none"
+          stroke={color}
+          strokeWidth="12"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - p / 100)}
+          style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(0.16,1,0.3,1)" }}
+        />
       </svg>
       <div className="absolute inset-x-0 bottom-1 text-center">
-        <p className="font-mono text-[26px] font-semibold leading-none tabular-nums text-white">{Math.round(p)}%</p>
+        <p className="font-mono text-[26px] font-semibold leading-none tabular-nums text-white">
+          {Math.round(p)}%
+        </p>
         <p className="mt-1 text-[12.5px] text-zinc-500">terpakai</p>
       </div>
     </div>
@@ -210,7 +331,8 @@ function parseAppSettings(s: any) {
     trial_prompts: Number(s.trial_prompts ?? 3),
     rag_match_count_short: Number(s.rag_match_count_short ?? 6),
     rag_match_count_long: Number(s.rag_match_count_long ?? 8),
-    rag_match_threshold: threshold === null || threshold === undefined || threshold === "" ? null : Number(threshold),
+    rag_match_threshold:
+      threshold === null || threshold === undefined || threshold === "" ? null : Number(threshold),
   };
 }
 
@@ -232,7 +354,9 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     setActiveTab(tab);
     setMobileNavOpen(false);
     const url = tab === "dashboard" ? "/admin/dashboard" : `/admin/${tab}`;
-    try { window.history.pushState(null, "", url); } catch {}
+    try {
+      window.history.pushState(null, "", url);
+    } catch {}
   };
 
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -243,17 +367,71 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 3800);
   }, []);
-  const dismissToast = React.useCallback((id: string) => setToasts((prev) => prev.filter((t) => t.id !== id)), []);
+  const dismissToast = React.useCallback(
+    (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id)),
+    [],
+  );
 
   const [categoryData, setCategoryData] = useState<{ name: string; value: number }[]>([]);
 
-  const [identityData, setIdentityData] = useState({ name: "", role: "", description: "", identity: "", purpose: "" });
-  const [personalData, setPersonalData] = useState({ profile: "", background: "", interests: "", experience: "", projects: "", preferences: "", relevant_context: "" });
-  const [personalityData, setPersonalityData] = useState({ personality: "", tone: "", attitude: "", reasoning_style: "", criticism_style: "", response_behavior: "", prohibited_behavior: "" });
-  const [commData, setCommData] = useState({ primary_language: "", tone: "", response_length: "", formatting_preference: "", technical_depth: "", explanation_style: "" });
-  const [sysData, setSysData] = useState({ behavioral_rules: "", response_rules: "", safety_rules: "", knowledge_priority: "", reasoning_constraints: "", formatting_rules: "" });
-  const [stylesData, setStylesData] = useState<{ styles: { id: string; name: string; description: string; prompt: string }[] }>({ styles: [] });
-  const [pricingData, setPricingData] = useState<{ plans: { id: string; label: string; prompts: number; amount: number; popular: boolean; original_amount?: number | null }[]; payment_qris: string; payment_instructions: string; contact: string; order_note: string }>({
+  const [identityData, setIdentityData] = useState({
+    name: "",
+    role: "",
+    description: "",
+    identity: "",
+    purpose: "",
+  });
+  const [personalData, setPersonalData] = useState({
+    profile: "",
+    background: "",
+    interests: "",
+    experience: "",
+    projects: "",
+    preferences: "",
+    relevant_context: "",
+  });
+  const [personalityData, setPersonalityData] = useState({
+    personality: "",
+    tone: "",
+    attitude: "",
+    reasoning_style: "",
+    criticism_style: "",
+    response_behavior: "",
+    prohibited_behavior: "",
+  });
+  const [commData, setCommData] = useState({
+    primary_language: "",
+    tone: "",
+    response_length: "",
+    formatting_preference: "",
+    technical_depth: "",
+    explanation_style: "",
+  });
+  const [sysData, setSysData] = useState({
+    behavioral_rules: "",
+    response_rules: "",
+    safety_rules: "",
+    knowledge_priority: "",
+    reasoning_constraints: "",
+    formatting_rules: "",
+  });
+  const [stylesData, setStylesData] = useState<{
+    styles: { id: string; name: string; description: string; prompt: string }[];
+  }>({ styles: [] });
+  const [pricingData, setPricingData] = useState<{
+    plans: {
+      id: string;
+      label: string;
+      prompts: number;
+      amount: number;
+      popular: boolean;
+      original_amount?: number | null;
+    }[];
+    payment_qris: string;
+    payment_instructions: string;
+    contact: string;
+    order_note: string;
+  }>({
     plans: [],
     payment_qris: "",
     payment_instructions: "",
@@ -278,7 +456,12 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const [catalogApiKey, setCatalogApiKey] = useState("");
   const [catalogBaseUrl, setCatalogBaseUrl] = useState("");
   const [showCatalogKey, setShowCatalogKey] = useState(false);
-  const [modelTestResults, setModelTestResults] = useState<Record<string, { status: "ok" | "error" | "loading"; latency_ms?: number; sample?: string; error?: string }>>({});
+  const [modelTestResults, setModelTestResults] = useState<
+    Record<
+      string,
+      { status: "ok" | "error" | "loading"; latency_ms?: number; sample?: string; error?: string }
+    >
+  >({});
 
   const [knowledgeCategories, setKnowledgeCategories] = useState<any[]>([]);
   const [knowledgeEntries, setKnowledgeEntries] = useState<any[]>([]);
@@ -289,10 +472,28 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const [users, setUsers] = useState<any[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [syncingUsers, setSyncingUsers] = useState(false);
-  const [appSettings, setAppSettings] = useState<{ user_token_expiry_hours: number; trial_prompts: number; rag_match_count_short: number; rag_match_count_long: number; rag_match_threshold: number | null }>({ user_token_expiry_hours: 24, trial_prompts: 3, rag_match_count_short: 6, rag_match_count_long: 8, rag_match_threshold: null });
+  const [appSettings, setAppSettings] = useState<{
+    user_token_expiry_hours: number;
+    trial_prompts: number;
+    rag_match_count_short: number;
+    rag_match_count_long: number;
+    rag_match_threshold: number | null;
+  }>({
+    user_token_expiry_hours: 24,
+    trial_prompts: 3,
+    rag_match_count_short: 6,
+    rag_match_count_long: 8,
+    rag_match_threshold: null,
+  });
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [userForm, setUserForm] = useState({ username: "", password: "", display_name: "", max_prompts: 50, is_active: true });
+  const [userForm, setUserForm] = useState({
+    username: "",
+    password: "",
+    display_name: "",
+    max_prompts: 50,
+    is_active: true,
+  });
   const [showJsonModal, setShowJsonModal] = useState(false);
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState("");
@@ -305,32 +506,38 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const [statsLoading, setStatsLoading] = useState(false);
   const [chartPeriod, setChartPeriod] = useState<"day" | "week" | "month" | "year">("day");
   const [tokenDays, setTokenDays] = useState<number>(14);
-  const fetchStats = React.useCallback(async (period?: string) => {
-    if (!isAuthenticated) return;
-    setStatsLoading(true);
-    try {
-      const p = (period || chartPeriod) as string;
-      const qs = p !== "day" ? `?period=${p}&limit=${p === "day" ? 14 : p === "week" ? 12 : p === "month" ? 12 : 6}` : "";
-      const res = await fetch(`/api/python/admin/stats${qs}`);
-      if (authExpired(res.status)) return;
-      if (res.ok) {
-        const j = await res.json();
-        setRealStats(j);
-        if (Array.isArray(j.knowledgeByCategory) && j.knowledgeByCategory.length) {
-          setCategoryData(j.knowledgeByCategory);
+  const fetchStats = React.useCallback(
+    async (period?: string) => {
+      if (!isAuthenticated) return;
+      setStatsLoading(true);
+      try {
+        const p = (period || chartPeriod) as string;
+        const qs =
+          p !== "day"
+            ? `?period=${p}&limit=${p === "day" ? 14 : p === "week" ? 12 : p === "month" ? 12 : 6}`
+            : "";
+        const res = await fetch(`/api/python/admin/stats${qs}`);
+        if (authExpired(res.status)) return;
+        if (res.ok) {
+          const j = await res.json();
+          setRealStats(j);
+          if (Array.isArray(j.knowledgeByCategory) && j.knowledgeByCategory.length) {
+            setCategoryData(j.knowledgeByCategory);
+          }
         }
-      }
-    } catch {}
-    // agregasi token: harian, sisa budget, per user
-    try {
-      const tr = await fetch(`/api/python/admin/token-usage?days=${tokenDays}`);
-      if (tr.ok) {
-        const tj = await tr.json();
-        setTokenStats(tj);
-      }
-    } catch {}
-    setStatsLoading(false);
-  }, [isAuthenticated, chartPeriod, tokenDays]);
+      } catch {}
+      // agregasi token: harian, sisa budget, per user
+      try {
+        const tr = await fetch(`/api/python/admin/token-usage?days=${tokenDays}`);
+        if (tr.ok) {
+          const tj = await tr.json();
+          setTokenStats(tj);
+        }
+      } catch {}
+      setStatsLoading(false);
+    },
+    [isAuthenticated, chartPeriod, tokenDays],
+  );
   useEffect(() => {
     if (tokenStats && typeof tokenStats.budget === "number") {
       setBudgetInput(String(tokenStats.budget));
@@ -353,8 +560,20 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       });
       if (res.ok) {
         const j = await res.json();
-        setTokenStats((t: any) => (t ? { ...t, budget: j.budget, remaining: j.budget > 0 ? j.budget - (t.today?.total || 0) : null } : t));
-        pushToast("success", "Budget token disimpan", v > 0 ? `${v.toLocaleString()} token/hari` : "Tanpa batas harian");
+        setTokenStats((t: any) =>
+          t
+            ? {
+                ...t,
+                budget: j.budget,
+                remaining: j.budget > 0 ? j.budget - (t.today?.total || 0) : null,
+              }
+            : t,
+        );
+        pushToast(
+          "success",
+          "Budget token disimpan",
+          v > 0 ? `${v.toLocaleString()} token/hari` : "Tanpa batas harian",
+        );
       } else {
         pushToast("error", "Gagal simpan budget", "Coba lagi.");
       }
@@ -363,30 +582,44 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     }
   };
 
-  const tokDelta = tokenStats && Number(tokenStats.yesterday?.total || 0) > 0
-    ? Math.round((100 * (Number(tokenStats.today?.total || 0) - Number(tokenStats.yesterday?.total || 0))) / Number(tokenStats.yesterday?.total || 1))
-    : null;
-  const tokAvg14 = tokenStats && Array.isArray(tokenStats.daily) && tokenStats.daily.length
-    ? Math.round(tokenStats.daily.reduce((s: number, d: any) => s + Number(d.total || 0), 0) / tokenStats.daily.length)
-    : 0;
+  const tokDelta =
+    tokenStats && Number(tokenStats.yesterday?.total || 0) > 0
+      ? Math.round(
+          (100 *
+            (Number(tokenStats.today?.total || 0) - Number(tokenStats.yesterday?.total || 0))) /
+            Number(tokenStats.yesterday?.total || 1),
+        )
+      : null;
+  const tokAvg14 =
+    tokenStats && Array.isArray(tokenStats.daily) && tokenStats.daily.length
+      ? Math.round(
+          tokenStats.daily.reduce((s: number, d: any) => s + Number(d.total || 0), 0) /
+            tokenStats.daily.length,
+        )
+      : 0;
   // rincian periode grafik token (ikut tab 7/14/30 hari)
-  const tokPeriod = tokenStats && Array.isArray(tokenStats.daily) && tokenStats.daily.length
-    ? tokenStats.daily.reduce((a: any, d: any) => ({
-        prompt: a.prompt + Number(d.prompt || 0),
-        completion: a.completion + Number(d.completion || 0),
-        total: a.total + Number(d.total || 0),
-        peak: Math.max(a.peak, Number(d.total || 0)),
-      }), { prompt: 0, completion: 0, total: 0, peak: 0 })
-    : { prompt: 0, completion: 0, total: 0, peak: 0 };
+  const tokPeriod =
+    tokenStats && Array.isArray(tokenStats.daily) && tokenStats.daily.length
+      ? tokenStats.daily.reduce(
+          (a: any, d: any) => ({
+            prompt: a.prompt + Number(d.prompt || 0),
+            completion: a.completion + Number(d.completion || 0),
+            total: a.total + Number(d.total || 0),
+            peak: Math.max(a.peak, Number(d.total || 0)),
+          }),
+          { prompt: 0, completion: 0, total: 0, peak: 0 },
+        )
+      : { prompt: 0, completion: 0, total: 0, peak: 0 };
   // delta requests: hari terakhir vs hari sebelumnya pada deret dailyRequests
-  const reqDelta = realStats && Array.isArray(realStats.dailyRequests) && realStats.dailyRequests.length >= 2
-    ? (() => {
-        const d = realStats.dailyRequests;
-        const cur = Number(d[d.length - 1]?.count || 0);
-        const prev = Number(d[d.length - 2]?.count || 0);
-        return prev > 0 ? Math.round((100 * (cur - prev)) / prev) : null;
-      })()
-    : null;
+  const reqDelta =
+    realStats && Array.isArray(realStats.dailyRequests) && realStats.dailyRequests.length >= 2
+      ? (() => {
+          const d = realStats.dailyRequests;
+          const cur = Number(d[d.length - 1]?.count || 0);
+          const prev = Number(d[d.length - 2]?.count || 0);
+          return prev > 0 ? Math.round((100 * (cur - prev)) / prev) : null;
+        })()
+      : null;
 
   useEffect(() => {
     checkAuth();
@@ -418,7 +651,9 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   };
 
   const handleLogout = async () => {
-    try { await fetch("/api/python/admin/logout", { method: "POST" }); } catch {}
+    try {
+      await fetch("/api/python/admin/logout", { method: "POST" });
+    } catch {}
     router.replace("/admin/login");
   };
 
@@ -435,7 +670,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     } catch {
       setHealthError(true);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadAudit = React.useCallback(async () => {
@@ -454,17 +689,30 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   }, [isAuthenticated, loadHealth, loadAudit]);
 
   const runReindex = async () => {
-    if (!window.confirm("Embed ulang SEMUA knowledge entry ke provider aktif? Bisa memakan waktu dan kuota API.")) return;
+    if (
+      !window.confirm(
+        "Embed ulang SEMUA knowledge entry ke provider aktif? Bisa memakan waktu dan kuota API.",
+      )
+    )
+      return;
     setReindexing(true);
     try {
       const res = await fetch("/api/python/admin/knowledge/reindex", { method: "POST" });
       if (authExpired(res.status)) return;
       const j = await res.json().catch(() => ({}));
       if (res.ok) {
-        pushToast("success", "Reindex selesai", `${j.entries} entry, ${j.chunks} chunk (${j.provider})`);
+        pushToast(
+          "success",
+          "Reindex selesai",
+          `${j.entries} entry, ${j.chunks} chunk (${j.provider})`,
+        );
         loadAudit();
       } else {
-        pushToast("error", "Reindex gagal", typeof j.detail === "string" ? j.detail : `HTTP ${res.status}`);
+        pushToast(
+          "error",
+          "Reindex gagal",
+          typeof j.detail === "string" ? j.detail : `HTTP ${res.status}`,
+        );
       }
     } catch {
       pushToast("error", "Reindex gagal", "Tidak bisa menghubungi backend");
@@ -476,9 +724,16 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
   const loadUsersAndSettings = async () => {
     setUsersLoading(true);
     try {
-      const [uRes, sRes] = await Promise.all([fetch("/api/python/admin/users"), fetch("/api/python/admin/settings")]);
+      const [uRes, sRes] = await Promise.all([
+        fetch("/api/python/admin/users"),
+        fetch("/api/python/admin/settings"),
+      ]);
       if (uRes.ok) setUsers(await uRes.json());
-      if (sRes.ok) { const j = await sRes.json(); const s = j.settings || j; setAppSettings(parseAppSettings(s)); }
+      if (sRes.ok) {
+        const j = await sRes.json();
+        const s = j.settings || j;
+        setAppSettings(parseAppSettings(s));
+      }
     } catch {}
     setUsersLoading(false);
   };
@@ -491,10 +746,20 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       const j = await res.json().catch(() => ({}));
       if (res.ok) {
         const n = Number(j.created || 0);
-        pushToast(n > 0 ? "success" : "info", n > 0 ? `${n} user disinkronkan` : "Tidak ada user baru", n > 0 ? "User lokal yang belum ada di database sudah dibuat." : "Semua user lokal sudah ada di database.");
+        pushToast(
+          n > 0 ? "success" : "info",
+          n > 0 ? `${n} user disinkronkan` : "Tidak ada user baru",
+          n > 0
+            ? "User lokal yang belum ada di database sudah dibuat."
+            : "Semua user lokal sudah ada di database.",
+        );
         loadUsersAndSettings();
       } else {
-        pushToast("error", "Gagal sinkron", typeof j.detail === "string" ? j.detail : `HTTP ${res.status}`);
+        pushToast(
+          "error",
+          "Gagal sinkron",
+          typeof j.detail === "string" ? j.detail : `HTTP ${res.status}`,
+        );
       }
     } catch {
       pushToast("error", "Gagal sinkron", "Tidak bisa menghubungi backend");
@@ -509,13 +774,34 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     const url = isEdit ? `/api/python/admin/users/${editingUserId}` : "/api/python/admin/users";
     const method = isEdit ? "PUT" : "POST";
     const body: any = isEdit
-      ? { display_name: userForm.display_name || null, max_prompts: Number(userForm.max_prompts), is_active: userForm.is_active, ...(userForm.password ? { password: userForm.password } : {}) }
-      : { username: userForm.username.trim().toLowerCase(), password: userForm.password, display_name: userForm.display_name || null, max_prompts: Number(userForm.max_prompts), is_active: userForm.is_active };
-    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      ? {
+          display_name: userForm.display_name || null,
+          max_prompts: Number(userForm.max_prompts),
+          is_active: userForm.is_active,
+          ...(userForm.password ? { password: userForm.password } : {}),
+        }
+      : {
+          username: userForm.username.trim().toLowerCase(),
+          password: userForm.password,
+          display_name: userForm.display_name || null,
+          max_prompts: Number(userForm.max_prompts),
+          is_active: userForm.is_active,
+        };
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
     if (authExpired(res.status)) return;
-    if (!res.ok) { const j = await res.json().catch(() => ({})); pushToast("error", "Gagal simpan user", (j.detail || JSON.stringify(j)).slice(0, 140)); return; }
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      pushToast("error", "Gagal simpan user", (j.detail || JSON.stringify(j)).slice(0, 140));
+      return;
+    }
     pushToast("success", isEdit ? "User diperbarui" : "User dibuat");
-    setUserModalOpen(false); setEditingUserId(null); setUserForm({ username: "", password: "", display_name: "", max_prompts: 50, is_active: true });
+    setUserModalOpen(false);
+    setEditingUserId(null);
+    setUserForm({ username: "", password: "", display_name: "", max_prompts: 50, is_active: true });
     loadUsersAndSettings();
   };
 
@@ -523,15 +809,23 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     if (!confirm("Hapus user ini?")) return;
     const res = await fetch(`/api/python/admin/users/${id}`, { method: "DELETE" });
     if (authExpired(res.status)) return;
-    if (!res.ok) { pushToast("error", "Gagal hapus user"); return; }
-    pushToast("success", "User dihapus"); loadUsersAndSettings();
+    if (!res.ok) {
+      pushToast("error", "Gagal hapus user");
+      return;
+    }
+    pushToast("success", "User dihapus");
+    loadUsersAndSettings();
   };
 
   const handleResetUsage = async (id: string) => {
     const res = await fetch(`/api/python/admin/users/${id}/reset-usage`, { method: "POST" });
     if (authExpired(res.status)) return;
-    if (!res.ok) { pushToast("error", "Gagal reset"); return; }
-    pushToast("success", "Usage direset"); loadUsersAndSettings();
+    if (!res.ok) {
+      pushToast("error", "Gagal reset");
+      return;
+    }
+    pushToast("success", "Usage direset");
+    loadUsersAndSettings();
   };
 
   const handleSaveSettings = async () => {
@@ -541,11 +835,27 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       rag_match_count_short: Number(appSettings.rag_match_count_short),
       rag_match_count_long: Number(appSettings.rag_match_count_long),
     };
-    const payloadBody = { ...body, rag_match_threshold: appSettings.rag_match_threshold === null ? null : Number(appSettings.rag_match_threshold) };
-    const res = await fetch("/api/python/admin/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payloadBody) });
+    const payloadBody = {
+      ...body,
+      rag_match_threshold:
+        appSettings.rag_match_threshold === null ? null : Number(appSettings.rag_match_threshold),
+    };
+    const res = await fetch("/api/python/admin/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payloadBody),
+    });
     if (authExpired(res.status)) return;
-    if (!res.ok) { const j = await res.json().catch(() => ({})); const msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail || j); pushToast("error", "Gagal simpan", msg.slice(0, 120)); return; }
-    const j = await res.json(); const s = j.settings || j; setAppSettings(parseAppSettings(s)); pushToast("success", "Pengaturan disimpan");
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      const msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail || j);
+      pushToast("error", "Gagal simpan", msg.slice(0, 120));
+      return;
+    }
+    const j = await res.json();
+    const s = j.settings || j;
+    setAppSettings(parseAppSettings(s));
+    pushToast("success", "Pengaturan disimpan");
   };
 
   const loadAllData = async () => {
@@ -562,7 +872,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       if (c.personality) setPersonalityData(c.personality);
       if (c.communication) setCommData(c.communication);
       if (c.system) setSysData(c.system);
-      if (Array.isArray(c.response_styles?.styles)) setStylesData({ styles: c.response_styles.styles });
+      if (Array.isArray(c.response_styles?.styles))
+        setStylesData({ styles: c.response_styles.styles });
       if (c.pricing) {
         setPricingData({
           plans: Array.isArray(c.pricing.plans) ? c.pricing.plans : [],
@@ -617,16 +928,28 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         const res = await fetch("/api/python/admin/models/catalog", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ api_key: catalogApiKey.trim() || undefined, base_url: catalogBaseUrl.trim() || undefined, include_free_only: fo, limit: 120 }),
+          body: JSON.stringify({
+            api_key: catalogApiKey.trim() || undefined,
+            base_url: catalogBaseUrl.trim() || undefined,
+            include_free_only: fo,
+            limit: 120,
+          }),
         });
         if (res.ok) {
           const j = await res.json();
-          if (Array.isArray(j.data) && j.data.length) { setAvailableModels(j.data); data = j.data; }
+          if (Array.isArray(j.data) && j.data.length) {
+            setAvailableModels(j.data);
+            data = j.data;
+          }
           if (j.error) pushToast("error", "Katalog gagal", String(j.error).slice(0, 160));
         } else {
           const j = await res.json().catch(() => ({}));
           const msg = (j as any).detail || (j as any).error || "Katalog gagal";
-          pushToast("error", "Katalog gagal", typeof msg === "string" ? msg.slice(0, 160) : JSON.stringify(msg).slice(0, 160));
+          pushToast(
+            "error",
+            "Katalog gagal",
+            typeof msg === "string" ? msg.slice(0, 160) : JSON.stringify(msg).slice(0, 160),
+          );
         }
       } else {
         const params = new URLSearchParams({ include_free_only: String(fo), limit: "120" });
@@ -635,10 +958,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           const j = await res.json();
           data = j.live_catalog?.data || j.live_catalog?.fallback?.data || j.data || null;
           if (Array.isArray(data)) setAvailableModels(data);
-          if (j.live_catalog?.error) pushToast("error", "Katalog gagal", String(j.live_catalog.error).slice(0, 160));
+          if (j.live_catalog?.error)
+            pushToast("error", "Katalog gagal", String(j.live_catalog.error).slice(0, 160));
         }
         if (!data || !Array.isArray(data) || data.length === 0) {
-          const res2 = await fetch(`/api/python/v1/models/available?limit=120&include_free_only=${fo}`);
+          const res2 = await fetch(
+            `/api/python/v1/models/available?limit=120&include_free_only=${fo}`,
+          );
           if (res2.ok) {
             const j2 = await res2.json();
             if (Array.isArray(j2.data) && j2.data.length) setAvailableModels(j2.data);
@@ -662,19 +988,40 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       if (catalogApiKey.trim()) body.api_key = catalogApiKey.trim();
       if (catalogBaseUrl.trim()) body.base_url = catalogBaseUrl.trim();
       if (modelConfig.provider) body.provider = modelConfig.provider;
-      const res = await fetch("/api/python/admin/models/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const res = await fetch("/api/python/admin/models/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       const j = await res.json().catch(() => ({}));
       if (res.ok && j.status === "ok") {
-        setModelTestResults((prev) => ({ ...prev, [id]: { status: "ok", latency_ms: j.latency_ms, sample: j.sample } }));
+        setModelTestResults((prev) => ({
+          ...prev,
+          [id]: { status: "ok", latency_ms: j.latency_ms, sample: j.sample },
+        }));
         pushToast("success", "Model OK", `${id.slice(0, 40)} · ${j.latency_ms}ms`);
       } else {
         const err = (j.detail?.error || j.detail || j.error || "Gagal") as string;
         const latency = j.detail?.latency_ms ?? j.latency_ms;
-        setModelTestResults((prev) => ({ ...prev, [id]: { status: "error", latency_ms: latency, error: typeof err === "string" ? err : JSON.stringify(err) } }));
-        pushToast("error", "Model gagal", typeof err === "string" ? err.slice(0, 160) : "Cek kredensial / model");
+        setModelTestResults((prev) => ({
+          ...prev,
+          [id]: {
+            status: "error",
+            latency_ms: latency,
+            error: typeof err === "string" ? err : JSON.stringify(err),
+          },
+        }));
+        pushToast(
+          "error",
+          "Model gagal",
+          typeof err === "string" ? err.slice(0, 160) : "Cek kredensial / model",
+        );
       }
     } catch (e: any) {
-      setModelTestResults((prev) => ({ ...prev, [id]: { status: "error", error: e.message || String(e) } }));
+      setModelTestResults((prev) => ({
+        ...prev,
+        [id]: { status: "error", error: e.message || String(e) },
+      }));
       pushToast("error", "Model gagal", (e.message || String(e)).slice(0, 160));
     }
   };
@@ -703,13 +1050,21 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         setModelConfig((prev) => ({ ...prev, ...cur }));
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
-        pushToast("success", "Model diperbarui", (cur.active_model || modelConfig.active_model || "").slice(0, 80));
+        pushToast(
+          "success",
+          "Model diperbarui",
+          (cur.active_model || modelConfig.active_model || "").slice(0, 80),
+        );
       } else {
         if (authExpired(res.status)) return;
         const d = await res.json().catch(() => ({}));
         const msg = (d as any).detail || "Gagal menyimpan model config";
         setErrorMessage(typeof msg === "string" ? msg : JSON.stringify(msg));
-        pushToast("error", "Gagal simpan model", typeof msg === "string" ? msg.slice(0, 120) : "Periksa input.");
+        pushToast(
+          "error",
+          "Gagal simpan model",
+          typeof msg === "string" ? msg.slice(0, 120) : "Periksa input.",
+        );
       }
     } catch (err: any) {
       const msg = err.message || "Error saving model config";
@@ -737,7 +1092,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       personality: "ai_personality",
       communication: "communication_settings",
       instructions: "system_instructions",
-      styles: "response_styles"
+      styles: "response_styles",
     };
     const labelMap: Record<string, string> = {
       identity: "Identitas",
@@ -797,7 +1152,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       } else {
         if (authExpired(res.status)) return;
         const d = await res.json().catch(() => ({}));
-        const str = typeof d.detail === "string" ? d.detail : `Gagal menyimpan (HTTP ${res.status})`;
+        const str =
+          typeof d.detail === "string" ? d.detail : `Gagal menyimpan (HTTP ${res.status})`;
         pushToast("error", "Gagal simpan", str.slice(0, 160));
       }
     } catch {
@@ -809,7 +1165,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
   const handleSaveKnowledgeEntry = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cat = knowledgeCategories.find(c => c.slug === selectedCategorySlug);
+    const cat = knowledgeCategories.find((c) => c.slug === selectedCategorySlug);
     if (!cat) return;
     try {
       const res = await fetch("/api/python/admin/knowledge/entries", {
@@ -820,7 +1176,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           category_id: cat.id,
           title: entryForm.title,
           content: entryForm.content,
-          is_active: true
+          is_active: true,
         }),
       });
       if (res.ok) {
@@ -832,7 +1188,11 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         if (authExpired(res.status)) return;
         const d = await res.json().catch(() => ({}));
         const msg = (d as any).detail || "Gagal simpan knowledge";
-        pushToast("error", "Gagal simpan", typeof msg === "string" ? msg.slice(0, 120) : "Cek input.");
+        pushToast(
+          "error",
+          "Gagal simpan",
+          typeof msg === "string" ? msg.slice(0, 120) : "Cek input.",
+        );
       }
     } catch (err: any) {
       pushToast("error", "Gagal simpan", err.message?.slice(0, 120) || "Error");
@@ -866,7 +1226,10 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       system_instructions: sysData,
       knowledge_entries: knowledgeEntries.map((e: any) => ({
         id: e.id,
-        category_slug: (knowledgeCategories.find((c) => c.id === e.category_id)?.slug) || e.category_slug || undefined,
+        category_slug:
+          knowledgeCategories.find((c) => c.id === e.category_id)?.slug ||
+          e.category_slug ||
+          undefined,
         category_id: e.category_id,
         title: e.title,
         content: e.content,
@@ -933,9 +1296,11 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
   const applyImportedDataToState = (data: any) => {
     if (data.ai_identity) setIdentityData((prev) => ({ ...prev, ...data.ai_identity }));
-    if (data.personal_information) setPersonalData((prev) => ({ ...prev, ...data.personal_information }));
+    if (data.personal_information)
+      setPersonalData((prev) => ({ ...prev, ...data.personal_information }));
     if (data.ai_personality) setPersonalityData((prev) => ({ ...prev, ...data.ai_personality }));
-    if (data.communication_settings) setCommData((prev) => ({ ...prev, ...data.communication_settings }));
+    if (data.communication_settings)
+      setCommData((prev) => ({ ...prev, ...data.communication_settings }));
     if (data.system_instructions) setSysData((prev) => ({ ...prev, ...data.system_instructions }));
   };
 
@@ -972,7 +1337,11 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           setJsonError(`Partial import - some sections failed:\n${errStr}`);
           pushToast("info", "Import sebagian", "Beberapa section gagal - cek detail.");
         } else {
-          pushToast("success", "Import berhasil", `${((j as any).applied_sections || []).length} section + ${(j as any).knowledge_entries_applied || 0} knowledge diterapkan.`);
+          pushToast(
+            "success",
+            "Import berhasil",
+            `${((j as any).applied_sections || []).length} section + ${(j as any).knowledge_entries_applied || 0} knowledge diterapkan.`,
+          );
         }
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
@@ -1011,26 +1380,43 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         return;
       }
     } catch {}
-    setJsonText(JSON.stringify(JSON.parse(new TextDecoder().decode(new TextEncoder().encode(JSON.stringify({
-      ai_identity: identityData,
-      personal_information: personalData,
-      ai_personality: personalityData,
-      communication_settings: commData,
-      system_instructions: sysData,
-      knowledge_entries: knowledgeEntries.slice(0, 50).map((e: any) => ({
-        category_slug: (knowledgeCategories.find((c) => c.id === e.category_id)?.slug) || undefined,
-        title: e.title,
-        content: e.content,
-        tags: e.tags || [],
-        is_active: e.is_active ?? true,
-      })),
-    })))), null, 2));
+    setJsonText(
+      JSON.stringify(
+        JSON.parse(
+          new TextDecoder().decode(
+            new TextEncoder().encode(
+              JSON.stringify({
+                ai_identity: identityData,
+                personal_information: personalData,
+                ai_personality: personalityData,
+                communication_settings: commData,
+                system_instructions: sysData,
+                knowledge_entries: knowledgeEntries.slice(0, 50).map((e: any) => ({
+                  category_slug:
+                    knowledgeCategories.find((c) => c.id === e.category_id)?.slug || undefined,
+                  title: e.title,
+                  content: e.content,
+                  tags: e.tags || [],
+                  is_active: e.is_active ?? true,
+                })),
+              }),
+            ),
+          ),
+        ),
+        null,
+        2,
+      ),
+    );
     setJsonError("");
     setShowJsonModal(true);
   };
 
   const ToastStack = (
-    <div aria-live="polite" aria-atomic={false} className="pointer-events-none fixed right-3 top-3 z-[100] flex w-[92vw] max-w-[380px] flex-col gap-2 sm:right-4 sm:top-4">
+    <div
+      aria-live="polite"
+      aria-atomic={false}
+      className="pointer-events-none fixed right-3 top-3 z-[100] flex w-[92vw] max-w-[380px] flex-col gap-2 sm:right-4 sm:top-4"
+    >
       <AnimatePresence initial={false}>
         {toasts.map((t) => {
           const isSuccess = t.kind === "success";
@@ -1044,14 +1430,40 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
               className={`pointer-events-auto flex gap-3 rounded-xl border px-3.5 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.7)] backdrop-blur-xl ${isSuccess ? "border-emerald-500/20 bg-[#07140e]/95" : isError ? "border-red-500/20 bg-[#1a0a0a]/95" : "border-white/[0.08] bg-zinc-900/95"}`}
             >
-              <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${isSuccess ? "border-emerald-500/20 bg-emerald-500/15 text-emerald-400" : isError ? "border-red-500/20 bg-red-500/15 text-red-400" : "border-white/10 bg-white/[0.06] text-zinc-300"}`} aria-hidden>
-                {isSuccess ? <Check className="h-3.5 w-3.5" /> : isError ? <AlertCircle className="h-3.5 w-3.5" /> : <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+              <span
+                className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${isSuccess ? "border-emerald-500/20 bg-emerald-500/15 text-emerald-400" : isError ? "border-red-500/20 bg-red-500/15 text-red-400" : "border-white/10 bg-white/[0.06] text-zinc-300"}`}
+                aria-hidden
+              >
+                {isSuccess ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : isError ? (
+                  <AlertCircle className="h-3.5 w-3.5" />
+                ) : (
+                  <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                )}
               </span>
               <div className="min-w-0 flex-1">
-                <p className={`text-[16px] font-medium leading-none ${isSuccess ? "text-emerald-200" : isError ? "text-red-200" : "text-zinc-100"}`}>{t.title}</p>
-                {t.desc && <p className={`mt-1.5 text-[14px] leading-[1.5] break-words ${isSuccess ? "text-emerald-200/60" : isError ? "text-red-200/60" : "text-zinc-400"}`}>{t.desc}</p>}
+                <p
+                  className={`text-[16px] font-medium leading-none ${isSuccess ? "text-emerald-200" : isError ? "text-red-200" : "text-zinc-100"}`}
+                >
+                  {t.title}
+                </p>
+                {t.desc && (
+                  <p
+                    className={`mt-1.5 text-[14px] leading-[1.5] break-words ${isSuccess ? "text-emerald-200/60" : isError ? "text-red-200/60" : "text-zinc-400"}`}
+                  >
+                    {t.desc}
+                  </p>
+                )}
               </div>
-              <button type="button" onClick={() => dismissToast(t.id)} aria-label="Tutup notifikasi" className="pointer-events-auto -mr-1 -mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300 cursor-pointer"><X className="h-3.5 w-3.5" /></button>
+              <button
+                type="button"
+                onClick={() => dismissToast(t.id)}
+                aria-label="Tutup notifikasi"
+                className="pointer-events-auto -mr-1 -mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-300 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </motion.div>
           );
         })}
@@ -1063,11 +1475,27 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-black relative overflow-hidden">
         {ToastStack}
-        <div aria-hidden className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:28px_28px]" />
-        <div aria-hidden className="absolute inset-0 bg-[radial-gradient(ellipse_800px_400px_at_50%_-10%,rgba(255,255,255,0.05),transparent_60%)]" />
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative flex flex-col items-center gap-4">
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:28px_28px]"
+        />
+        <div
+          aria-hidden
+          className="absolute inset-0 bg-[radial-gradient(ellipse_800px_400px_at_50%_-10%,rgba(255,255,255,0.05),transparent_60%)]"
+        />
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="relative flex flex-col items-center gap-4"
+        >
           <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-zinc-900">
-            <img src="/image/favicon.png" alt="" width={44} height={44} className="h-full w-full object-cover opacity-90" />
+            <img
+              src="/image/favicon.png"
+              alt=""
+              width={44}
+              height={44}
+              className="h-full w-full object-cover opacity-90"
+            />
           </div>
           <div className="flex items-center gap-2 text-[16px] tracking-wide text-zinc-500">
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
@@ -1112,7 +1540,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
             className="mb-8 flex items-center gap-3"
           >
             <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-black">
-              <img src="/image/favicon.png" alt="ITZ" width={40} height={40} className="h-full w-full object-cover" />
+              <img
+                src="/image/favicon.png"
+                alt="ITZ"
+                width={40}
+                height={40}
+                className="h-full w-full object-cover"
+              />
             </div>
             <div className="min-w-0">
               <h1 className="text-[16px] font-semibold tracking-[0.08em] text-white">ITZ AI</h1>
@@ -1124,9 +1558,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
             {[
               {
                 group: "Ringkasan",
-                items: [
-                  { id: "dashboard", label: "Dashboard", icon: BarChart3 },
-                ],
+                items: [{ id: "dashboard", label: "Dashboard", icon: BarChart3 }],
               },
               {
                 group: "Pengguna",
@@ -1186,30 +1618,67 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         </div>
 
         <div className="space-y-1 border-t border-white/[0.06] pt-4">
-          <div className="mb-3 space-y-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-[13px]" aria-label="Status sistem">
+          <div
+            className="mb-3 space-y-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-[13px]"
+            aria-label="Status sistem"
+          >
             {(() => {
               const backendOk = !!health && !healthError;
               const dbOk = !!health?.database?.ok;
-              const dot = (ok: boolean | undefined) => (ok === undefined ? "bg-zinc-600" : ok ? "bg-emerald-400" : "bg-red-400");
+              const dot = (ok: boolean | undefined) =>
+                ok === undefined ? "bg-zinc-600" : ok ? "bg-emerald-400" : "bg-red-400";
               return (
                 <>
                   <div className="flex items-center justify-between text-zinc-400">
-                    <span className="flex items-center gap-2"><span className={`h-1.5 w-1.5 rounded-full ${backendOk ? "bg-emerald-400 animate-pulse" : healthError ? "bg-red-400" : "bg-zinc-600"}`} aria-hidden />Backend</span>
-                    <span className={backendOk ? "text-emerald-300" : healthError ? "text-red-300" : "text-zinc-500"}>{backendOk ? "online" : healthError ? "offline" : "..."}</span>
+                    <span className="flex items-center gap-2">
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${backendOk ? "bg-emerald-400 animate-pulse" : healthError ? "bg-red-400" : "bg-zinc-600"}`}
+                        aria-hidden
+                      />
+                      Backend
+                    </span>
+                    <span
+                      className={
+                        backendOk
+                          ? "text-emerald-300"
+                          : healthError
+                            ? "text-red-300"
+                            : "text-zinc-500"
+                      }
+                    >
+                      {backendOk ? "online" : healthError ? "offline" : "..."}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between text-zinc-400">
-                    <span className="flex items-center gap-2"><span className={`h-1.5 w-1.5 rounded-full ${dot(health ? dbOk : undefined)}`} aria-hidden />Database</span>
-                    <span className="font-mono text-zinc-500">{health ? health.database?.mode : "..."}</span>
+                    <span className="flex items-center gap-2">
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${dot(health ? dbOk : undefined)}`}
+                        aria-hidden
+                      />
+                      Database
+                    </span>
+                    <span className="font-mono text-zinc-500">
+                      {health ? health.database?.mode : "..."}
+                    </span>
                   </div>
                 </>
               );
             })()}
           </div>
-          <Button variant="ghost" nativeButton={false} render={<Link href="/chat" />} className="w-full justify-start gap-2.5 text-[16px] font-medium h-9 text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] cursor-pointer">
+          <Button
+            variant="ghost"
+            nativeButton={false}
+            render={<Link href="/chat" />}
+            className="w-full justify-start gap-2.5 text-[16px] font-medium h-9 text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] cursor-pointer"
+          >
             <ArrowLeft className="h-4 w-4 shrink-0" />
             <span>Back to Chat</span>
           </Button>
-          <Button variant="ghost" onClick={handleLogout} className="w-full justify-start gap-2.5 text-[16px] font-medium h-9 text-zinc-500 hover:text-red-300 hover:bg-red-500/10 cursor-pointer">
+          <Button
+            variant="ghost"
+            onClick={handleLogout}
+            className="w-full justify-start gap-2.5 text-[16px] font-medium h-9 text-zinc-500 hover:text-red-300 hover:bg-red-500/10 cursor-pointer"
+          >
             <LogOut className="h-4 w-4 shrink-0" />
             <span>Logout</span>
           </Button>
@@ -1232,10 +1701,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           <span className="text-[13px] tracking-[0.14em] text-zinc-500">CONSOLE</span>
         </div>
         <div className="mx-auto max-w-6xl space-y-6">
-
           {/* DASHBOARD */}
           {activeTab === "dashboard" && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
               <div className={sectionHeaderWrap}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -1257,26 +1729,51 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[13px] font-medium tracking-[0.06em] text-emerald-300">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"
+                        aria-hidden
+                      />
                       LIVE
                     </span>
-                    <Button variant="outline" size="sm" onClick={() => fetchStats()} disabled={statsLoading} className="h-8 border-white/10 bg-white/[0.04] text-[14px] text-zinc-300 gap-1.5">
-                      {statsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Activity className="h-3 w-3" />} Refresh
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchStats()}
+                      disabled={statsLoading}
+                      className="h-8 border-white/10 bg-white/[0.04] text-[14px] text-zinc-300 gap-1.5"
+                    >
+                      {statsLoading ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Activity className="h-3 w-3" />
+                      )}{" "}
+                      Refresh
                     </Button>
-                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[13px] font-medium tracking-wide text-zinc-400">v2.1</span>
+                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[13px] font-medium tracking-wide text-zinc-400">
+                      v2.1
+                    </span>
                   </div>
                 </div>
               </div>
 
-              <section className="overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.02]" aria-label="Status sistem">
+              <section
+                className="overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.02]"
+                aria-label="Status sistem"
+              >
                 <div className="grid gap-px bg-white/[0.06] sm:grid-cols-2 xl:grid-cols-4">
                   <div className="bg-[#0a0a0c] p-4">
                     <div className="flex items-center justify-between">
                       <p className={tLabel}>Backend</p>
-                      <Activity className={`h-4 w-4 ${health && !healthError ? "text-emerald-400" : healthError ? "text-red-400" : "text-zinc-600"}`} aria-hidden />
+                      <Activity
+                        className={`h-4 w-4 ${health && !healthError ? "text-emerald-400" : healthError ? "text-red-400" : "text-zinc-600"}`}
+                        aria-hidden
+                      />
                     </div>
                     <p className="mt-2 flex items-center gap-2 text-[18px] font-semibold text-zinc-100">
-                      <span className={`h-2 w-2 rounded-full ${health && !healthError ? "bg-emerald-400" : healthError ? "bg-red-400" : "bg-zinc-600"}`} aria-hidden />
+                      <span
+                        className={`h-2 w-2 rounded-full ${health && !healthError ? "bg-emerald-400" : healthError ? "bg-red-400" : "bg-zinc-600"}`}
+                        aria-hidden
+                      />
                       {health && !healthError ? "Online" : healthError ? "Offline" : "Memuat..."}
                     </p>
                     <p className="mt-1 text-[13px] text-zinc-500">Cek otomatis tiap 30 detik</p>
@@ -1284,13 +1781,28 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                   <div className="bg-[#0a0a0c] p-4">
                     <div className="flex items-center justify-between">
                       <p className={tLabel}>Database</p>
-                      <Database className={`h-4 w-4 ${health?.database?.ok ? "text-emerald-400" : health ? "text-red-400" : "text-zinc-600"}`} aria-hidden />
+                      <Database
+                        className={`h-4 w-4 ${health?.database?.ok ? "text-emerald-400" : health ? "text-red-400" : "text-zinc-600"}`}
+                        aria-hidden
+                      />
                     </div>
                     <p className="mt-2 flex items-center gap-2 text-[18px] font-semibold text-zinc-100">
-                      <span className={`h-2 w-2 rounded-full ${health?.database?.ok ? "bg-emerald-400" : health ? "bg-red-400" : "bg-zinc-600"}`} aria-hidden />
-                      {health ? (health.database?.ok ? "Terhubung" : "Tidak terhubung") : "Memuat..."}
+                      <span
+                        className={`h-2 w-2 rounded-full ${health?.database?.ok ? "bg-emerald-400" : health ? "bg-red-400" : "bg-zinc-600"}`}
+                        aria-hidden
+                      />
+                      {health
+                        ? health.database?.ok
+                          ? "Terhubung"
+                          : "Tidak terhubung"
+                        : "Memuat..."}
                     </p>
-                    <p className="mt-1 text-[13px] text-zinc-500">Mode: <span className="font-mono text-zinc-400">{health?.database?.mode || "-"}</span></p>
+                    <p className="mt-1 text-[13px] text-zinc-500">
+                      Mode:{" "}
+                      <span className="font-mono text-zinc-400">
+                        {health?.database?.mode || "-"}
+                      </span>
+                    </p>
                   </div>
                   <div className="bg-[#0a0a0c] p-4">
                     <div className="flex items-center justify-between">
@@ -1299,12 +1811,23 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                     </div>
                     {health?.token_budget ? (
                       <>
-                        <p className={`mt-2 font-mono text-[18px] font-semibold tabular-nums ${health.token_budget.remaining !== null && health.token_budget.remaining < 0 ? "text-red-300" : "text-zinc-100"}`}>
+                        <p
+                          className={`mt-2 font-mono text-[18px] font-semibold tabular-nums ${health.token_budget.remaining !== null && health.token_budget.remaining < 0 ? "text-red-300" : "text-zinc-100"}`}
+                        >
                           {fmtNum(health.token_budget.today)}
-                          {health.token_budget.budget > 0 && <span className="text-[13px] font-normal text-zinc-500"> / {fmtNum(health.token_budget.budget)}</span>}
+                          {health.token_budget.budget > 0 && (
+                            <span className="text-[13px] font-normal text-zinc-500">
+                              {" "}
+                              / {fmtNum(health.token_budget.budget)}
+                            </span>
+                          )}
                         </p>
                         <p className="mt-1 text-[13px] text-zinc-500">
-                          {health.token_budget.budget === 0 ? "Budget: tanpa batas" : health.token_budget.remaining < 0 ? "Budget terlampaui" : `Sisa ${fmtNum(health.token_budget.remaining)}`}
+                          {health.token_budget.budget === 0
+                            ? "Budget: tanpa batas"
+                            : health.token_budget.remaining < 0
+                              ? "Budget terlampaui"
+                              : `Sisa ${fmtNum(health.token_budget.remaining)}`}
                         </p>
                       </>
                     ) : (
@@ -1316,11 +1839,29 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                       <p className={tLabel}>Model AI</p>
                       <Cpu className="h-4 w-4 text-emerald-400" aria-hidden />
                     </div>
-                    <p className="mt-2 truncate font-mono text-[15px] font-semibold text-zinc-100" title={modelConfig.active_model}>{modelConfig.active_model || "-"}</p>
+                    <p
+                      className="mt-2 truncate font-mono text-[15px] font-semibold text-zinc-100"
+                      title={modelConfig.active_model}
+                    >
+                      {modelConfig.active_model || "-"}
+                    </p>
                     <p className="mt-1 flex items-center gap-1.5 text-[13px] text-zinc-500">
                       <Layers className="h-3.5 w-3.5" aria-hidden />
-                      Fallback: <span className="font-mono text-zinc-300">{modelConfig.fallback_models.length}</span>
-                      {modelConfig.fallback_models.length > 0 && <span className="truncate font-mono text-zinc-500" title={modelConfig.fallback_models.join(", ")}>· {modelConfig.fallback_models[0]}{modelConfig.fallback_models.length > 1 ? ` +${modelConfig.fallback_models.length - 1}` : ""}</span>}
+                      Fallback:{" "}
+                      <span className="font-mono text-zinc-300">
+                        {modelConfig.fallback_models.length}
+                      </span>
+                      {modelConfig.fallback_models.length > 0 && (
+                        <span
+                          className="truncate font-mono text-zinc-500"
+                          title={modelConfig.fallback_models.join(", ")}
+                        >
+                          · {modelConfig.fallback_models[0]}
+                          {modelConfig.fallback_models.length > 1
+                            ? ` +${modelConfig.fallback_models.length - 1}`
+                            : ""}
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1328,7 +1869,10 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                   <p className="text-zinc-500">
                     Error login terakhir:{" "}
                     {health?.last_login_failure ? (
-                      <span className="text-amber-300">{fmtDateTime(health.last_login_failure.created_at)} · {health.last_login_failure.actor} · {health.last_login_failure.detail}</span>
+                      <span className="text-amber-300">
+                        {fmtDateTime(health.last_login_failure.created_at)} ·{" "}
+                        {health.last_login_failure.actor} · {health.last_login_failure.detail}
+                      </span>
                     ) : (
                       <span className="text-zinc-400">tidak ada</span>
                     )}
@@ -1339,7 +1883,11 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                     disabled={reindexing}
                     className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-1.5 text-[13px] text-zinc-200 hover:bg-white/[0.1] disabled:opacity-50"
                   >
-                    {reindexing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Database className="h-3.5 w-3.5" aria-hidden />}
+                    {reindexing ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                    ) : (
+                      <Database className="h-3.5 w-3.5" aria-hidden />
+                    )}
                     {reindexing ? "Mengindeks ulang..." : "Reindex knowledge"}
                   </button>
                 </div>
@@ -1347,8 +1895,12 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
               {!realStats ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                  {[1,2,3,4].map((i) => (
-                    <Card key={i} className={cardBase}><CardContent className="p-5"><div className="h-14 animate-pulse rounded-lg bg-white/5" /></CardContent></Card>
+                  {[1, 2, 3, 4].map((i) => (
+                    <Card key={i} className={cardBase}>
+                      <CardContent className="p-5">
+                        <div className="h-14 animate-pulse rounded-lg bg-white/5" />
+                      </CardContent>
+                    </Card>
                   ))}
                 </div>
               ) : (
@@ -1356,24 +1908,80 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                   {/* KPI row ala referensi: icon kanan-atas, delta chip, sub "vs ..." */}
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     {[
-                      { label: "Total Requests", value: fmtNum(realStats.totalRequests), delta: reqDelta, vs: "last day", sub: `${realStats.totalPromptsUsed} user + ${realStats.trialTotalUsed} trial`, icon: TrendingUp, iconBg: "bg-emerald-500/10 border-emerald-500/15", iconColor: "text-emerald-400" },
-                      { label: "Users", value: `${realStats.activeUsers}/${realStats.totalUsers}`, delta: null, vs: "", sub: `${realStats.disabledUsers} nonaktif · ${realStats.exhausted} quota habis · ${realStats.unlimitedUsers} ∞`, icon: User, iconBg: "bg-sky-500/10 border-sky-500/15", iconColor: "text-sky-400" },
-                      { label: "Token Hari Ini", value: tokenStats ? fmtNum(tokenStats.today?.total) : "-", delta: tokDelta, vs: "last day", sub: tokenStats ? `${fmtNum(tokenStats.today?.prompt)} prompt · ${fmtNum(tokenStats.today?.completion)} completion` : "memuat...", icon: Coins, iconBg: "bg-violet-500/10 border-violet-500/15", iconColor: "text-violet-400" },
-                      { label: "Total Token", value: tokenStats ? fmtNum(tokenStats.total?.total) : "-", delta: null, vs: "", sub: tokenStats ? `rata2 ${fmtNum(tokAvg14)}/hari · ${fmtNum(tokenStats.total?.prompt)} prompt` : "sejak awal", icon: Zap, iconBg: "bg-amber-500/10 border-amber-500/15", iconColor: "text-amber-400" },
+                      {
+                        label: "Total Requests",
+                        value: fmtNum(realStats.totalRequests),
+                        delta: reqDelta,
+                        vs: "last day",
+                        sub: `${realStats.totalPromptsUsed} user + ${realStats.trialTotalUsed} trial`,
+                        icon: TrendingUp,
+                        iconBg: "bg-emerald-500/10 border-emerald-500/15",
+                        iconColor: "text-emerald-400",
+                      },
+                      {
+                        label: "Users",
+                        value: `${realStats.activeUsers}/${realStats.totalUsers}`,
+                        delta: null,
+                        vs: "",
+                        sub: `${realStats.disabledUsers} nonaktif · ${realStats.exhausted} quota habis · ${realStats.unlimitedUsers} ∞`,
+                        icon: User,
+                        iconBg: "bg-sky-500/10 border-sky-500/15",
+                        iconColor: "text-sky-400",
+                      },
+                      {
+                        label: "Token Hari Ini",
+                        value: tokenStats ? fmtNum(tokenStats.today?.total) : "-",
+                        delta: tokDelta,
+                        vs: "last day",
+                        sub: tokenStats
+                          ? `${fmtNum(tokenStats.today?.prompt)} prompt · ${fmtNum(tokenStats.today?.completion)} completion`
+                          : "memuat...",
+                        icon: Coins,
+                        iconBg: "bg-violet-500/10 border-violet-500/15",
+                        iconColor: "text-violet-400",
+                      },
+                      {
+                        label: "Total Token",
+                        value: tokenStats ? fmtNum(tokenStats.total?.total) : "-",
+                        delta: null,
+                        vs: "",
+                        sub: tokenStats
+                          ? `rata2 ${fmtNum(tokAvg14)}/hari · ${fmtNum(tokenStats.total?.prompt)} prompt`
+                          : "sejak awal",
+                        icon: Zap,
+                        iconBg: "bg-amber-500/10 border-amber-500/15",
+                        iconColor: "text-amber-400",
+                      },
                     ].map((stat, idx) => {
                       const Icon = stat.icon;
                       return (
-                        <motion.div key={stat.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.05 }}>
-                          <Card className={`${cardBase} hover:border-white/[0.12] transition-colors`}>
+                        <motion.div
+                          key={stat.label}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: idx * 0.05 }}
+                        >
+                          <Card
+                            className={`${cardBase} hover:border-white/[0.12] transition-colors`}
+                          >
                             <CardContent className="p-5">
                               <div className="flex items-start justify-between gap-3">
                                 <p className={tLabel}>{stat.label}</p>
-                                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${stat.iconBg}`} aria-hidden><Icon className={`h-4 w-4 ${stat.iconColor}`} /></span>
+                                <span
+                                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${stat.iconBg}`}
+                                  aria-hidden
+                                >
+                                  <Icon className={`h-4 w-4 ${stat.iconColor}`} />
+                                </span>
                               </div>
-                              <p className="mt-3 text-[30px] font-semibold leading-none tracking-tight text-white tabular-nums">{stat.value}</p>
+                              <p className="mt-3 text-[30px] font-semibold leading-none tracking-tight text-white tabular-nums">
+                                {stat.value}
+                              </p>
                               <div className="mt-2.5 flex items-center gap-2">
                                 {stat.delta !== null && <DeltaChip v={stat.delta} vs={stat.vs} />}
-                                <p className="text-[13px] leading-none text-zinc-500 truncate">{stat.sub}</p>
+                                <p className="text-[13px] leading-none text-zinc-500 truncate">
+                                  {stat.sub}
+                                </p>
                               </div>
                             </CardContent>
                           </Card>
@@ -1395,7 +2003,11 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                               </p>
                               <DeltaChip v={tokDelta} />
                             </div>
-                            <p className="mt-2 text-[13px] text-zinc-500">hari ini · {tokenStats ? fmtNum(tokenStats.today?.prompt) : "-"} prompt + {tokenStats ? fmtNum(tokenStats.today?.completion) : "-"} completion</p>
+                            <p className="mt-2 text-[13px] text-zinc-500">
+                              hari ini · {tokenStats ? fmtNum(tokenStats.today?.prompt) : "-"}{" "}
+                              prompt + {tokenStats ? fmtNum(tokenStats.today?.completion) : "-"}{" "}
+                              completion
+                            </p>
                           </div>
                           <div className="flex items-center gap-1 rounded-full border border-white/10 bg-black/30 p-1">
                             {[7, 14, 30].map((n) => (
@@ -1411,11 +2023,24 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                         </div>
                       </CardHeader>
                       <CardContent className={cardContentCls}>
-                        {!tokenStats || !Array.isArray(tokenStats.daily) || tokenStats.daily.every((d: any) => !d.total) ? (
-                          <div className="py-16 text-center text-[16px] text-zinc-500">Belum ada token terpakai - chat dulu untuk isi data.</div>
+                        {!tokenStats ||
+                        !Array.isArray(tokenStats.daily) ||
+                        tokenStats.daily.every((d: any) => !d.total) ? (
+                          <div className="py-16 text-center text-[16px] text-zinc-500">
+                            Belum ada token terpakai - chat dulu untuk isi data.
+                          </div>
                         ) : (
                           <ResponsiveContainer width="100%" height={260}>
-                            <AreaChart data={tokenStats.daily.map((d: any) => ({ day: fmtDay(String(d.day)), prompt: d.prompt, completion: d.completion, total: d.total, full: fmtDayFull(String(d.day)) }))} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                            <AreaChart
+                              data={tokenStats.daily.map((d: any) => ({
+                                day: fmtDay(String(d.day)),
+                                prompt: d.prompt,
+                                completion: d.completion,
+                                total: d.total,
+                                full: fmtDayFull(String(d.day)),
+                              }))}
+                              margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                            >
                               <defs>
                                 <linearGradient id="gradPrompt" x1="0" y1="0" x2="0" y2="1">
                                   <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.55} />
@@ -1426,13 +2051,68 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                                   <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.02} />
                                 </linearGradient>
                               </defs>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.35} vertical={false} />
-                              <XAxis dataKey="day" stroke="#52525b" fontSize={11} fontFamily="monospace" interval={0} tickLine={false} axisLine={{ stroke: "#27272a" }} />
-                              <YAxis stroke="#52525b" fontSize={11} fontFamily="monospace" allowDecimals={false} tickFormatter={fmtCompact} width={44} axisLine={false} tickLine={false} />
-                              <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#3f3f46", strokeWidth: 1 }} labelFormatter={(_: any, payload: any) => payload?.[0]?.payload?.full || _} />
-                              <ReferenceLine y={tokAvg14} stroke="#71717a" strokeDasharray="4 4" label={{ value: `rata2 ${fmtCompact(tokAvg14)}`, position: "insideTopRight", fill: "#71717a", fontSize: 11, fontFamily: "monospace" }} />
-                              <Area type="monotone" dataKey="prompt" name="Prompt" stackId="tok" stroke="#8b5cf6" strokeWidth={2} fill="url(#gradPrompt)" />
-                              <Area type="monotone" dataKey="completion" name="Completion" stackId="tok" stroke="#38bdf8" strokeWidth={2} fill="url(#gradCompletion)" />
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                stroke="#27272a"
+                                opacity={0.35}
+                                vertical={false}
+                              />
+                              <XAxis
+                                dataKey="day"
+                                stroke="#52525b"
+                                fontSize={11}
+                                fontFamily="monospace"
+                                interval={0}
+                                tickLine={false}
+                                axisLine={{ stroke: "#27272a" }}
+                              />
+                              <YAxis
+                                stroke="#52525b"
+                                fontSize={11}
+                                fontFamily="monospace"
+                                allowDecimals={false}
+                                tickFormatter={fmtCompact}
+                                width={44}
+                                axisLine={false}
+                                tickLine={false}
+                              />
+                              <Tooltip
+                                content={<ChartTooltip />}
+                                cursor={{ stroke: "#3f3f46", strokeWidth: 1 }}
+                                labelFormatter={(_: any, payload: any) =>
+                                  payload?.[0]?.payload?.full || _
+                                }
+                              />
+                              <ReferenceLine
+                                y={tokAvg14}
+                                stroke="#71717a"
+                                strokeDasharray="4 4"
+                                label={{
+                                  value: `rata2 ${fmtCompact(tokAvg14)}`,
+                                  position: "insideTopRight",
+                                  fill: "#71717a",
+                                  fontSize: 11,
+                                  fontFamily: "monospace",
+                                }}
+                              />
+                              <Area
+                                type="monotone"
+                                dataKey="prompt"
+                                name="Prompt"
+                                stackId="tok"
+                                stroke="#8b5cf6"
+                                strokeWidth={2}
+                                fill="url(#gradPrompt)"
+                              />
+                              <Area
+                                type="monotone"
+                                dataKey="completion"
+                                name="Completion"
+                                stackId="tok"
+                                stroke="#38bdf8"
+                                strokeWidth={2}
+                                fill="url(#gradCompletion)"
+                              />
                             </AreaChart>
                           </ResponsiveContainer>
                         )}
@@ -1440,19 +2120,53 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                         {/* 3 mini stat alà Active/Inactive/Churned */}
                         <div className="mt-4 grid gap-3 sm:grid-cols-3">
                           {[
-                            { k: "Prompt (input)", v: tokenStats ? fmtNum(tokenStats.today?.prompt) : "-", c: "bg-violet-500", iconBg: "bg-violet-500/10", iconColor: "text-violet-400", icon: MessageSquare },
-                            { k: "Completion (output)", v: tokenStats ? fmtNum(tokenStats.today?.completion) : "-", c: "bg-sky-400", iconBg: "bg-sky-500/10", iconColor: "text-sky-400", icon: Sparkles },
-                            { k: `Puncak ${tokenDays} hari`, v: tokenStats ? fmtNum(tokPeriod.peak) : "-", c: "bg-amber-400", iconBg: "bg-amber-500/10", iconColor: "text-amber-400", icon: Target },
+                            {
+                              k: "Prompt (input)",
+                              v: tokenStats ? fmtNum(tokenStats.today?.prompt) : "-",
+                              c: "bg-violet-500",
+                              iconBg: "bg-violet-500/10",
+                              iconColor: "text-violet-400",
+                              icon: MessageSquare,
+                            },
+                            {
+                              k: "Completion (output)",
+                              v: tokenStats ? fmtNum(tokenStats.today?.completion) : "-",
+                              c: "bg-sky-400",
+                              iconBg: "bg-sky-500/10",
+                              iconColor: "text-sky-400",
+                              icon: Sparkles,
+                            },
+                            {
+                              k: `Puncak ${tokenDays} hari`,
+                              v: tokenStats ? fmtNum(tokPeriod.peak) : "-",
+                              c: "bg-amber-400",
+                              iconBg: "bg-amber-500/10",
+                              iconColor: "text-amber-400",
+                              icon: Target,
+                            },
                           ].map((m) => {
                             const I = m.icon;
                             return (
-                              <div key={m.k} className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] p-3.5">
-                                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${m.iconBg}`} aria-hidden><I className={`h-4 w-4 ${m.iconColor}`} /></span>
+                              <div
+                                key={m.k}
+                                className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] p-3.5"
+                              >
+                                <span
+                                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${m.iconBg}`}
+                                  aria-hidden
+                                >
+                                  <I className={`h-4 w-4 ${m.iconColor}`} />
+                                </span>
                                 <div className="min-w-0">
                                   <p className="text-[13px] text-zinc-500">{m.k}</p>
-                                  <p className="mt-0.5 font-mono text-[17px] font-semibold leading-none text-zinc-100 tabular-nums">{m.v}</p>
+                                  <p className="mt-0.5 font-mono text-[17px] font-semibold leading-none text-zinc-100 tabular-nums">
+                                    {m.v}
+                                  </p>
                                 </div>
-                                <span className={`ml-auto h-8 w-1 shrink-0 rounded-full ${m.c}`} aria-hidden />
+                                <span
+                                  className={`ml-auto h-8 w-1 shrink-0 rounded-full ${m.c}`}
+                                  aria-hidden
+                                />
                               </div>
                             );
                           })}
@@ -1464,11 +2178,18 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                     <div className="flex flex-col gap-4 [&>*]:flex-1">
                       <Card className={cardBase}>
                         <CardHeader className={cardHeaderCls}>
-                          <CardTitle className={`${tCard} flex items-center gap-2`}><Coins className="h-3.5 w-3.5 text-amber-400" /> Budget Harian</CardTitle>
+                          <CardTitle className={`${tCard} flex items-center gap-2`}>
+                            <Coins className="h-3.5 w-3.5 text-amber-400" /> Budget Harian
+                          </CardTitle>
                         </CardHeader>
                         <CardContent className={cardContentCls}>
                           {tokenStats && tokenStats.budget > 0 ? (
-                            <BudgetGauge pct={(100 * Number(tokenStats.today?.total || 0)) / Math.max(1, Number(tokenStats.budget))} />
+                            <BudgetGauge
+                              pct={
+                                (100 * Number(tokenStats.today?.total || 0)) /
+                                Math.max(1, Number(tokenStats.budget))
+                              }
+                            />
                           ) : (
                             <div className="py-6 text-center">
                               <p className="font-mono text-[30px] leading-none text-white">∞</p>
@@ -1477,7 +2198,14 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                           )}
                           {tokenStats && tokenStats.budget > 0 && (
                             <p className="mt-1 text-center text-[13px] text-zinc-500">
-                              <span className="font-mono tabular-nums text-zinc-300">{fmtNum(tokenStats.today?.total)}</span> / <span className="font-mono tabular-nums text-zinc-300">{fmtNum(tokenStats.budget)}</span> token
+                              <span className="font-mono tabular-nums text-zinc-300">
+                                {fmtNum(tokenStats.today?.total)}
+                              </span>{" "}
+                              /{" "}
+                              <span className="font-mono tabular-nums text-zinc-300">
+                                {fmtNum(tokenStats.budget)}
+                              </span>{" "}
+                              token
                             </p>
                           )}
                           <div className="mt-4 flex items-center gap-2 border-t border-white/[0.06] pt-4">
@@ -1489,7 +2217,12 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                               className="h-9 w-full rounded-lg border border-white/10 bg-black/30 px-3 font-mono text-[14px] tabular-nums text-zinc-100 outline-none focus:border-white/25"
                               aria-label="Budget token harian"
                             />
-                            <button onClick={saveTokenBudget} className="h-9 shrink-0 rounded-lg bg-white px-4 text-[14px] font-semibold text-black transition-colors hover:bg-zinc-200">Simpan</button>
+                            <button
+                              onClick={saveTokenBudget}
+                              className="h-9 shrink-0 rounded-lg bg-white px-4 text-[14px] font-semibold text-black transition-colors hover:bg-zinc-200"
+                            >
+                              Simpan
+                            </button>
                           </div>
                           <p className="mt-2 text-[13px] text-zinc-500">0 = tanpa batas.</p>
                         </CardContent>
@@ -1497,24 +2230,47 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
                       <Card className={cardBase}>
                         <CardHeader className={cardHeaderCls}>
-                          <CardTitle className={`${tCard} flex items-center gap-2`}><Target className="h-3.5 w-3.5 text-sky-400" /> Hari Terpadat</CardTitle>
+                          <CardTitle className={`${tCard} flex items-center gap-2`}>
+                            <Target className="h-3.5 w-3.5 text-sky-400" /> Hari Terpadat
+                          </CardTitle>
                         </CardHeader>
                         <CardContent className={cardContentCls}>
-                          {tokenStats && Array.isArray(tokenStats.daily) && tokenStats.daily.some((d: any) => d.total > 0) ? (
+                          {tokenStats &&
+                          Array.isArray(tokenStats.daily) &&
+                          tokenStats.daily.some((d: any) => d.total > 0) ? (
                             (() => {
-                              const sorted = [...tokenStats.daily].sort((a: any, b: any) => Number(b.total || 0) - Number(a.total || 0)).slice(0, 3);
+                              const sorted = [...tokenStats.daily]
+                                .sort(
+                                  (a: any, b: any) => Number(b.total || 0) - Number(a.total || 0),
+                                )
+                                .slice(0, 3);
                               return (
                                 <div className="space-y-3">
                                   {sorted.map((d: any, i: number) => {
-                                    const pct = Number(sorted[0]?.total) > 0 ? Math.round((100 * Number(d.total || 0)) / Number(sorted[0].total)) : 0;
+                                    const pct =
+                                      Number(sorted[0]?.total) > 0
+                                        ? Math.round(
+                                            (100 * Number(d.total || 0)) / Number(sorted[0].total),
+                                          )
+                                        : 0;
                                     return (
                                       <div key={d.day}>
                                         <div className="mb-1 flex items-center justify-between text-[13px]">
-                                          <span className="text-zinc-400"><span className="mr-1.5 font-mono text-zinc-600">#{i + 1}</span>{fmtDayFull(String(d.day))}</span>
-                                          <span className="font-mono tabular-nums text-zinc-200">{fmtNum(d.total)}</span>
+                                          <span className="text-zinc-400">
+                                            <span className="mr-1.5 font-mono text-zinc-600">
+                                              #{i + 1}
+                                            </span>
+                                            {fmtDayFull(String(d.day))}
+                                          </span>
+                                          <span className="font-mono tabular-nums text-zinc-200">
+                                            {fmtNum(d.total)}
+                                          </span>
                                         </div>
                                         <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-                                          <div className="h-full rounded-full bg-sky-400/80 transition-all" style={{ width: `${pct}%` }} />
+                                          <div
+                                            className="h-full rounded-full bg-sky-400/80 transition-all"
+                                            style={{ width: `${pct}%` }}
+                                          />
                                         </div>
                                       </div>
                                     );
@@ -1523,31 +2279,46 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                               );
                             })()
                           ) : (
-                            <div className="py-6 text-center text-[14px] text-zinc-500">Belum ada data.</div>
+                            <div className="py-6 text-center text-[14px] text-zinc-500">
+                              Belum ada data.
+                            </div>
                           )}
                         </CardContent>
                       </Card>
 
                       <Card className={cardBase}>
                         <CardHeader className={cardHeaderCls}>
-                          <CardTitle className={`${tCard} flex items-center gap-2`}><Cpu className="h-3.5 w-3.5 text-emerald-400" /> Model AI</CardTitle>
+                          <CardTitle className={`${tCard} flex items-center gap-2`}>
+                            <Cpu className="h-3.5 w-3.5 text-emerald-400" /> Model AI
+                          </CardTitle>
                         </CardHeader>
                         <CardContent className={`${cardContentCls} space-y-2.5`}>
                           <div className="flex items-center justify-between gap-3 text-[14px]">
                             <span className="text-zinc-500">Aktif</span>
-                            <span className="truncate font-mono text-zinc-200" title={modelConfig.active_model}>{modelConfig.active_model || "-"}</span>
+                            <span
+                              className="truncate font-mono text-zinc-200"
+                              title={modelConfig.active_model}
+                            >
+                              {modelConfig.active_model || "-"}
+                            </span>
                           </div>
                           <div className="flex items-center justify-between gap-3 text-[14px]">
                             <span className="text-zinc-500">Fallback</span>
-                            <span className="font-mono tabular-nums text-zinc-200">{modelConfig.fallback_models.length} model</span>
+                            <span className="font-mono tabular-nums text-zinc-200">
+                              {modelConfig.fallback_models.length} model
+                            </span>
                           </div>
                           <div className="flex items-center justify-between gap-3 text-[14px]">
                             <span className="text-zinc-500">Katalog siap</span>
-                            <span className="font-mono tabular-nums text-zinc-200">{availableModels.length} model</span>
+                            <span className="font-mono tabular-nums text-zinc-200">
+                              {availableModels.length} model
+                            </span>
                           </div>
                           <div className="flex items-center justify-between gap-3 text-[14px]">
                             <span className="text-zinc-500">Knowledge</span>
-                            <span className="font-mono tabular-nums text-zinc-200">{realStats.knowledgeEntries} entri</span>
+                            <span className="font-mono tabular-nums text-zinc-200">
+                              {realStats.knowledgeEntries} entri
+                            </span>
                           </div>
                         </CardContent>
                       </Card>
@@ -1558,86 +2329,238 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                     <Card className={cardBase}>
                       <CardHeader className={cardHeaderCls}>
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <CardTitle className={`${tCard} flex items-center gap-2`}><Activity className="h-3.5 w-3.5 text-sky-400" /> Total Requests</CardTitle>
+                          <CardTitle className={`${tCard} flex items-center gap-2`}>
+                            <Activity className="h-3.5 w-3.5 text-sky-400" /> Total Requests
+                          </CardTitle>
                           <div className="flex items-center rounded-full border border-white/10 bg-white/[0.03] p-0.5 text-[13px]">
-                            {(["day","week","month","year"] as const).map((p) => (
-                              <button key={p} onClick={() => { setChartPeriod(p); fetchStats(p); }} className={`rounded-full px-2.5 py-1 capitalize transition ${chartPeriod === p ? "bg-white text-black" : "text-zinc-400 hover:text-zinc-200"}`}>{p === "day" ? "Day" : p === "week" ? "Week" : p === "month" ? "Month" : "Year"}</button>
+                            {(["day", "week", "month", "year"] as const).map((p) => (
+                              <button
+                                key={p}
+                                onClick={() => {
+                                  setChartPeriod(p);
+                                  fetchStats(p);
+                                }}
+                                className={`rounded-full px-2.5 py-1 capitalize transition ${chartPeriod === p ? "bg-white text-black" : "text-zinc-400 hover:text-zinc-200"}`}
+                              >
+                                {p === "day"
+                                  ? "Day"
+                                  : p === "week"
+                                    ? "Week"
+                                    : p === "month"
+                                      ? "Month"
+                                      : "Year"}
+                              </button>
                             ))}
                           </div>
                         </div>
                       </CardHeader>
                       <CardContent className={cardContentCls}>
                         {!realStats.dailyRequests || realStats.dailyRequests.length === 0 ? (
-                          <div className="py-16 text-center text-[16px] text-zinc-500">Belum ada data.</div>
+                          <div className="py-16 text-center text-[16px] text-zinc-500">
+                            Belum ada data.
+                          </div>
                         ) : (
                           <ResponsiveContainer width="100%" height={280}>
-                            <BarChart data={realStats.dailyRequests.map((d: any) => {
-                              const lab = String(d.day);
-                              const short = chartPeriod === "day" ? fmtDay(lab) : lab;
-                              return { day: short, count: d.count, full: chartPeriod === "day" ? fmtDayFull(lab) : lab };
-                            })} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.35} vertical={false} />
-                              <XAxis dataKey="day" stroke="#52525b" fontSize={11} fontFamily="monospace" interval={0} tickLine={false} axisLine={{ stroke: "#27272a" }} />
-                              <YAxis stroke="#52525b" fontSize={11} fontFamily="monospace" allowDecimals={false} tickFormatter={fmtCompact} width={44} axisLine={false} tickLine={false} />
-                              <Tooltip content={<ChartTooltip unit=" req" />} cursor={{ fill: "rgba(255,255,255,0.03)" }} labelFormatter={(_: any, payload: any) => payload?.[0]?.payload?.full || _} />
-                              <Bar dataKey="count" name="Requests" fill="#38bdf8" radius={[4,4,0,0]} />
+                            <BarChart
+                              data={realStats.dailyRequests.map((d: any) => {
+                                const lab = String(d.day);
+                                const short = chartPeriod === "day" ? fmtDay(lab) : lab;
+                                return {
+                                  day: short,
+                                  count: d.count,
+                                  full: chartPeriod === "day" ? fmtDayFull(lab) : lab,
+                                };
+                              })}
+                              margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                            >
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                stroke="#27272a"
+                                opacity={0.35}
+                                vertical={false}
+                              />
+                              <XAxis
+                                dataKey="day"
+                                stroke="#52525b"
+                                fontSize={11}
+                                fontFamily="monospace"
+                                interval={0}
+                                tickLine={false}
+                                axisLine={{ stroke: "#27272a" }}
+                              />
+                              <YAxis
+                                stroke="#52525b"
+                                fontSize={11}
+                                fontFamily="monospace"
+                                allowDecimals={false}
+                                tickFormatter={fmtCompact}
+                                width={44}
+                                axisLine={false}
+                                tickLine={false}
+                              />
+                              <Tooltip
+                                content={<ChartTooltip unit=" req" />}
+                                cursor={{ fill: "rgba(255,255,255,0.03)" }}
+                                labelFormatter={(_: any, payload: any) =>
+                                  payload?.[0]?.payload?.full || _
+                                }
+                              />
+                              <Bar
+                                dataKey="count"
+                                name="Requests"
+                                fill="#38bdf8"
+                                radius={[4, 4, 0, 0]}
+                              />
                             </BarChart>
                           </ResponsiveContainer>
                         )}
                       </CardContent>
                     </Card>
                     <Card className={cardBase}>
-                      <CardHeader className={cardHeaderCls}><CardTitle className={`${tCard} flex items-center gap-2`}><Clock className="h-3.5 w-3.5 text-amber-400" /> Response Time Rata2 Models (ms)</CardTitle></CardHeader>
+                      <CardHeader className={cardHeaderCls}>
+                        <CardTitle className={`${tCard} flex items-center gap-2`}>
+                          <Clock className="h-3.5 w-3.5 text-amber-400" /> Response Time Rata2
+                          Models (ms)
+                        </CardTitle>
+                      </CardHeader>
                       <CardContent className={cardContentCls}>
-                        {!realStats.dailyLatency || realStats.dailyLatency.every((d: any) => d.avg_ms == null) ? (
-                          <div className="py-16 text-center text-[16px] text-zinc-500">Belum ada latency - chat dulu untuk isi data.</div>
+                        {!realStats.dailyLatency ||
+                        realStats.dailyLatency.every((d: any) => d.avg_ms == null) ? (
+                          <div className="py-16 text-center text-[16px] text-zinc-500">
+                            Belum ada latency - chat dulu untuk isi data.
+                          </div>
                         ) : (
                           <ResponsiveContainer width="100%" height={280}>
-                            <LineChart data={realStats.dailyLatency.map((d: any) => {
-                              const lab = String(d.day);
-                              const short = chartPeriod === "day" ? fmtDay(lab) : lab;
-                              return { day: short, avg_ms: d.avg_ms, full: chartPeriod === "day" ? fmtDayFull(lab) : lab };
-                            })} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.35} vertical={false} />
-                              <XAxis dataKey="day" stroke="#52525b" fontSize={11} fontFamily="monospace" interval={0} tickLine={false} axisLine={{ stroke: "#27272a" }} />
-                              <YAxis stroke="#52525b" fontSize={11} fontFamily="monospace" tickFormatter={fmtCompact} width={44} axisLine={false} tickLine={false} />
-                              <Tooltip content={<ChartTooltip unit=" ms" />} cursor={{ stroke: "#3f3f46", strokeWidth: 1 }} labelFormatter={(_: any, payload: any) => payload?.[0]?.payload?.full || _} />
-                              <Line type="linear" dataKey="avg_ms" name="Rata-rata" stroke="#f59e0b" strokeWidth={2} dot={{ r: 2.5, fill: "#0c0c10", stroke: "#f59e0b", strokeWidth: 2 }} activeDot={{ r: 4.5, fill: "#f59e0b", stroke: "#0c0c10", strokeWidth: 2 }} connectNulls />
+                            <LineChart
+                              data={realStats.dailyLatency.map((d: any) => {
+                                const lab = String(d.day);
+                                const short = chartPeriod === "day" ? fmtDay(lab) : lab;
+                                return {
+                                  day: short,
+                                  avg_ms: d.avg_ms,
+                                  full: chartPeriod === "day" ? fmtDayFull(lab) : lab,
+                                };
+                              })}
+                              margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                            >
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                stroke="#27272a"
+                                opacity={0.35}
+                                vertical={false}
+                              />
+                              <XAxis
+                                dataKey="day"
+                                stroke="#52525b"
+                                fontSize={11}
+                                fontFamily="monospace"
+                                interval={0}
+                                tickLine={false}
+                                axisLine={{ stroke: "#27272a" }}
+                              />
+                              <YAxis
+                                stroke="#52525b"
+                                fontSize={11}
+                                fontFamily="monospace"
+                                tickFormatter={fmtCompact}
+                                width={44}
+                                axisLine={false}
+                                tickLine={false}
+                              />
+                              <Tooltip
+                                content={<ChartTooltip unit=" ms" />}
+                                cursor={{ stroke: "#3f3f46", strokeWidth: 1 }}
+                                labelFormatter={(_: any, payload: any) =>
+                                  payload?.[0]?.payload?.full || _
+                                }
+                              />
+                              <Line
+                                type="linear"
+                                dataKey="avg_ms"
+                                name="Rata-rata"
+                                stroke="#f59e0b"
+                                strokeWidth={2}
+                                dot={{ r: 2.5, fill: "#0c0c10", stroke: "#f59e0b", strokeWidth: 2 }}
+                                activeDot={{
+                                  r: 4.5,
+                                  fill: "#f59e0b",
+                                  stroke: "#0c0c10",
+                                  strokeWidth: 2,
+                                }}
+                                connectNulls
+                              />
                             </LineChart>
                           </ResponsiveContainer>
                         )}
-                        {realStats.dailyLatency && (() => {
-                          const agg: Record<string, { sum: number; cnt: number }> = {};
-                          realStats.dailyLatency.forEach((d: any) => (d.models || []).forEach((m: any) => {
-                            const k = m.model || "unknown";
-                            if (!agg[k]) agg[k] = { sum: 0, cnt: 0 };
-                            agg[k].sum += (m.avg_ms || 0) * (m.count || 1);
-                            agg[k].cnt += (m.count || 1);
-                          }));
-                          const rows = Object.entries(agg).map(([model, v]) => ({ model, avg_ms: Math.round(v.sum / Math.max(1, v.cnt)), count: v.cnt })).sort((a,b) => a.avg_ms - b.avg_ms).slice(0, 6);
-                          const label = chartPeriod === "day" ? "14 hari" : chartPeriod === "week" ? "12 minggu" : chartPeriod === "month" ? "12 bulan" : "6 tahun";
-                          return rows.length ? (
-                            <div className="mt-4 space-y-1.5 border-t border-white/[0.06] pt-4">
-                              <p className="text-[13px] font-medium tracking-[0.06em] text-zinc-500 uppercase">Rata-rata per model ({label})</p>
-                              {rows.map((r) => (
-                                <div key={r.model} className="flex items-center justify-between gap-2 text-[16px]">
-                                  <span className="truncate font-mono text-zinc-300 text-[14px]" title={r.model}>{r.model}</span>
-                                  <span className="shrink-0 tabular-nums text-zinc-400 text-[14px]">{r.avg_ms} ms · {r.count}x</span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : null;
-                        })()}
+                        {realStats.dailyLatency &&
+                          (() => {
+                            const agg: Record<string, { sum: number; cnt: number }> = {};
+                            realStats.dailyLatency.forEach((d: any) =>
+                              (d.models || []).forEach((m: any) => {
+                                const k = m.model || "unknown";
+                                if (!agg[k]) agg[k] = { sum: 0, cnt: 0 };
+                                agg[k].sum += (m.avg_ms || 0) * (m.count || 1);
+                                agg[k].cnt += m.count || 1;
+                              }),
+                            );
+                            const rows = Object.entries(agg)
+                              .map(([model, v]) => ({
+                                model,
+                                avg_ms: Math.round(v.sum / Math.max(1, v.cnt)),
+                                count: v.cnt,
+                              }))
+                              .sort((a, b) => a.avg_ms - b.avg_ms)
+                              .slice(0, 6);
+                            const label =
+                              chartPeriod === "day"
+                                ? "14 hari"
+                                : chartPeriod === "week"
+                                  ? "12 minggu"
+                                  : chartPeriod === "month"
+                                    ? "12 bulan"
+                                    : "6 tahun";
+                            return rows.length ? (
+                              <div className="mt-4 space-y-1.5 border-t border-white/[0.06] pt-4">
+                                <p className="text-[13px] font-medium tracking-[0.06em] text-zinc-500 uppercase">
+                                  Rata-rata per model ({label})
+                                </p>
+                                {rows.map((r) => (
+                                  <div
+                                    key={r.model}
+                                    className="flex items-center justify-between gap-2 text-[16px]"
+                                  >
+                                    <span
+                                      className="truncate font-mono text-zinc-300 text-[14px]"
+                                      title={r.model}
+                                    >
+                                      {r.model}
+                                    </span>
+                                    <span className="shrink-0 tabular-nums text-zinc-400 text-[14px]">
+                                      {r.avg_ms} ms · {r.count}x
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null;
+                          })()}
                       </CardContent>
                     </Card>
                   </div>
 
                   {/* Token per user (kumulatif + hari ini) */}
                   <Card className={cardBase}>
-                    <CardHeader className={cardHeaderCls}><CardTitle className={`${tCard} flex items-center gap-2`}><BarChart3 className="h-3.5 w-3.5 text-emerald-400" /> Token per User</CardTitle></CardHeader>
+                    <CardHeader className={cardHeaderCls}>
+                      <CardTitle className={`${tCard} flex items-center gap-2`}>
+                        <BarChart3 className="h-3.5 w-3.5 text-emerald-400" /> Token per User
+                      </CardTitle>
+                    </CardHeader>
                     <CardContent className={cardContentCls}>
-                      {!tokenStats || !Array.isArray(tokenStats.by_user) || tokenStats.by_user.length === 0 ? (
-                        <div className="py-10 text-center text-[16px] text-zinc-500">Belum ada token tercatat.</div>
+                      {!tokenStats ||
+                      !Array.isArray(tokenStats.by_user) ||
+                      tokenStats.by_user.length === 0 ? (
+                        <div className="py-10 text-center text-[16px] text-zinc-500">
+                          Belum ada token tercatat.
+                        </div>
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="w-full text-[14px]">
@@ -1654,27 +2577,54 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                             </thead>
                             <tbody>
                               {tokenStats.by_user.map((r: any) => (
-                                <tr key={r.owner} className="border-b border-white/[0.04] text-zinc-300">
+                                <tr
+                                  key={r.owner}
+                                  className="border-b border-white/[0.04] text-zinc-300"
+                                >
                                   <td className="max-w-[220px] truncate px-3 py-2.5">
                                     {r.label}
                                     {r.kind === "trial" && (
-                                      <span className="ml-2 rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[12px] text-zinc-400">trial</span>
+                                      <span className="ml-2 rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[12px] text-zinc-400">
+                                        trial
+                                      </span>
                                     )}
                                   </td>
-                                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtNum(r.today)}</td>
-                                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtNum(r.prompt)}</td>
-                                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtNum(r.completion)}</td>
-                                  <td className="px-3 py-2.5 text-right font-mono font-medium tabular-nums text-zinc-100">{fmtNum(r.total)}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">
+                                    {fmtNum(r.today)}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">
+                                    {fmtNum(r.prompt)}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">
+                                    {fmtNum(r.completion)}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right font-mono font-medium tabular-nums text-zinc-100">
+                                    {fmtNum(r.total)}
+                                  </td>
                                   <td className="px-3 py-2.5">
                                     <div className="flex items-center justify-end gap-2">
                                       <div className="h-1.5 w-14 overflow-hidden rounded-full bg-white/[0.06]">
-                                        <div className="h-full rounded-full bg-violet-400/80" style={{ width: `${Math.min(100, Number(r.share || 0))}%` }} />
+                                        <div
+                                          className="h-full rounded-full bg-violet-400/80"
+                                          style={{
+                                            width: `${Math.min(100, Number(r.share || 0))}%`,
+                                          }}
+                                        />
                                       </div>
-                                      <span className="w-12 text-right font-mono tabular-nums text-zinc-500">{Number(r.share || 0).toLocaleString("id-ID", { maximumFractionDigits: 1 })}%</span>
+                                      <span className="w-12 text-right font-mono tabular-nums text-zinc-500">
+                                        {Number(r.share || 0).toLocaleString("id-ID", {
+                                          maximumFractionDigits: 1,
+                                        })}
+                                        %
+                                      </span>
                                     </div>
                                   </td>
                                   <td className="px-3 py-2.5 text-right font-mono tabular-nums">
-                                    {r.kind === "user" ? (Number(r.max_prompts) > 0 ? `${r.prompts_used}/${r.max_prompts}` : `${r.prompts_used} ∞`) : "-"}
+                                    {r.kind === "user"
+                                      ? Number(r.max_prompts) > 0
+                                        ? `${r.prompts_used}/${r.max_prompts}`
+                                        : `${r.prompts_used} ∞`
+                                      : "-"}
                                   </td>
                                 </tr>
                               ))}
@@ -1690,20 +2640,40 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                       <CardHeader className={cardHeaderCls}>
                         <CardTitle className={tCard}>
                           <span className="flex items-center justify-between gap-2 w-full">
-                            <span className="flex items-center gap-2"><Cpu className="h-3.5 w-3.5 text-emerald-400" /> Ready - Katalog</span>
-                            <Badge variant="outline" className="border-white/10 bg-white/[0.06] text-zinc-300 font-mono text-[13px] tabular-nums">{availableModels.length} model</Badge>
+                            <span className="flex items-center gap-2">
+                              <Cpu className="h-3.5 w-3.5 text-emerald-400" /> Ready - Katalog
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className="border-white/10 bg-white/[0.06] text-zinc-300 font-mono text-[13px] tabular-nums"
+                            >
+                              {availableModels.length} model
+                            </Badge>
                           </span>
                         </CardTitle>
                       </CardHeader>
                       <CardContent className={cardContentCls}>
                         {availableModels.length === 0 ? (
-                          <p className={tBody}>Belum load katalog. Buka tab AI Models → isi Kredensial Katalog → Muat ulang.</p>
+                          <p className={tBody}>
+                            Belum load katalog. Buka tab AI Models → isi Kredensial Katalog → Muat
+                            ulang.
+                          </p>
                         ) : (
                           <div className="flex flex-wrap gap-1.5 max-h-[88px] overflow-auto pr-1">
                             {availableModels.slice(0, 24).map((m: any) => (
-                              <span key={m.id} className="inline-flex max-w-[220px] truncate rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[13px] font-medium text-zinc-300" title={m.id}>{m.name ? `${m.name} - ${m.id}` : m.id}</span>
+                              <span
+                                key={m.id}
+                                className="inline-flex max-w-[220px] truncate rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[13px] font-medium text-zinc-300"
+                                title={m.id}
+                              >
+                                {m.name ? `${m.name} - ${m.id}` : m.id}
+                              </span>
                             ))}
-                            {availableModels.length > 24 && <span className="text-[13px] text-zinc-500">+{availableModels.length - 24} lagi</span>}
+                            {availableModels.length > 24 && (
+                              <span className="text-[13px] text-zinc-500">
+                                +{availableModels.length - 24} lagi
+                              </span>
+                            )}
                           </div>
                         )}
                       </CardContent>
@@ -1712,8 +2682,15 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                       <CardHeader className={cardHeaderCls}>
                         <CardTitle className={tCard}>
                           <span className="flex items-center justify-between gap-2 w-full">
-                            <span className="flex items-center gap-2"><Layers className="h-3.5 w-3.5 text-amber-400" /> Fallback Chain</span>
-                            <Badge variant="outline" className="border-white/10 bg-white/[0.06] text-zinc-300 font-mono text-[13px] tabular-nums">{modelConfig.fallback_models.length} model</Badge>
+                            <span className="flex items-center gap-2">
+                              <Layers className="h-3.5 w-3.5 text-amber-400" /> Fallback Chain
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className="border-white/10 bg-white/[0.06] text-zinc-300 font-mono text-[13px] tabular-nums"
+                            >
+                              {modelConfig.fallback_models.length} model
+                            </Badge>
                           </span>
                         </CardTitle>
                       </CardHeader>
@@ -1725,29 +2702,69 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                             {modelConfig.fallback_models.map((mid: string) => {
                               const isActive = mid === modelConfig.active_model;
                               return (
-                                <span key={mid} className={`inline-flex max-w-[220px] truncate rounded-full border px-2.5 py-1 text-[13px] font-medium ${isActive ? "border-white/15 bg-white/10 text-zinc-200" : "border-white/10 bg-white/[0.06] text-zinc-300"}`} title={mid}>{mid}</span>
+                                <span
+                                  key={mid}
+                                  className={`inline-flex max-w-[220px] truncate rounded-full border px-2.5 py-1 text-[13px] font-medium ${isActive ? "border-white/15 bg-white/10 text-zinc-200" : "border-white/10 bg-white/[0.06] text-zinc-300"}`}
+                                  title={mid}
+                                >
+                                  {mid}
+                                </span>
                               );
                             })}
                           </div>
                         )}
-                        <p className="mt-3 text-[13px] text-zinc-500">Aktif: <span className="font-mono text-zinc-300">{modelConfig.active_model || "-"}</span></p>
+                        <p className="mt-3 text-[13px] text-zinc-500">
+                          Aktif:{" "}
+                          <span className="font-mono text-zinc-300">
+                            {modelConfig.active_model || "-"}
+                          </span>
+                        </p>
                       </CardContent>
                     </Card>
                   </div>
 
                   <div className="grid gap-4 lg:grid-cols-2">
                     <Card className={cardBase}>
-                      <CardHeader className={cardHeaderCls}><CardTitle className={`${tCard} flex items-center gap-2`}><Database className="h-3.5 w-3.5 text-violet-400" /> Knowledge by Category</CardTitle></CardHeader>
+                      <CardHeader className={cardHeaderCls}>
+                        <CardTitle className={`${tCard} flex items-center gap-2`}>
+                          <Database className="h-3.5 w-3.5 text-violet-400" /> Knowledge by Category
+                        </CardTitle>
+                      </CardHeader>
                       <CardContent className={cardContentCls}>
                         {categoryData.length === 0 ? (
-                          <div className="py-16 text-center text-[16px] text-zinc-500">Belum ada knowledge.</div>
+                          <div className="py-16 text-center text-[16px] text-zinc-500">
+                            Belum ada knowledge.
+                          </div>
                         ) : (
                           <ResponsiveContainer width="100%" height={280}>
                             <PieChart>
-                              <Pie data={categoryData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`} outerRadius={90} dataKey="value">
-                                {categoryData.map((entry, index) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}
+                              <Pie
+                                data={categoryData}
+                                cx="50%"
+                                cy="50%"
+                                labelLine={false}
+                                label={({ name, percent }) =>
+                                  `${name} ${((percent || 0) * 100).toFixed(0)}%`
+                                }
+                                outerRadius={90}
+                                dataKey="value"
+                              >
+                                {categoryData.map((entry, index) => (
+                                  <Cell
+                                    key={`cell-${index}`}
+                                    fill={COLORS[index % COLORS.length]}
+                                  />
+                                ))}
                               </Pie>
-                              <Tooltip contentStyle={{ backgroundColor: '#09090b', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: '#fff', fontSize: '12px' }} />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: "#09090b",
+                                  border: "1px solid rgba(255,255,255,0.08)",
+                                  borderRadius: "10px",
+                                  color: "#fff",
+                                  fontSize: "12px",
+                                }}
+                              />
                             </PieChart>
                           </ResponsiveContainer>
                         )}
@@ -1755,18 +2772,60 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                     </Card>
 
                     <Card className={cardBase}>
-                      <CardHeader className={cardHeaderCls}><CardTitle className={`${tCard} flex items-center gap-2`}><BarChart3 className="h-3.5 w-3.5 text-emerald-400" /> Top Prompts by User</CardTitle></CardHeader>
+                      <CardHeader className={cardHeaderCls}>
+                        <CardTitle className={`${tCard} flex items-center gap-2`}>
+                          <BarChart3 className="h-3.5 w-3.5 text-emerald-400" /> Top Prompts by User
+                        </CardTitle>
+                      </CardHeader>
                       <CardContent className={cardContentCls}>
                         {!realStats.topPrompts || realStats.topPrompts.length === 0 ? (
-                          <div className="py-16 text-center text-[16px] text-zinc-500">Belum ada usage.</div>
+                          <div className="py-16 text-center text-[16px] text-zinc-500">
+                            Belum ada usage.
+                          </div>
                         ) : (
                           <ResponsiveContainer width="100%" height={280}>
-                            <BarChart data={realStats.topPrompts} layout="vertical" margin={{ left: 12, right: 16 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" opacity={0.35} horizontal={false} />
-                              <XAxis type="number" stroke="#52525b" fontSize={11} fontFamily="monospace" tickFormatter={fmtCompact} axisLine={false} tickLine={false} allowDecimals={false} />
-                              <YAxis type="category" dataKey="username" stroke="#a1a1aa" fontSize={11} fontFamily="monospace" width={90} axisLine={false} tickLine={false} />
-                              <Tooltip content={<ChartTooltip unit=" prompt" />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-                              <Bar dataKey="prompts_used" name="Prompt terpakai" fill="#34d399" radius={[0, 4, 4, 0]} barSize={14} />
+                            <BarChart
+                              data={realStats.topPrompts}
+                              layout="vertical"
+                              margin={{ left: 12, right: 16 }}
+                            >
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                stroke="#27272a"
+                                opacity={0.35}
+                                horizontal={false}
+                              />
+                              <XAxis
+                                type="number"
+                                stroke="#52525b"
+                                fontSize={11}
+                                fontFamily="monospace"
+                                tickFormatter={fmtCompact}
+                                axisLine={false}
+                                tickLine={false}
+                                allowDecimals={false}
+                              />
+                              <YAxis
+                                type="category"
+                                dataKey="username"
+                                stroke="#a1a1aa"
+                                fontSize={11}
+                                fontFamily="monospace"
+                                width={90}
+                                axisLine={false}
+                                tickLine={false}
+                              />
+                              <Tooltip
+                                content={<ChartTooltip unit=" prompt" />}
+                                cursor={{ fill: "rgba(255,255,255,0.03)" }}
+                              />
+                              <Bar
+                                dataKey="prompts_used"
+                                name="Prompt terpakai"
+                                fill="#34d399"
+                                radius={[0, 4, 4, 0]}
+                                barSize={14}
+                              />
                             </BarChart>
                           </ResponsiveContainer>
                         )}
@@ -1775,63 +2834,119 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                   </div>
 
                   <Card className={cardBase}>
-                    <CardHeader className={cardHeaderCls}><CardTitle className={`${tCard} flex items-center gap-2`}><Activity className="h-3.5 w-3.5 text-emerald-400" /> System</CardTitle></CardHeader>
+                    <CardHeader className={cardHeaderCls}>
+                      <CardTitle className={`${tCard} flex items-center gap-2`}>
+                        <Activity className="h-3.5 w-3.5 text-emerald-400" /> System
+                      </CardTitle>
+                    </CardHeader>
                     <CardContent className={cardContentCls}>
                       <div className="grid gap-4 md:grid-cols-3">
                         <div className="flex items-center justify-between rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3">
                           <span className={tLabel}>Uptime</span>
-                          <span className="text-[16px] font-medium tracking-tight text-zinc-200 tabular-nums">{realStats.uptime} · ONLINE</span>
+                          <span className="text-[16px] font-medium tracking-tight text-zinc-200 tabular-nums">
+                            {realStats.uptime} · ONLINE
+                          </span>
                         </div>
                         <div className="flex items-center justify-between rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3">
-                          <span className={tLabel}>API</span><span className="text-[16px] font-medium tracking-tight text-zinc-200">READY · LIVE</span>
+                          <span className={tLabel}>API</span>
+                          <span className="text-[16px] font-medium tracking-tight text-zinc-200">
+                            READY · LIVE
+                          </span>
                         </div>
                         <div className="flex items-center justify-between gap-2 rounded-xl border border-white/[0.07] bg-white/[0.03] px-4 py-3">
-                          <span className={tLabel}>Model</span><span className="text-[16px] font-medium text-zinc-200 truncate max-w-[160px] tabular-nums">{modelConfig.active_model.split('/')[1]?.slice(0, 22) || '-'}</span>
+                          <span className={tLabel}>Model</span>
+                          <span className="text-[16px] font-medium text-zinc-200 truncate max-w-[160px] tabular-nums">
+                            {modelConfig.active_model.split("/")[1]?.slice(0, 22) || "-"}
+                          </span>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
 
-                  <section className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4" aria-label="Audit log">
+                  <section
+                    className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4"
+                    aria-label="Audit log"
+                  >
                     <div className="mb-3 flex items-center justify-between">
                       <p className={tLabel}>Log aktivitas admin (20 terakhir)</p>
-                      <button type="button" onClick={loadAudit} className="text-[13px] text-zinc-400 hover:text-zinc-200">Muat ulang</button>
+                      <button
+                        type="button"
+                        onClick={loadAudit}
+                        className="text-[13px] text-zinc-400 hover:text-zinc-200"
+                      >
+                        Muat ulang
+                      </button>
                     </div>
                     {auditRows.filter((r) => !String(r.action).startsWith("user_")).length === 0 ? (
                       <p className="text-[14px] text-zinc-500">Belum ada aktivitas tercatat.</p>
                     ) : (
                       <ul className="divide-y divide-white/[0.05] text-[13px]">
-                        {auditRows.filter((r) => !String(r.action).startsWith("user_")).slice(0, 20).map((r) => (
-                          <li key={`${r.created_at}-${r.action}-${r.actor}`} className="flex flex-wrap gap-x-3 gap-y-0.5 py-2">
-                            <span className="font-mono text-zinc-500">{fmtDateTime(r.created_at)}</span>
-                            <span className="text-zinc-300">{r.actor}</span>
-                            <span className="text-zinc-400">{r.action}</span>
-                            {r.target && <span className="font-mono text-zinc-500">{r.target}</span>}
-                            {r.detail && <span className="text-zinc-500">{r.detail}</span>}
-                          </li>
-                        ))}
+                        {auditRows
+                          .filter((r) => !String(r.action).startsWith("user_"))
+                          .slice(0, 20)
+                          .map((r) => (
+                            <li
+                              key={`${r.created_at}-${r.action}-${r.actor}`}
+                              className="flex flex-wrap gap-x-3 gap-y-0.5 py-2"
+                            >
+                              <span className="font-mono text-zinc-500">
+                                {fmtDateTime(r.created_at)}
+                              </span>
+                              <span className="text-zinc-300">{r.actor}</span>
+                              <span className="text-zinc-400">{r.action}</span>
+                              {r.target && (
+                                <span className="font-mono text-zinc-500">{r.target}</span>
+                              )}
+                              {r.detail && <span className="text-zinc-500">{r.detail}</span>}
+                            </li>
+                          ))}
                       </ul>
                     )}
                   </section>
 
-                  <section className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4" aria-label="Log login user">
+                  <section
+                    className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4"
+                    aria-label="Log login user"
+                  >
                     <div className="mb-3 flex items-center justify-between">
                       <p className={tLabel}>Log login user (20 terakhir)</p>
-                      <button type="button" onClick={loadAudit} className="text-[13px] text-zinc-400 hover:text-zinc-200">Muat ulang</button>
+                      <button
+                        type="button"
+                        onClick={loadAudit}
+                        className="text-[13px] text-zinc-400 hover:text-zinc-200"
+                      >
+                        Muat ulang
+                      </button>
                     </div>
                     {auditRows.filter((r) => String(r.action).startsWith("user_")).length === 0 ? (
                       <p className="text-[14px] text-zinc-500">Belum ada login user tercatat.</p>
                     ) : (
                       <ul className="divide-y divide-white/[0.05] text-[13px]">
-                        {auditRows.filter((r) => String(r.action).startsWith("user_")).slice(0, 20).map((r) => (
-                          <li key={`${r.created_at}-${r.action}-${r.actor}`} className="flex flex-wrap gap-x-3 gap-y-0.5 py-2">
-                            <span className="font-mono text-zinc-500">{fmtDateTime(r.created_at)}</span>
-                            <span className="text-zinc-300">{r.actor}</span>
-                            <span className={r.action === "user_login_failed" ? "text-red-300" : "text-emerald-300"}>{r.action}</span>
-                            {r.ip && <span className="font-mono text-zinc-500">{r.ip}</span>}
-                            {r.detail && <span className="text-zinc-500">{r.detail}</span>}
-                          </li>
-                        ))}
+                        {auditRows
+                          .filter((r) => String(r.action).startsWith("user_"))
+                          .slice(0, 20)
+                          .map((r) => (
+                            <li
+                              key={`${r.created_at}-${r.action}-${r.actor}`}
+                              className="flex flex-wrap gap-x-3 gap-y-0.5 py-2"
+                            >
+                              <span className="font-mono text-zinc-500">
+                                {fmtDateTime(r.created_at)}
+                              </span>
+                              <span className="text-zinc-300">{r.actor}</span>
+                              <span
+                                className={
+                                  r.action === "user_login_failed"
+                                    ? "text-red-300"
+                                    : "text-emerald-300"
+                                }
+                              >
+                                {r.action}
+                              </span>
+                              {r.ip && <span className="font-mono text-zinc-500">{r.ip}</span>}
+                              {r.detail && <span className="text-zinc-500">{r.detail}</span>}
+                            </li>
+                          ))}
                       </ul>
                     )}
                   </section>
@@ -1842,69 +2957,182 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
 
           {/* USERS */}
           {activeTab === "users" && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <SectionHeader title="Users" desc="Kelola akun pengguna, batas prompt, dan pengaturan akses." />
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              <SectionHeader
+                title="Users"
+                desc="Kelola akun pengguna, batas prompt, dan pengaturan akses."
+              />
 
               <Card className={cardBase}>
-                <CardHeader className={cardHeaderCls}><CardTitle className={tCardPlain}>Pengaturan</CardTitle></CardHeader>
+                <CardHeader className={cardHeaderCls}>
+                  <CardTitle className={tCardPlain}>Pengaturan</CardTitle>
+                </CardHeader>
                 <CardContent className={`${cardContentCls} flex flex-wrap items-end gap-4`}>
                   <div className="space-y-2">
                     <div className="flex items-center gap-1.5">
                       <Label className={tLabelPlain}>Expiry token user (jam)</Label>
                       <FieldInfo text="Masa berlaku token login user, dalam jam. Berlaku untuk login baru setelah disimpan." />
                     </div>
-                    <Input type="number" min={1} max={720} value={appSettings.user_token_expiry_hours} onChange={(e) => setAppSettings((p) => ({ ...p, user_token_expiry_hours: Number(e.target.value) }))} className={`${inputCls} w-32`} />
+                    <Input
+                      type="number"
+                      min={1}
+                      max={720}
+                      value={appSettings.user_token_expiry_hours}
+                      onChange={(e) =>
+                        setAppSettings((p) => ({
+                          ...p,
+                          user_token_expiry_hours: Number(e.target.value),
+                        }))
+                      }
+                      className={`${inputCls} w-32`}
+                    />
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-1.5">
                       <Label className={tLabelPlain}>Trial prompts (0=matikan trial)</Label>
                       <FieldInfo text="Jumlah prompt gratis untuk trial per IP. Setelah habis, hit berikutnya wajib login. Isi 0 untuk mematikan trial." />
                     </div>
-                    <Input type="number" min={0} max={100} value={appSettings.trial_prompts} onChange={(e) => setAppSettings((p) => ({ ...p, trial_prompts: Number(e.target.value) }))} className={`${inputCls} w-32`} />
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={appSettings.trial_prompts}
+                      onChange={(e) =>
+                        setAppSettings((p) => ({ ...p, trial_prompts: Number(e.target.value) }))
+                      }
+                      className={`${inputCls} w-32`}
+                    />
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-1.5">
                       <Label className={tLabelPlain}>Jumlah chunk RAG (pertanyaan pendek)</Label>
                       <FieldInfo text="Berapa banyak potongan knowledge base yang diambil untuk pertanyaan pendek. Berlaku pada chat berikutnya." />
                     </div>
-                    <Input type="number" min={1} max={30} value={appSettings.rag_match_count_short} onChange={(e) => setAppSettings((p) => ({ ...p, rag_match_count_short: Number(e.target.value) }))} className={`${inputCls} w-32`} />
+                    <Input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={appSettings.rag_match_count_short}
+                      onChange={(e) =>
+                        setAppSettings((p) => ({
+                          ...p,
+                          rag_match_count_short: Number(e.target.value),
+                        }))
+                      }
+                      className={`${inputCls} w-32`}
+                    />
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-1.5">
                       <Label className={tLabelPlain}>Jumlah chunk RAG (pertanyaan panjang)</Label>
                       <FieldInfo text="Berapa banyak potongan knowledge base yang diambil untuk pertanyaan panjang/kompleks. Berlaku pada chat berikutnya." />
                     </div>
-                    <Input type="number" min={1} max={30} value={appSettings.rag_match_count_long} onChange={(e) => setAppSettings((p) => ({ ...p, rag_match_count_long: Number(e.target.value) }))} className={`${inputCls} w-32`} />
+                    <Input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={appSettings.rag_match_count_long}
+                      onChange={(e) =>
+                        setAppSettings((p) => ({
+                          ...p,
+                          rag_match_count_long: Number(e.target.value),
+                        }))
+                      }
+                      className={`${inputCls} w-32`}
+                    />
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center gap-1.5">
-                      <Label className={tLabelPlain}>Threshold similarity (kosong = default env)</Label>
+                      <Label className={tLabelPlain}>
+                        Threshold similarity (kosong = default env)
+                      </Label>
                       <FieldInfo text="Batas kemiripan minimum (0–1) agar chunk diambil. Kosong = pakai nilai env MATCH_THRESHOLD di server." />
                     </div>
                     <div className="flex items-center gap-2">
-                      <Input type="number" step={0.01} min={0} max={1} value={appSettings.rag_match_threshold ?? ""} placeholder="env" onChange={(e) => setAppSettings((p) => ({ ...p, rag_match_threshold: e.target.value === "" ? null : Number(e.target.value) }))} className={`${inputCls} w-32`} />
-                      <Button variant="outline" onClick={() => setAppSettings((p) => ({ ...p, rag_match_threshold: null }))} className="h-9 text-[14px]">Reset</Button>
+                      <Input
+                        type="number"
+                        step={0.01}
+                        min={0}
+                        max={1}
+                        value={appSettings.rag_match_threshold ?? ""}
+                        placeholder="env"
+                        onChange={(e) =>
+                          setAppSettings((p) => ({
+                            ...p,
+                            rag_match_threshold:
+                              e.target.value === "" ? null : Number(e.target.value),
+                          }))
+                        }
+                        className={`${inputCls} w-32`}
+                      />
+                      <Button
+                        variant="outline"
+                        onClick={() => setAppSettings((p) => ({ ...p, rag_match_threshold: null }))}
+                        className="h-9 text-[14px]"
+                      >
+                        Reset
+                      </Button>
                     </div>
                   </div>
-                  <Button onClick={handleSaveSettings} className="h-9 bg-white text-black hover:bg-zinc-100 gap-1.5 text-[16px] font-medium"><Save className="h-4 w-4" /> Simpan</Button>
-                  <p className="text-[13px] leading-relaxed text-zinc-500 w-full">Expiry berlaku untuk login baru. Trial per IP, hit ke-{appSettings.trial_prompts + 1} wajib login. Threshold kosong memakai env MATCH_THRESHOLD. Perubahan chunk berlaku pada chat berikutnya.</p>
+                  <Button
+                    onClick={handleSaveSettings}
+                    className="h-9 bg-white text-black hover:bg-zinc-100 gap-1.5 text-[16px] font-medium"
+                  >
+                    <Save className="h-4 w-4" /> Simpan
+                  </Button>
+                  <p className="text-[13px] leading-relaxed text-zinc-500 w-full">
+                    Expiry berlaku untuk login baru. Trial per IP, hit ke-
+                    {appSettings.trial_prompts + 1} wajib login. Threshold kosong memakai env
+                    MATCH_THRESHOLD. Perubahan chunk berlaku pada chat berikutnya.
+                  </p>
                 </CardContent>
               </Card>
 
               <div className="flex items-center justify-between">
                 <h3 className={tSub}>Daftar Pengguna</h3>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" onClick={handleSyncLocalUsers} disabled={syncingUsers} className="h-9 border-white/10 bg-white/[0.04] text-[14px] text-zinc-300 gap-1.5">
-                    {syncingUsers ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Sinkron user lokal
+                  <Button
+                    variant="outline"
+                    onClick={handleSyncLocalUsers}
+                    disabled={syncingUsers}
+                    className="h-9 border-white/10 bg-white/[0.04] text-[14px] text-zinc-300 gap-1.5"
+                  >
+                    {syncingUsers ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}{" "}
+                    Sinkron user lokal
                   </Button>
-                  <Button onClick={() => { setEditingUserId(null); setUserForm({ username: "", password: "", display_name: "", max_prompts: 50, is_active: true }); setUserModalOpen(true); }} className="h-9 bg-white text-black hover:bg-zinc-100 gap-1.5 text-[16px] font-medium"><Plus className="h-4 w-4" /> Tambah User</Button>
+                  <Button
+                    onClick={() => {
+                      setEditingUserId(null);
+                      setUserForm({
+                        username: "",
+                        password: "",
+                        display_name: "",
+                        max_prompts: 50,
+                        is_active: true,
+                      });
+                      setUserModalOpen(true);
+                    }}
+                    className="h-9 bg-white text-black hover:bg-zinc-100 gap-1.5 text-[16px] font-medium"
+                  >
+                    <Plus className="h-4 w-4" /> Tambah User
+                  </Button>
                 </div>
               </div>
 
               <Card className={`${cardBase} overflow-hidden`}>
                 <CardContent className="p-0">
                   {usersLoading ? (
-                    <div className="p-6 text-[16px] text-zinc-500 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Memuat…</div>
+                    <div className="p-6 text-[16px] text-zinc-500 flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Memuat…
+                    </div>
                   ) : users.length === 0 ? (
                     <div className="p-6 text-[16px] text-zinc-500">Belum ada user.</div>
                   ) : (
@@ -1912,20 +3140,37 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                       <table className="w-full min-w-[900px] border-collapse text-left">
                         <thead>
                           <tr className="border-b border-white/[0.08] bg-white/[0.02]">
-                            <th className="px-5 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">User</th>
-                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">Metode</th>
-                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">Status</th>
-                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">Kuota prompt</th>
-                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">Dibuat</th>
-                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">Diperbarui</th>
-                            <th className="px-5 py-3 text-right text-[12px] font-semibold tracking-[0.08em] text-zinc-500">Aksi</th>
+                            <th className="px-5 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">
+                              User
+                            </th>
+                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">
+                              Metode
+                            </th>
+                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">
+                              Status
+                            </th>
+                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">
+                              Kuota prompt
+                            </th>
+                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">
+                              Dibuat
+                            </th>
+                            <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">
+                              Diperbarui
+                            </th>
+                            <th className="px-5 py-3 text-right text-[12px] font-semibold tracking-[0.08em] text-zinc-500">
+                              Aksi
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/[0.06]">
                           {users.map((u: any) => {
                             const isUnlimited = Number(u.max_prompts) === 0;
-                            const exhausted = !isUnlimited && Number(u.prompts_used || 0) >= Number(u.max_prompts);
-                            const remaining = isUnlimited ? Infinity : Math.max(0, Number(u.max_prompts) - Number(u.prompts_used || 0));
+                            const exhausted =
+                              !isUnlimited && Number(u.prompts_used || 0) >= Number(u.max_prompts);
+                            const remaining = isUnlimited
+                              ? Infinity
+                              : Math.max(0, Number(u.max_prompts) - Number(u.prompts_used || 0));
                             const isGoogle = (u.provider || "").toLowerCase() === "google";
                             return (
                               <tr key={u.id} className="transition-colors hover:bg-white/[0.02]">
@@ -1935,8 +3180,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                                       {(u.display_name || u.username || "?").slice(0, 2)}
                                     </span>
                                     <div className="min-w-0">
-                                      <div className={`text-[15px] font-medium ${cUser}`}>{u.username}</div>
-                                      <div className="truncate text-[13px] text-zinc-500">{u.display_name || "-"}{u.email ? ` · ${u.email}` : ""}</div>
+                                      <div className={`text-[15px] font-medium ${cUser}`}>
+                                        {u.username}
+                                      </div>
+                                      <div className="truncate text-[13px] text-zinc-500">
+                                        {u.display_name || "-"}
+                                        {u.email ? ` · ${u.email}` : ""}
+                                      </div>
                                     </div>
                                   </div>
                                 </td>
@@ -1944,19 +3194,46 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                                   <div className="flex flex-col items-start gap-1">
                                     {isGoogle ? (
                                       <span className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[12px] font-medium text-zinc-200">
-                                        <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                                        <svg
+                                          className="h-3 w-3"
+                                          viewBox="0 0 24 24"
+                                          fill="currentColor"
+                                        >
+                                          <path
+                                            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                                            fill="#4285F4"
+                                          />
+                                          <path
+                                            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                                            fill="#34A853"
+                                          />
+                                          <path
+                                            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                                            fill="#FBBC05"
+                                          />
+                                          <path
+                                            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                                            fill="#EA4335"
+                                          />
+                                        </svg>
                                         Google
                                       </span>
                                     ) : (
                                       <span className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[12px] font-medium text-zinc-200">
-                                        {(u.provider || "").toLowerCase() === "manual" ? "Dibuat admin" : "Email & sandi"}
+                                        {(u.provider || "").toLowerCase() === "manual"
+                                          ? "Dibuat admin"
+                                          : "Email & sandi"}
                                       </span>
                                     )}
                                     {u.email ? (
                                       isGoogle || u.email_verified ? (
-                                        <span className="text-[11px] font-medium text-emerald-400">Email terverifikasi</span>
+                                        <span className="text-[11px] font-medium text-emerald-400">
+                                          Email terverifikasi
+                                        </span>
                                       ) : (
-                                        <span className="text-[11px] font-medium text-amber-400">Email belum diverifikasi</span>
+                                        <span className="text-[11px] font-medium text-amber-400">
+                                          Email belum diverifikasi
+                                        </span>
                                       )
                                     ) : (
                                       <span className="text-[11px] text-zinc-500">Tanpa email</span>
@@ -1966,39 +3243,91 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                                 <td className="px-4 py-3.5">
                                   {!u.is_active ? (
                                     <span className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 text-[11.5px] font-medium text-zinc-400">
-                                      <X className="h-3 w-3 text-red-500/80" strokeWidth={2.5} /> Nonaktif
+                                      <X className="h-3 w-3 text-red-500/80" strokeWidth={2.5} />{" "}
+                                      Nonaktif
                                     </span>
                                   ) : exhausted ? (
                                     <span className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 text-[11.5px] font-medium text-zinc-400">
-                                      <AlertCircle className="h-3 w-3 text-amber-500/80" strokeWidth={2.5} /> Kuota habis
+                                      <AlertCircle
+                                        className="h-3 w-3 text-amber-500/80"
+                                        strokeWidth={2.5}
+                                      />{" "}
+                                      Kuota habis
                                     </span>
                                   ) : (
                                     <span className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 text-[11.5px] font-medium text-zinc-400">
-                                      <Check className="h-3 w-3 text-emerald-500/80" strokeWidth={2.5} /> Aktif
+                                      <Check
+                                        className="h-3 w-3 text-emerald-500/80"
+                                        strokeWidth={2.5}
+                                      />{" "}
+                                      Aktif
                                     </span>
                                   )}
                                 </td>
                                 <td className="px-4 py-3.5">
                                   <div className="text-[14px] font-medium tabular-nums text-zinc-200">
                                     {u.prompts_used || 0} / {isUnlimited ? "∞" : u.max_prompts}
-                                    {!isUnlimited && <span className="ml-1.5 text-zinc-500">(sisa {remaining})</span>}
+                                    {!isUnlimited && (
+                                      <span className="ml-1.5 text-zinc-500">
+                                        (sisa {remaining})
+                                      </span>
+                                    )}
                                   </div>
                                   {!isUnlimited && (
                                     <div className="mt-1.5 h-1 w-28 overflow-hidden rounded-full bg-white/[0.06]">
                                       <div
                                         className={`h-full rounded-full ${exhausted ? "bg-amber-500" : "bg-emerald-500"}`}
-                                        style={{ width: `${Math.min(100, Math.round((Number(u.prompts_used || 0) / Number(u.max_prompts)) * 100))}%` }}
+                                        style={{
+                                          width: `${Math.min(100, Math.round((Number(u.prompts_used || 0) / Number(u.max_prompts)) * 100))}%`,
+                                        }}
                                       />
                                     </div>
                                   )}
                                 </td>
-                                <td className="px-4 py-3.5 text-[13px] tabular-nums text-zinc-400">{fmtDateTime(u.created_at)}</td>
-                                <td className="px-4 py-3.5 text-[13px] tabular-nums text-zinc-500">{fmtDateTime(u.updated_at)}</td>
+                                <td className="px-4 py-3.5 text-[13px] tabular-nums text-zinc-400">
+                                  {fmtDateTime(u.created_at)}
+                                </td>
+                                <td className="px-4 py-3.5 text-[13px] tabular-nums text-zinc-500">
+                                  {fmtDateTime(u.updated_at)}
+                                </td>
                                 <td className="px-5 py-3.5">
                                   <div className="flex items-center justify-end gap-1.5">
-                                    <Button variant="outline" size="sm" onClick={() => handleResetUsage(u.id)} className="h-8 border-white/10 text-[13px]" title="Reset usage prompt">Reset</Button>
-                                    <Button variant="outline" size="sm" onClick={() => { setEditingUserId(u.id); setUserForm({ username: u.username, password: "", display_name: u.display_name || "", max_prompts: Number(u.max_prompts), is_active: Boolean(u.is_active) }); setUserModalOpen(true); }} className="h-8 border-white/10 text-[13px]">Edit</Button>
-                                    <Button variant="ghost" size="sm" onClick={() => handleDeleteUser(u.id)} className="h-8 text-red-400 hover:bg-red-500/10 hover:text-red-300" title="Hapus user"><Trash2 className="h-3.5 w-3.5" /></Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleResetUsage(u.id)}
+                                      className="h-8 border-white/10 text-[13px]"
+                                      title="Reset usage prompt"
+                                    >
+                                      Reset
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        setEditingUserId(u.id);
+                                        setUserForm({
+                                          username: u.username,
+                                          password: "",
+                                          display_name: u.display_name || "",
+                                          max_prompts: Number(u.max_prompts),
+                                          is_active: Boolean(u.is_active),
+                                        });
+                                        setUserModalOpen(true);
+                                      }}
+                                      className="h-8 border-white/10 text-[13px]"
+                                    >
+                                      Edit
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDeleteUser(u.id)}
+                                      className="h-8 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                                      title="Hapus user"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
                                   </div>
                                 </td>
                               </tr>
@@ -2012,17 +3341,104 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               </Card>
 
               {userModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={() => setUserModalOpen(false)}>
-                  <Card className="w-full max-w-md border-white/10 bg-zinc-900 rounded-xl" onClick={(e) => e.stopPropagation()}>
-                    <CardHeader className={cardHeaderCls}><CardTitle className="text-[14px] font-semibold text-white">{editingUserId ? "Edit user" : "Tambah user"}</CardTitle></CardHeader>
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+                  onClick={() => setUserModalOpen(false)}
+                >
+                  <Card
+                    className="w-full max-w-md border-white/10 bg-zinc-900 rounded-xl"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <CardHeader className={cardHeaderCls}>
+                      <CardTitle className="text-[14px] font-semibold text-white">
+                        {editingUserId ? "Edit user" : "Tambah user"}
+                      </CardTitle>
+                    </CardHeader>
                     <CardContent className="p-5 pt-0">
                       <form onSubmit={handleCreateOrUpdateUser} className="space-y-4">
-                        {!editingUserId && <div className="space-y-2"><Label className={tLabelPlain}>Username</Label><Input value={userForm.username} onChange={(e) => setUserForm((p) => ({ ...p, username: e.target.value }))} required minLength={3} maxLength={32} placeholder="johndoe" className={inputCls} /></div>}
-                        <div className="space-y-2"><Label className={tLabelPlain}>{editingUserId ? "Password baru (kosongkan jika tidak ganti)" : "Password"}</Label><Input type="password" value={userForm.password} onChange={(e) => setUserForm((p) => ({ ...p, password: e.target.value }))} required={!editingUserId} minLength={6} className={inputCls} /></div>
-                        <div className="space-y-2"><Label className={tLabelPlain}>Display name</Label><Input value={userForm.display_name} onChange={(e) => setUserForm((p) => ({ ...p, display_name: e.target.value }))} className={inputCls} /></div>
-                        <div className="space-y-2"><Label className={tLabelPlain}>Batas prompt (0 = unlimited)</Label><Input type="number" min={0} max={100000} value={userForm.max_prompts} onChange={(e) => setUserForm((p) => ({ ...p, max_prompts: Number(e.target.value) }))} className={inputCls} /></div>
-                        <label className="flex items-center gap-2 text-[16px] text-zinc-300"><input type="checkbox" checked={userForm.is_active} onChange={(e) => setUserForm((p) => ({ ...p, is_active: e.target.checked }))} className="rounded" /> Aktif</label>
-                        <div className="flex justify-end gap-2 pt-2"><Button type="button" variant="ghost" onClick={() => setUserModalOpen(false)} className="h-9 text-[16px]">Batal</Button><Button type="submit" className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px]">Simpan</Button></div>
+                        {!editingUserId && (
+                          <div className="space-y-2">
+                            <Label className={tLabelPlain}>Username</Label>
+                            <Input
+                              value={userForm.username}
+                              onChange={(e) =>
+                                setUserForm((p) => ({ ...p, username: e.target.value }))
+                              }
+                              required
+                              minLength={3}
+                              maxLength={32}
+                              placeholder="johndoe"
+                              className={inputCls}
+                            />
+                          </div>
+                        )}
+                        <div className="space-y-2">
+                          <Label className={tLabelPlain}>
+                            {editingUserId
+                              ? "Password baru (kosongkan jika tidak ganti)"
+                              : "Password"}
+                          </Label>
+                          <Input
+                            type="password"
+                            value={userForm.password}
+                            onChange={(e) =>
+                              setUserForm((p) => ({ ...p, password: e.target.value }))
+                            }
+                            required={!editingUserId}
+                            minLength={6}
+                            className={inputCls}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className={tLabelPlain}>Display name</Label>
+                          <Input
+                            value={userForm.display_name}
+                            onChange={(e) =>
+                              setUserForm((p) => ({ ...p, display_name: e.target.value }))
+                            }
+                            className={inputCls}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className={tLabelPlain}>Batas prompt (0 = unlimited)</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100000}
+                            value={userForm.max_prompts}
+                            onChange={(e) =>
+                              setUserForm((p) => ({ ...p, max_prompts: Number(e.target.value) }))
+                            }
+                            className={inputCls}
+                          />
+                        </div>
+                        <label className="flex items-center gap-2 text-[16px] text-zinc-300">
+                          <input
+                            type="checkbox"
+                            checked={userForm.is_active}
+                            onChange={(e) =>
+                              setUserForm((p) => ({ ...p, is_active: e.target.checked }))
+                            }
+                            className="rounded"
+                          />{" "}
+                          Aktif
+                        </label>
+                        <div className="flex justify-end gap-2 pt-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => setUserModalOpen(false)}
+                            className="h-9 text-[16px]"
+                          >
+                            Batal
+                          </Button>
+                          <Button
+                            type="submit"
+                            className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px]"
+                          >
+                            Simpan
+                          </Button>
+                        </div>
                       </form>
                     </CardContent>
                   </Card>
@@ -2032,44 +3448,80 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           )}
 
           {/* Bulk JSON toolbar */}
-          {activeTab !== "models" && activeTab !== "dashboard" && activeTab !== "users" && activeTab !== "pricing" && (
-            <Card className={cardBase}>
-              <CardContent className="flex flex-wrap items-center gap-2 p-5">
-                <span className="flex items-center gap-2 text-[14px] font-medium tracking-[0.06em] text-zinc-400 uppercase">
-                  <FileJson className="h-4 w-4" />
-                  Bulk JSON
-                </span>
-                <Button variant="outline" size="sm" onClick={openJsonModalWithPrefill} className="h-8 border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 text-[16px] gap-1.5">
-                  <Upload className="h-3.5 w-3.5" />
-                  <span>Import JSON</span>
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleBulkExport} className="h-8 border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 text-[16px] gap-1.5">
-                  <Download className="h-3.5 w-3.5" />
-                  <span>Export JSON</span>
-                </Button>
-                <Button variant="ghost" size="sm" onClick={handleBulkDownloadExample} className="h-8 text-zinc-500 hover:text-zinc-200 text-[16px]">
-                  Contoh format
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+          {activeTab !== "models" &&
+            activeTab !== "dashboard" &&
+            activeTab !== "users" &&
+            activeTab !== "pricing" && (
+              <Card className={cardBase}>
+                <CardContent className="flex flex-wrap items-center gap-2 p-5">
+                  <span className="flex items-center gap-2 text-[14px] font-medium tracking-[0.06em] text-zinc-400 uppercase">
+                    <FileJson className="h-4 w-4" />
+                    Bulk JSON
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openJsonModalWithPrefill}
+                    className="h-8 border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 text-[16px] gap-1.5"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    <span>Import JSON</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBulkExport}
+                    className="h-8 border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-zinc-300 text-[16px] gap-1.5"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Export JSON</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleBulkDownloadExample}
+                    className="h-8 text-zinc-500 hover:text-zinc-200 text-[16px]"
+                  >
+                    Contoh format
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
 
           {/* MODELS */}
           {activeTab === "models" && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <SectionHeader title="Model AI" desc="Model yang sedang dipakai ditampilkan pertama. Pilih dari katalog live atau ketik ID model apa pun." />
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              <SectionHeader
+                title="Model AI"
+                desc="Model yang sedang dipakai ditampilkan pertama. Pilih dari katalog live atau ketik ID model apa pun."
+              />
 
               <Card className={cardBase}>
                 <CardHeader className={cardHeaderCls}>
-                  <CardTitle className={`${tCardPlain} flex items-center gap-2`}><Sparkles className="h-3.5 w-3.5 text-violet-400" />Model yang sedang dipakai</CardTitle>
+                  <CardTitle className={`${tCardPlain} flex items-center gap-2`}>
+                    <Sparkles className="h-3.5 w-3.5 text-violet-400" />
+                    Model yang sedang dipakai
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className={`${cardContentCls} space-y-2`}>
-                  <p className={`break-all text-[16px] font-medium leading-relaxed ${cModel}`}>{modelConfig.active_model || "- belum dimuat -"}</p>
+                  <p className={`break-all text-[16px] font-medium leading-relaxed ${cModel}`}>
+                    {modelConfig.active_model || "- belum dimuat -"}
+                  </p>
                   <p className="text-[16px] leading-relaxed text-zinc-500">
-                    provider: <span className="text-zinc-300">{modelConfig.provider}</span> · base: <span className="break-all text-zinc-300">{modelConfig.api_base_url}</span>
+                    provider: <span className="text-zinc-300">{modelConfig.provider}</span> · base:{" "}
+                    <span className="break-all text-zinc-300">{modelConfig.api_base_url}</span>
                   </p>
                   <p className="text-[13px] leading-relaxed text-zinc-500">
-                    Fallback: {modelConfig.fallback_models.length ? modelConfig.fallback_models.join(", ") : "- tidak ada -"} · temp: {modelConfig.temperature} · reasoning: {modelConfig.reasoning_enabled ? "aktif" : "nonaktif"}
+                    Fallback:{" "}
+                    {modelConfig.fallback_models.length
+                      ? modelConfig.fallback_models.join(", ")
+                      : "- tidak ada -"}{" "}
+                    · temp: {modelConfig.temperature} · reasoning:{" "}
+                    {modelConfig.reasoning_enabled ? "aktif" : "nonaktif"}
                   </p>
                 </CardContent>
               </Card>
@@ -2077,32 +3529,57 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               <Card className={cardBase}>
                 <CardHeader className={cardHeaderCls}>
                   <CardTitle className={tCardPlain}>Konfigurasi Model</CardTitle>
-                  <CardDescription className="text-[16px] leading-relaxed text-zinc-500">Atur model aktif, provider, dan fallback chain</CardDescription>
+                  <CardDescription className="text-[16px] leading-relaxed text-zinc-500">
+                    Atur model aktif, provider, dan fallback chain
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className={`${cardContentCls} grid gap-4`}>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <Label className={tLabelPlain}><span className="flex items-center gap-1.5"><Cpu className="h-3.5 w-3.5 text-zinc-500" />ID model aktif<FieldInfo text="Model utama yang dipakai menjawab chat. Pilih dari katalog live atau ketik ID model apa pun, format provider/nama-model." /></span></Label>
+                      <Label className={tLabelPlain}>
+                        <span className="flex items-center gap-1.5">
+                          <Cpu className="h-3.5 w-3.5 text-zinc-500" />
+                          ID model aktif
+                          <FieldInfo text="Model utama yang dipakai menjawab chat. Pilih dari katalog live atau ketik ID model apa pun, format provider/nama-model." />
+                        </span>
+                      </Label>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleTestModel(modelConfig.active_model)}
-                        disabled={!modelConfig.active_model.trim() || modelTestResults[modelConfig.active_model]?.status === "loading"}
+                        disabled={
+                          !modelConfig.active_model.trim() ||
+                          modelTestResults[modelConfig.active_model]?.status === "loading"
+                        }
                         className="h-7 border-white/10 bg-white/[0.04] px-2.5 text-[13px] text-zinc-300 gap-1"
                       >
-                        {modelTestResults[modelConfig.active_model]?.status === "loading" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />} Test
+                        {modelTestResults[modelConfig.active_model]?.status === "loading" ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Zap className="h-3 w-3" />
+                        )}{" "}
+                        Test
                       </Button>
                     </div>
-                    {modelTestResults[modelConfig.active_model] && modelTestResults[modelConfig.active_model].status !== "loading" && (
-                      <div className={`rounded-lg border px-3 py-2 text-[13px] ${modelTestResults[modelConfig.active_model].status === "ok" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200" : "border-red-500/20 bg-red-500/10 text-red-200"}`}>
-                        {modelTestResults[modelConfig.active_model].status === "ok" ? `OK · ${modelTestResults[modelConfig.active_model].latency_ms}ms` : `Gagal · ${modelTestResults[modelConfig.active_model].error?.slice(0,120)}`}
-                        {modelTestResults[modelConfig.active_model].sample ? ` · "${modelTestResults[modelConfig.active_model].sample}"` : ""}
-                      </div>
-                    )}
+                    {modelTestResults[modelConfig.active_model] &&
+                      modelTestResults[modelConfig.active_model].status !== "loading" && (
+                        <div
+                          className={`rounded-lg border px-3 py-2 text-[13px] ${modelTestResults[modelConfig.active_model].status === "ok" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200" : "border-red-500/20 bg-red-500/10 text-red-200"}`}
+                        >
+                          {modelTestResults[modelConfig.active_model].status === "ok"
+                            ? `OK · ${modelTestResults[modelConfig.active_model].latency_ms}ms`
+                            : `Gagal · ${modelTestResults[modelConfig.active_model].error?.slice(0, 120)}`}
+                          {modelTestResults[modelConfig.active_model].sample
+                            ? ` · "${modelTestResults[modelConfig.active_model].sample}"`
+                            : ""}
+                        </div>
+                      )}
                     <Input
                       list="admin-model-options"
                       value={modelConfig.active_model}
-                      onChange={(e) => setModelConfig({ ...modelConfig, active_model: e.target.value })}
+                      onChange={(e) =>
+                        setModelConfig({ ...modelConfig, active_model: e.target.value })
+                      }
                       placeholder="cth. qwen/qwen3.8-27b:free"
                       className={inputCls}
                     />
@@ -2111,62 +3588,199 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                         .filter((m) => {
                           if (!modelSearch) return true;
                           const q = modelSearch.toLowerCase();
-                          return (m.id || "").toLowerCase().includes(q) || (m.name || "").toLowerCase().includes(q);
+                          return (
+                            (m.id || "").toLowerCase().includes(q) ||
+                            (m.name || "").toLowerCase().includes(q)
+                          );
                         })
                         .slice(0, 60)
                         .map((m) => (
-                          <option key={m.id} value={m.id}>{m.name || m.id}</option>
+                          <option key={m.id} value={m.id}>
+                            {m.name || m.id}
+                          </option>
                         ))}
                     </datalist>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label className={tLabelPlain}><span className="flex items-center gap-1.5"><Box className="h-3.5 w-3.5 text-zinc-500" />Provider<FieldInfo text="Nama provider pada gateway OpenAI-compatible yang dipakai, mis. openrouter. Harus cocok dengan API base URL." /></span></Label>
-                      <Input value={modelConfig.provider} onChange={(e) => setModelConfig({ ...modelConfig, provider: e.target.value })} placeholder="openrouter" className={inputCls} />
+                      <Label className={tLabelPlain}>
+                        <span className="flex items-center gap-1.5">
+                          <Box className="h-3.5 w-3.5 text-zinc-500" />
+                          Provider
+                          <FieldInfo text="Nama provider pada gateway OpenAI-compatible yang dipakai, mis. openrouter. Harus cocok dengan API base URL." />
+                        </span>
+                      </Label>
+                      <Input
+                        value={modelConfig.provider}
+                        onChange={(e) =>
+                          setModelConfig({ ...modelConfig, provider: e.target.value })
+                        }
+                        placeholder="openrouter"
+                        className={inputCls}
+                      />
                     </div>
                     <div className="space-y-2">
-                      <Label className={tLabelPlain}><span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-zinc-500" />API base URL<FieldInfo text="Endpoint API OpenAI-compatible tempat request model dikirim, mis. https://openrouter.ai/api/v1" /></span></Label>
-                      <Input value={modelConfig.api_base_url} onChange={(e) => setModelConfig({ ...modelConfig, api_base_url: e.target.value })} placeholder="https://openrouter.ai/api/v1" className={inputCls} />
+                      <Label className={tLabelPlain}>
+                        <span className="flex items-center gap-1.5">
+                          <Globe className="h-3.5 w-3.5 text-zinc-500" />
+                          API base URL
+                          <FieldInfo text="Endpoint API OpenAI-compatible tempat request model dikirim, mis. https://openrouter.ai/api/v1" />
+                        </span>
+                      </Label>
+                      <Input
+                        value={modelConfig.api_base_url}
+                        onChange={(e) =>
+                          setModelConfig({ ...modelConfig, api_base_url: e.target.value })
+                        }
+                        placeholder="https://openrouter.ai/api/v1"
+                        className={inputCls}
+                      />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div className="space-y-2">
-                      <Label className={tLabelPlain}><span className="flex items-center gap-1.5"><Gauge className="h-3.5 w-3.5 text-zinc-500" />Temperature (0–2)<FieldInfo text="Kreativitas jawaban. Rendah (0–0.3) = jawaban konsisten dan faktual, cocok untuk RAG. Tinggi (1–2) = lebih bervariasi tapi rawan ngawur." /></span></Label>
-                      <Input type="number" min={0} max={2} step={0.1} value={modelConfig.temperature} onChange={(e) => setModelConfig({ ...modelConfig, temperature: Number(e.target.value) || 0 })} className={inputCls} />
+                      <Label className={tLabelPlain}>
+                        <span className="flex items-center gap-1.5">
+                          <Gauge className="h-3.5 w-3.5 text-zinc-500" />
+                          Temperature (0–2)
+                          <FieldInfo text="Kreativitas jawaban. Rendah (0–0.3) = jawaban konsisten dan faktual, cocok untuk RAG. Tinggi (1–2) = lebih bervariasi tapi rawan ngawur." />
+                        </span>
+                      </Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={2}
+                        step={0.1}
+                        value={modelConfig.temperature}
+                        onChange={(e) =>
+                          setModelConfig({
+                            ...modelConfig,
+                            temperature: Number(e.target.value) || 0,
+                          })
+                        }
+                        className={inputCls}
+                      />
                     </div>
                     <div className="space-y-2">
-                      <Label className={tLabelPlain}><span className="flex items-center gap-1.5"><Box className="h-3.5 w-3.5 text-zinc-500" />Max tokens<FieldInfo text="Budget total token output. Model reasoning pakai sebagian ini untuk berpikir, sisa baru jadi jawaban." /></span></Label>
-                      <Input type="number" min={256} max={131072} step={256} value={modelConfig.max_tokens} onChange={(e) => setModelConfig({ ...modelConfig, max_tokens: Number(e.target.value) || 8192 })} className={inputCls} />
+                      <Label className={tLabelPlain}>
+                        <span className="flex items-center gap-1.5">
+                          <Box className="h-3.5 w-3.5 text-zinc-500" />
+                          Max tokens
+                          <FieldInfo text="Budget total token output. Model reasoning pakai sebagian ini untuk berpikir, sisa baru jadi jawaban." />
+                        </span>
+                      </Label>
+                      <Input
+                        type="number"
+                        min={256}
+                        max={131072}
+                        step={256}
+                        value={modelConfig.max_tokens}
+                        onChange={(e) =>
+                          setModelConfig({
+                            ...modelConfig,
+                            max_tokens: Number(e.target.value) || 8192,
+                          })
+                        }
+                        className={inputCls}
+                      />
                     </div>
                     <Label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.03] p-3 text-[16px] font-normal text-zinc-300">
-                      <Checkbox checked={modelConfig.reasoning_enabled} onCheckedChange={(checked) => setModelConfig({ ...modelConfig, reasoning_enabled: Boolean(checked) })} />
-                      <span className="flex items-center gap-1.5"><Brain className="h-3.5 w-3.5 text-zinc-500" />Reasoning aktif<FieldInfo text="Mode chain-of-thought model: jawaban lebih teliti untuk soal rumit, tapi lebih lambat dan memakai sebagian Max tokens untuk berpikir." /></span>
+                      <Checkbox
+                        checked={modelConfig.reasoning_enabled}
+                        onCheckedChange={(checked) =>
+                          setModelConfig({ ...modelConfig, reasoning_enabled: Boolean(checked) })
+                        }
+                      />
+                      <span className="flex items-center gap-1.5">
+                        <Brain className="h-3.5 w-3.5 text-zinc-500" />
+                        Reasoning aktif
+                        <FieldInfo text="Mode chain-of-thought model: jawaban lebih teliti untuk soal rumit, tapi lebih lambat dan memakai sebagian Max tokens untuk berpikir." />
+                      </span>
                     </Label>
                   </div>
 
                   <div className="space-y-2">
-                    <Label className={tLabelPlain}><span className="flex items-center gap-1.5"><Layers className="h-3.5 w-3.5 text-zinc-500" />Model fallback<FieldInfo text="Daftar model cadangan, dipakai berurutan kalau model aktif error/rate-limited. Kosong = tanpa cadangan, chat gagal langsung." /></span></Label>
+                    <Label className={tLabelPlain}>
+                      <span className="flex items-center gap-1.5">
+                        <Layers className="h-3.5 w-3.5 text-zinc-500" />
+                        Model fallback
+                        <FieldInfo text="Daftar model cadangan, dipakai berurutan kalau model aktif error/rate-limited. Kosong = tanpa cadangan, chat gagal langsung." />
+                      </span>
+                    </Label>
                     <div className="flex flex-wrap gap-2">
                       {modelConfig.fallback_models.map((mid) => (
-                        <Badge key={mid} variant="secondary" className="gap-2 py-1.5 text-[14px] bg-white/10 text-zinc-300 border border-white/10">
+                        <Badge
+                          key={mid}
+                          variant="secondary"
+                          className="gap-2 py-1.5 text-[14px] bg-white/10 text-zinc-300 border border-white/10"
+                        >
                           {mid}
-                          <button type="button" onClick={() => setModelConfig({ ...modelConfig, fallback_models: modelConfig.fallback_models.filter((x) => x !== mid) })} className="ml-1 rounded-full bg-white/10 text-zinc-300 px-1.5 py-0.5 text-[13px] hover:bg-red-500/20 hover:text-red-300 border border-white/10" title="Hapus fallback">✕</button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setModelConfig({
+                                ...modelConfig,
+                                fallback_models: modelConfig.fallback_models.filter(
+                                  (x) => x !== mid,
+                                ),
+                              })
+                            }
+                            className="ml-1 rounded-full bg-white/10 text-zinc-300 px-1.5 py-0.5 text-[13px] hover:bg-red-500/20 hover:text-red-300 border border-white/10"
+                            title="Hapus fallback"
+                          >
+                            ✕
+                          </button>
                         </Badge>
                       ))}
-                      {modelConfig.fallback_models.length === 0 && <span className="text-[16px] text-zinc-500">Belum ada fallback</span>}
+                      {modelConfig.fallback_models.length === 0 && (
+                        <span className="text-[16px] text-zinc-500">Belum ada fallback</span>
+                      )}
                     </div>
                     <div className="flex gap-2">
-                      <Input value={fallbackInput} onChange={(e) => setFallbackInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const v = fallbackInput.trim(); if (v && !modelConfig.fallback_models.includes(v)) setModelConfig({ ...modelConfig, fallback_models: [...modelConfig.fallback_models, v] }); setFallbackInput(""); }}} placeholder="Ketik ID model lalu Enter" className={`${inputCls} flex-1`} />
-                      <Button type="button" onClick={() => { const v = fallbackInput.trim(); if (v && !modelConfig.fallback_models.includes(v)) setModelConfig({ ...modelConfig, fallback_models: [...modelConfig.fallback_models, v] }); setFallbackInput(""); }} className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] gap-1.5">
+                      <Input
+                        value={fallbackInput}
+                        onChange={(e) => setFallbackInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const v = fallbackInput.trim();
+                            if (v && !modelConfig.fallback_models.includes(v))
+                              setModelConfig({
+                                ...modelConfig,
+                                fallback_models: [...modelConfig.fallback_models, v],
+                              });
+                            setFallbackInput("");
+                          }
+                        }}
+                        placeholder="Ketik ID model lalu Enter"
+                        className={`${inputCls} flex-1`}
+                      />
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          const v = fallbackInput.trim();
+                          if (v && !modelConfig.fallback_models.includes(v))
+                            setModelConfig({
+                              ...modelConfig,
+                              fallback_models: [...modelConfig.fallback_models, v],
+                            });
+                          setFallbackInput("");
+                        }}
+                        className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] gap-1.5"
+                      >
                         <Plus className="h-4 w-4" /> Tambah
                       </Button>
                     </div>
                   </div>
                 </CardContent>
                 <CardFooter className="justify-end p-5 pt-0">
-                  <Button onClick={handleSaveModelConfig} disabled={saving || !modelConfig.active_model.trim()} className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5">
+                  <Button
+                    onClick={handleSaveModelConfig}
+                    disabled={saving || !modelConfig.active_model.trim()}
+                    className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5"
+                  >
                     <Save className="h-4 w-4" />
                     <span>{saving ? "Menyimpan..." : "Simpan Konfigurasi Model"}</span>
                   </Button>
@@ -2179,30 +3793,78 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <CardTitle className={tCardPlain}>Katalog model live</CardTitle>
-                        <CardDescription className="text-[16px] leading-relaxed text-zinc-500">Sumber: katalog provider · API key & base URL katalog terpisah dari model aktif</CardDescription>
+                        <CardDescription className="text-[16px] leading-relaxed text-zinc-500">
+                          Sumber: katalog provider · API key & base URL katalog terpisah dari model
+                          aktif
+                        </CardDescription>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Label className="flex cursor-pointer items-center gap-2 text-[14px] font-normal text-zinc-400">
-                          <Checkbox checked={freeOnly} onCheckedChange={(checked) => { setFreeOnly(Boolean(checked)); refreshAvailableModels({ freeOnly: Boolean(checked) }); }} />
+                          <Checkbox
+                            checked={freeOnly}
+                            onCheckedChange={(checked) => {
+                              setFreeOnly(Boolean(checked));
+                              refreshAvailableModels({ freeOnly: Boolean(checked) });
+                            }}
+                          />
                           Hanya gratis
                         </Label>
-                        <Button variant="outline" size="sm" onClick={() => refreshAvailableModels()} disabled={modelsLoading} className="h-8 border-white/10 bg-white/[0.04] text-zinc-300 text-[14px]">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => refreshAvailableModels()}
+                          disabled={modelsLoading}
+                          className="h-8 border-white/10 bg-white/[0.04] text-zinc-300 text-[14px]"
+                        >
                           {modelsLoading ? "Memuat..." : "Muat ulang"}
                         </Button>
-                        <Input value={modelSearch} onChange={(e) => setModelSearch(e.target.value)} placeholder="Cari model..." className="h-8 w-40 border-white/10 bg-white/[0.04] text-white text-[16px]" />
+                        <Input
+                          value={modelSearch}
+                          onChange={(e) => setModelSearch(e.target.value)}
+                          placeholder="Cari model..."
+                          className="h-8 w-40 border-white/10 bg-white/[0.04] text-white text-[16px]"
+                        />
                       </div>
                     </div>
                     <div className="grid gap-4 rounded-xl border border-white/[0.07] bg-white/[0.03] p-4 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <Label className="text-[13px] font-medium text-zinc-400 flex items-center gap-1.5"><KeyRound className="h-3 w-3" /> API key katalog (preview saja, tidak disimpan)</Label>
+                        <Label className="text-[13px] font-medium text-zinc-400 flex items-center gap-1.5">
+                          <KeyRound className="h-3 w-3" /> API key katalog (preview saja, tidak
+                          disimpan)
+                        </Label>
                         <div className="flex gap-1.5">
-                          <Input type={showCatalogKey ? "text" : "password"} value={catalogApiKey} onChange={(e) => setCatalogApiKey(e.target.value)} placeholder="sk-... (kosong = pakai env/server)" className={`${inputCls} h-8`} />
-                          <Button variant="ghost" size="icon" onClick={() => setShowCatalogKey((v) => !v)} className="h-8 w-8 shrink-0 text-zinc-400" type="button">{showCatalogKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</Button>
+                          <Input
+                            type={showCatalogKey ? "text" : "password"}
+                            value={catalogApiKey}
+                            onChange={(e) => setCatalogApiKey(e.target.value)}
+                            placeholder="sk-... (kosong = pakai env/server)"
+                            className={`${inputCls} h-8`}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setShowCatalogKey((v) => !v)}
+                            className="h-8 w-8 shrink-0 text-zinc-400"
+                            type="button"
+                          >
+                            {showCatalogKey ? (
+                              <EyeOff className="h-3.5 w-3.5" />
+                            ) : (
+                              <Eye className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-[13px] font-medium text-zinc-400 flex items-center gap-1.5"><Globe className="h-3 w-3" /> Base URL katalog</Label>
-                        <Input value={catalogBaseUrl} onChange={(e) => setCatalogBaseUrl(e.target.value)} placeholder="https://api.groq.com/openai/v1 (kosong = default)" className={`${inputCls} h-8`} />
+                        <Label className="text-[13px] font-medium text-zinc-400 flex items-center gap-1.5">
+                          <Globe className="h-3 w-3" /> Base URL katalog
+                        </Label>
+                        <Input
+                          value={catalogBaseUrl}
+                          onChange={(e) => setCatalogBaseUrl(e.target.value)}
+                          placeholder="https://api.groq.com/openai/v1 (kosong = default)"
+                          className={`${inputCls} h-8`}
+                        />
                       </div>
                     </div>
                   </div>
@@ -2211,7 +3873,9 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                   <div className="max-h-[28rem] overflow-y-auto rounded-b-xl border-t border-white/[0.07]">
                     {availableModels.length === 0 ? (
                       <div className="p-6 text-center text-[16px] text-zinc-500">
-                        {modelsLoading ? "Memuat katalog..." : "Tidak ada model. Cek API key atau tekan Muat ulang."}
+                        {modelsLoading
+                          ? "Memuat katalog..."
+                          : "Tidak ada model. Cek API key atau tekan Muat ulang."}
                       </div>
                     ) : (
                       <ul className="divide-y divide-white/[0.06]">
@@ -2219,25 +3883,79 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                           .filter((m) => {
                             if (!modelSearch) return true;
                             const q = modelSearch.toLowerCase();
-                            return (m.id || "").toLowerCase().includes(q) || (m.name || "").toLowerCase().includes(q);
+                            return (
+                              (m.id || "").toLowerCase().includes(q) ||
+                              (m.name || "").toLowerCase().includes(q)
+                            );
                           })
                           .slice(0, 120)
                           .map((m) => {
                             const isActive = m.id === modelConfig.active_model;
                             return (
-                              <li key={m.id} className={`flex items-start justify-between gap-3 px-5 py-4 ${isActive ? "bg-white/[0.04]" : "hover:bg-white/[0.03]"}`}>
+                              <li
+                                key={m.id}
+                                className={`flex items-start justify-between gap-3 px-5 py-4 ${isActive ? "bg-white/[0.04]" : "hover:bg-white/[0.03]"}`}
+                              >
                                 <div className="min-w-0 flex-1">
                                   <div className="flex flex-wrap items-center gap-2">
-                                    <span className={`font-mono text-[14px] font-medium ${isActive ? "text-emerald-300" : cModel}`}>{m.id}</span>
-                                    {isActive && <Badge className="bg-white text-black text-[10px]">AKTIF</Badge>}
-                                    {m.pricing && (m.pricing.prompt === "0" || String(m.pricing.prompt) === "0.0000000") && <Badge variant="outline" className="border-white/10 text-zinc-400 text-[10px]">GRATIS</Badge>}
+                                    <span
+                                      className={`font-mono text-[14px] font-medium ${isActive ? "text-emerald-300" : cModel}`}
+                                    >
+                                      {m.id}
+                                    </span>
+                                    {isActive && (
+                                      <Badge className="bg-white text-black text-[10px]">
+                                        AKTIF
+                                      </Badge>
+                                    )}
+                                    {m.pricing &&
+                                      (m.pricing.prompt === "0" ||
+                                        String(m.pricing.prompt) === "0.0000000") && (
+                                        <Badge
+                                          variant="outline"
+                                          className="border-white/10 text-zinc-400 text-[10px]"
+                                        >
+                                          GRATIS
+                                        </Badge>
+                                      )}
                                   </div>
-                                  <div className="mt-1 line-clamp-2 text-[14px] leading-relaxed text-zinc-500">{m.name || m.description || ""}</div>
-                                  {m.context_length ? <div className="text-[13px] text-zinc-500">context: {Number(m.context_length).toLocaleString("id-ID")}</div> : null}
+                                  <div className="mt-1 line-clamp-2 text-[14px] leading-relaxed text-zinc-500">
+                                    {m.name || m.description || ""}
+                                  </div>
+                                  {m.context_length ? (
+                                    <div className="text-[13px] text-zinc-500">
+                                      context: {Number(m.context_length).toLocaleString("id-ID")}
+                                    </div>
+                                  ) : null}
                                 </div>
                                 <div className="flex shrink-0 flex-col gap-1.5">
-                                  <Button variant={isActive ? "secondary" : "default"} size="sm" onClick={() => setModelConfig({ ...modelConfig, active_model: m.id })} className={`h-7 text-[14px] ${isActive ? "bg-zinc-800 text-zinc-200" : "bg-white text-black hover:bg-zinc-100"}`}>{isActive ? "Aktif" : "Pakai"}</Button>
-                                  <Button variant="outline" size="sm" onClick={() => { if (!modelConfig.fallback_models.includes(m.id)) setModelConfig({ ...modelConfig, fallback_models: [...modelConfig.fallback_models, m.id] }); }} disabled={modelConfig.fallback_models.includes(m.id) || isActive} className="h-7 border-white/10 bg-white/[0.04] text-zinc-300 text-[14px]">+ Fallback</Button>
+                                  <Button
+                                    variant={isActive ? "secondary" : "default"}
+                                    size="sm"
+                                    onClick={() =>
+                                      setModelConfig({ ...modelConfig, active_model: m.id })
+                                    }
+                                    className={`h-7 text-[14px] ${isActive ? "bg-zinc-800 text-zinc-200" : "bg-white text-black hover:bg-zinc-100"}`}
+                                  >
+                                    {isActive ? "Aktif" : "Pakai"}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      if (!modelConfig.fallback_models.includes(m.id))
+                                        setModelConfig({
+                                          ...modelConfig,
+                                          fallback_models: [...modelConfig.fallback_models, m.id],
+                                        });
+                                    }}
+                                    disabled={
+                                      modelConfig.fallback_models.includes(m.id) || isActive
+                                    }
+                                    className="h-7 border-white/10 bg-white/[0.04] text-zinc-300 text-[14px]"
+                                  >
+                                    + Fallback
+                                  </Button>
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -2245,10 +3963,29 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                                     disabled={modelTestResults[m.id]?.status === "loading"}
                                     className={`h-7 text-[13px] ${modelTestResults[m.id]?.status === "ok" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200" : modelTestResults[m.id]?.status === "error" ? "border-red-500/20 bg-red-500/10 text-red-300" : "border-white/10 bg-white/[0.04] text-zinc-300"}`}
                                   >
-                                    {modelTestResults[m.id]?.status === "loading" ? <Loader2 className="h-3 w-3 animate-spin" /> : modelTestResults[m.id]?.status === "ok" ? `OK ${modelTestResults[m.id]?.latency_ms}ms` : modelTestResults[m.id]?.status === "error" ? "Gagal" : "Test"}
+                                    {modelTestResults[m.id]?.status === "loading" ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : modelTestResults[m.id]?.status === "ok" ? (
+                                      `OK ${modelTestResults[m.id]?.latency_ms}ms`
+                                    ) : modelTestResults[m.id]?.status === "error" ? (
+                                      "Gagal"
+                                    ) : (
+                                      "Test"
+                                    )}
                                   </Button>
-                                  {modelTestResults[m.id]?.error && <span className="max-w-[140px] truncate text-[13px] text-red-300/70" title={modelTestResults[m.id]?.error}>{modelTestResults[m.id]?.error}</span>}
-                                  {modelTestResults[m.id]?.sample && <span className="max-w-[140px] truncate text-[13px] text-emerald-300/70">“{modelTestResults[m.id]?.sample}”</span>}
+                                  {modelTestResults[m.id]?.error && (
+                                    <span
+                                      className="max-w-[140px] truncate text-[13px] text-red-300/70"
+                                      title={modelTestResults[m.id]?.error}
+                                    >
+                                      {modelTestResults[m.id]?.error}
+                                    </span>
+                                  )}
+                                  {modelTestResults[m.id]?.sample && (
+                                    <span className="max-w-[140px] truncate text-[13px] text-emerald-300/70">
+                                      “{modelTestResults[m.id]?.sample}”
+                                    </span>
+                                  )}
                                 </div>
                               </li>
                             );
@@ -2309,7 +4046,10 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               entries={knowledgeEntries}
               selectedCategorySlug={selectedCategorySlug}
               onSelectCategory={setSelectedCategorySlug}
-              onAddEntry={() => { setEntryForm({ id: "", title: "", content: "", category_id: "" }); setNewEntryModal(true); }}
+              onAddEntry={() => {
+                setEntryForm({ id: "", title: "", content: "", category_id: "" });
+                setNewEntryModal(true);
+              }}
               onDeleteEntry={handleDeleteKnowledgeEntry}
             />
           )}
@@ -2343,7 +4083,6 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               saving={saving}
             />
           )}
-
         </div>
       </main>
 
@@ -2351,35 +4090,69 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       <Dialog open={newEntryModal} onOpenChange={setNewEntryModal}>
         <DialogContent className="border-white/10 bg-zinc-900 text-white rounded-xl">
           <DialogHeader>
-            <DialogTitle className="text-[14px] font-semibold tracking-[0.08em] uppercase text-white">Tambah Knowledge Baru</DialogTitle>
-            <DialogDescription className="text-[16px] leading-relaxed text-zinc-500">Buat entri pengetahuan baru yang akan di-embedding dan dipakai sebagai konteks AI.</DialogDescription>
+            <DialogTitle className="text-[14px] font-semibold tracking-[0.08em] uppercase text-white">
+              Tambah Knowledge Baru
+            </DialogTitle>
+            <DialogDescription className="text-[16px] leading-relaxed text-zinc-500">
+              Buat entri pengetahuan baru yang akan di-embedding dan dipakai sebagai konteks AI.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSaveKnowledgeEntry} className="space-y-4">
             <div className="space-y-2">
               <Label className={tLabel}>Judul / Topik</Label>
-              <Input value={entryForm.title} onChange={(e) => setEntryForm({ ...entryForm, title: e.target.value })} required placeholder="Misal: Arsitektur Backend ITZ AI" className={inputCls} />
+              <Input
+                value={entryForm.title}
+                onChange={(e) => setEntryForm({ ...entryForm, title: e.target.value })}
+                required
+                placeholder="Misal: Arsitektur Backend ITZ AI"
+                className={inputCls}
+              />
             </div>
             <div className="space-y-2">
               <Label className={tLabel}>Kategori</Label>
-              <Select value={selectedCategorySlug} onValueChange={(v) => setSelectedCategorySlug(v ?? selectedCategorySlug)}>
+              <Select
+                value={selectedCategorySlug}
+                onValueChange={(v) => setSelectedCategorySlug(v ?? selectedCategorySlug)}
+              >
                 <SelectTrigger className="border-white/10 bg-zinc-800 text-white text-[16px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="border-white/10 bg-zinc-900 text-white">
                   {knowledgeCategories.map((c) => (
-                    <SelectItem key={c.id} value={c.slug}>{c.name}</SelectItem>
+                    <SelectItem key={c.id} value={c.slug}>
+                      {c.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label className={tLabel}>Konten Pengetahuan</Label>
-              <Textarea rows={5} value={entryForm.content} onChange={(e) => setEntryForm({ ...entryForm, content: e.target.value })} required placeholder="Tuliskan pengetahuan detail yang akan diserap oleh AI..." className={textareaCls} />
+              <Textarea
+                rows={5}
+                value={entryForm.content}
+                onChange={(e) => setEntryForm({ ...entryForm, content: e.target.value })}
+                required
+                placeholder="Tuliskan pengetahuan detail yang akan diserap oleh AI..."
+                className={textareaCls}
+              />
             </div>
           </form>
           <DialogFooter>
-            <Button variant="outline" type="button" onClick={() => setNewEntryModal(false)} className="h-9 border-white/10 bg-white/[0.04] text-zinc-300 text-[16px]">Batal</Button>
-            <Button onClick={(e: any) => handleSaveKnowledgeEntry(e)} className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium">Simpan &amp; Generate Embedding</Button>
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setNewEntryModal(false)}
+              className="h-9 border-white/10 bg-white/[0.04] text-zinc-300 text-[16px]"
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={(e: any) => handleSaveKnowledgeEntry(e)}
+              className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium"
+            >
+              Simpan &amp; Generate Embedding
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2388,23 +4161,58 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
       <Dialog open={showJsonModal} onOpenChange={setShowJsonModal}>
         <DialogContent className="flex max-h-[92vh] max-w-3xl flex-col p-0 border-white/10 bg-zinc-900 text-white rounded-xl overflow-hidden">
           <DialogHeader className="border-b border-white/[0.07] p-6 pb-4 px-5 pt-5">
-            <DialogTitle className="text-[14px] font-semibold tracking-[0.08em] uppercase text-white">Import JSON</DialogTitle>
-            <DialogDescription className="text-[16px] leading-relaxed text-zinc-500">Tempel JSON atau upload file untuk mengisi konfigurasi admin.</DialogDescription>
+            <DialogTitle className="text-[14px] font-semibold tracking-[0.08em] uppercase text-white">
+              Import JSON
+            </DialogTitle>
+            <DialogDescription className="text-[16px] leading-relaxed text-zinc-500">
+              Tempel JSON atau upload file untuk mengisi konfigurasi admin.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-3 border-b border-white/[0.07] p-5 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
             <div
-              onDragOver={(e) => { e.preventDefault(); setJsonDrag(true); }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setJsonDrag(true);
+              }}
               onDragLeave={() => setJsonDrag(false)}
-              onDrop={(e) => { e.preventDefault(); setJsonDrag(false); const f = e.dataTransfer.files?.[0]; if (f) void handleJsonFile(f); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setJsonDrag(false);
+                const f = e.dataTransfer.files?.[0];
+                if (f) void handleJsonFile(f);
+              }}
               className={`flex items-center gap-2 rounded-xl border border-dashed px-3 py-2.5 text-[16px] ${jsonDrag ? "border-white/20 bg-white/[0.06] text-white" : "border-white/10 bg-white/[0.03] text-zinc-400"}`}
             >
               <Upload className="h-4 w-4 shrink-0" />
               <span>{jsonDrag ? "Lepaskan file..." : "Drag & drop .json atau"}</span>
-              <Button variant="link" size="sm" type="button" onClick={() => jsonFileRef.current?.click()} className="h-auto p-0 text-[16px] underline text-zinc-400">pilih file</Button>
-              <Input ref={jsonFileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleJsonFile(f); e.target.value = ""; }} />
+              <Button
+                variant="link"
+                size="sm"
+                type="button"
+                onClick={() => jsonFileRef.current?.click()}
+                className="h-auto p-0 text-[16px] underline text-zinc-400"
+              >
+                pilih file
+              </Button>
+              <Input
+                ref={jsonFileRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void handleJsonFile(f);
+                  e.target.value = "";
+                }}
+              />
             </div>
-            <Button variant="outline" size="sm" onClick={handleBulkDownloadExample} className="h-8 border-white/10 bg-white/[0.04] text-zinc-300 text-[14px] gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBulkDownloadExample}
+              className="h-8 border-white/10 bg-white/[0.04] text-zinc-300 text-[14px] gap-1.5"
+            >
               <FileJson className="h-3.5 w-3.5" /> Example
             </Button>
             <Button
@@ -2423,7 +4231,16 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
             >
               <Download className="h-3.5 w-3.5" /> .json
             </Button>
-            <Button variant="outline" size="sm" onClick={async () => { try { await navigator.clipboard.writeText(jsonText || ""); } catch {} }} className="h-8 border-white/10 bg-white/[0.04] text-zinc-300 text-[14px] gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(jsonText || "");
+                } catch {}
+              }}
+              className="h-8 border-white/10 bg-white/[0.04] text-zinc-300 text-[14px] gap-1.5"
+            >
               <Copy className="h-3.5 w-3.5" /> Copy
             </Button>
           </div>
@@ -2433,16 +4250,51 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               <Alert variant="destructive" className="mb-3 border-red-500/30 bg-red-500/10">
                 <AlertCircle className="text-red-400 h-4 w-4" />
                 <AlertTitle className="text-red-300 text-[16px]">JSON error</AlertTitle>
-                <AlertDescription className="whitespace-pre-wrap text-red-200/70 text-[14px] leading-relaxed">{jsonError}</AlertDescription>
+                <AlertDescription className="whitespace-pre-wrap text-red-200/70 text-[14px] leading-relaxed">
+                  {jsonError}
+                </AlertDescription>
               </Alert>
             )}
-            <Textarea value={jsonText} onChange={(e) => setJsonText(e.target.value)} rows={18} spellCheck={false} placeholder='{"ai_identity": {...}, ...}' className="text-[14px] leading-relaxed border-white/10 bg-white/[0.03] text-white font-mono" />
+            <Textarea
+              value={jsonText}
+              onChange={(e) => setJsonText(e.target.value)}
+              rows={18}
+              spellCheck={false}
+              placeholder='{"ai_identity": {...}, ...}'
+              className="text-[14px] leading-relaxed border-white/10 bg-white/[0.03] text-white font-mono"
+            />
           </div>
 
           <DialogFooter className="border-t border-white/[0.07] p-5">
-            <Button variant="outline" onClick={() => setShowJsonModal(false)} className="h-9 border-white/10 bg-white/[0.04] text-zinc-300 text-[16px]">Batal</Button>
-            <Button variant="outline" onClick={() => { try { applyImportedDataToState(JSON.parse(jsonText)); setSaveSuccess(true); setTimeout(() => setSaveSuccess(false), 2000); } catch (e: any) { setJsonError(`Invalid JSON: ${e.message}`); } }} className="h-9 border-white/10 bg-white/[0.04] text-zinc-300 text-[16px]">Isi form saja</Button>
-            <Button onClick={handleJsonApplyFromText} disabled={saving || !jsonText.trim()} className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium">{saving ? "Mengimpor..." : "Validasi & Import"}</Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowJsonModal(false)}
+              className="h-9 border-white/10 bg-white/[0.04] text-zinc-300 text-[16px]"
+            >
+              Batal
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                try {
+                  applyImportedDataToState(JSON.parse(jsonText));
+                  setSaveSuccess(true);
+                  setTimeout(() => setSaveSuccess(false), 2000);
+                } catch (e: any) {
+                  setJsonError(`Invalid JSON: ${e.message}`);
+                }
+              }}
+              className="h-9 border-white/10 bg-white/[0.04] text-zinc-300 text-[16px]"
+            >
+              Isi form saja
+            </Button>
+            <Button
+              onClick={handleJsonApplyFromText}
+              disabled={saving || !jsonText.trim()}
+              className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium"
+            >
+              {saving ? "Mengimpor..." : "Validasi & Import"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -7,6 +7,7 @@ Flow:
 
 CSRF dilindungi lewat cookie `google_oauth_state` (dicek di callback).
 """
+
 import os
 import secrets
 from urllib.parse import urlencode
@@ -16,13 +17,13 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 
 try:
-    from backend.database.db import DatabaseService
-    from backend.security.auth import create_user_jwt, USER_COOKIE_NAME, JWT_EXPIRY_HOURS
     from backend.config.config import settings
+    from backend.database.db import DatabaseService
+    from backend.security.auth import USER_COOKIE_NAME, create_user_jwt
 except ImportError:
-    from database.db import DatabaseService
-    from security.auth import create_user_jwt, USER_COOKIE_NAME, JWT_EXPIRY_HOURS
     from config.config import settings  # type: ignore
+    from database.db import DatabaseService
+    from security.auth import USER_COOKIE_NAME, create_user_jwt
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -42,6 +43,7 @@ _SCOPES = "openid email profile"
 def _username_from_email(email: str) -> str:
     """Username awal dari email (regex: ^[a-zA-Z0-9._-]{3,32}$). Hanya saran, cek unik di pemanggil."""
     import re
+
     base = re.sub(r"[^a-zA-Z0-9._-]", "_", (email or "").split("@")[0].strip().lower())[:24]
     if len(base) < 3:
         base = (base + "_user")[:24]
@@ -67,14 +69,16 @@ async def google_login(response: Response):
         )
 
     state = secrets.token_urlsafe(32)
-    auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode({
-        "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": GOOGLE_REDIRECT_URI,
-        "response_type": "code",
-        "scope": _SCOPES,
-        "state": state,
-        "prompt": "select_account",
-    })
+    auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(
+        {
+            "client_id": GOOGLE_CLIENT_ID,
+            "redirect_uri": GOOGLE_REDIRECT_URI,
+            "response_type": "code",
+            "scope": _SCOPES,
+            "state": state,
+            "prompt": "select_account",
+        }
+    )
     response.set_cookie(
         key=STATE_COOKIE,
         value=state,
@@ -140,16 +144,18 @@ async def google_callback(request: Request, code: str = "", state: str = "", err
             # Kuota awal = trial_prompts dari app_settings (bukan unlimited)
             app_s = DatabaseService.get_app_settings()
             trial = max(0, int(app_s.get("trial_prompts", 3)))
-            user = DatabaseService.create_user({
-                "username": username,
-                "display_name": display_name,
-                "email": email,
-                "email_verified": True,
-                "provider": "google",
-                "password_hash": "",
-                "max_prompts": trial,
-                "prompts_used": 0,
-            })
+            user = DatabaseService.create_user(
+                {
+                    "username": username,
+                    "display_name": display_name,
+                    "email": email,
+                    "email_verified": True,
+                    "provider": "google",
+                    "password_hash": "",
+                    "max_prompts": trial,
+                    "prompts_used": 0,
+                }
+            )
         elif user.get("is_active") is False:
             return _redirect_with_error("Akun Anda dinonaktifkan - hubungi admin")
         else:
@@ -186,4 +192,5 @@ async def google_callback(request: Request, code: str = "", state: str = "", err
 def _redirect_with_error(msg: str) -> RedirectResponse:
     """Balik ke halaman login dengan pesan error (tanpa query body panjang)."""
     from urllib.parse import quote
+
     return RedirectResponse(url=f"/login?auth_error={quote(msg[:120])}", status_code=302)

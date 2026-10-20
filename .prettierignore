@@ -1,0 +1,8 @@
+node_modules
+.next
+.vercel
+package-lock.json
+public
+data
+.claude
+*.md

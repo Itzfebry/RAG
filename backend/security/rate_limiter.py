@@ -6,18 +6,20 @@ Untuk endpoint sensitif (login, register, OTP) dipakai varian `*_durable` yang
 menyimpan hitungan di Supabase (atomik, konsisten lintas instance). Varian
 in-memory di sini otomatis dipakai bila Supabase tidak tersedia.
 """
+
 import os
 import time
 from collections import defaultdict, deque
-from typing import Dict, Deque
 
 # ip -> deque[timestamps]
-_buckets: Dict[str, Deque[float]] = defaultdict(deque)
-_failed_logins: Dict[str, Deque[float]] = defaultdict(deque)
-_lockouts: Dict[str, float] = {}
+_buckets: dict[str, deque[float]] = defaultdict(deque)
+_failed_logins: dict[str, deque[float]] = defaultdict(deque)
+_lockouts: dict[str, float] = {}
+
 
 def _now() -> float:
     return time.monotonic()
+
 
 def is_rate_limited(key: str, max_requests: int, window_seconds: int) -> bool:
     """True if key exceeded limit in window. Also prunes old entries."""
@@ -29,6 +31,7 @@ def is_rate_limited(key: str, max_requests: int, window_seconds: int) -> bool:
         return True
     dq.append(now)
     return False
+
 
 def check_rate_limit(key: str, max_requests: int, window_seconds: int) -> tuple[bool, int]:
     """
@@ -45,6 +48,7 @@ def check_rate_limit(key: str, max_requests: int, window_seconds: int) -> tuple[
     dq.append(now)
     return True, 0
 
+
 def record_failed_login(ip: str) -> None:
     now = _now()
     dq = _failed_logins[ip]
@@ -55,6 +59,7 @@ def record_failed_login(ip: str) -> None:
     if len(dq) >= 5:
         _lockouts[ip] = now + 900  # lock 15 min
 
+
 def is_locked_out(ip: str) -> tuple[bool, int]:
     now = _now()
     exp = _lockouts.get(ip)
@@ -64,6 +69,7 @@ def is_locked_out(ip: str) -> tuple[bool, int]:
         _lockouts.pop(ip, None)
         _failed_logins.pop(ip, None)
     return False, 0
+
 
 def clear_failed_login(ip: str) -> None:
     _failed_logins.pop(ip, None)
@@ -127,6 +133,7 @@ def clear_failed_login_durable(key: str) -> None:
         done = False
     if not done:
         clear_failed_login(key)
+
 
 def get_client_ip(request) -> str:
     # Di belakang proxy tepercaya (Vercel), proxy menambahkan IP client di AKHIR

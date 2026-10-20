@@ -4,6 +4,7 @@ Usage:
   python -m backend.tools.test_rag             # test saja (reindex manual via --reindex)
   python -m backend.tools.test_rag --reindex   # reindex semua entri lalu test
 """
+
 import json
 import sys
 
@@ -15,6 +16,7 @@ def header(t: str) -> None:
 def run_chat(query: str) -> str:
     """Panggil agent persis seperti /api/chat, tanpa HTTP/quota."""
     import asyncio
+
     from backend.agent.agent import AgentOrchestrator
 
     agent = AgentOrchestrator()
@@ -51,12 +53,14 @@ def main() -> None:
     reindex = "--reindex" in sys.argv
 
     header("1. Embedding model")
-    from backend.knowledge.knowledge_service import KnowledgeService, EMBEDDING_DIM, EMBEDDING_PROVIDER
     from backend.database.db import DatabaseService, supabase_client
+    from backend.knowledge.knowledge_service import EMBEDDING_DIM, EMBEDDING_PROVIDER, KnowledgeService
 
     emb = KnowledgeService.get_embedding("tes embed apakah model jalan")
     ok = len(emb) == EMBEDDING_DIM and any(x != 0.0 for x in emb)
-    print(f"provider={EMBEDDING_PROVIDER} dims={len(emb)} (expected {EMBEDDING_DIM}) non-zero={ok} -> {'OK' if ok else 'GAGAL'}")
+    print(
+        f"provider={EMBEDDING_PROVIDER} dims={len(emb)} (expected {EMBEDDING_DIM}) non-zero={ok} -> {'OK' if ok else 'GAGAL'}"
+    )
 
     entries = DatabaseService.get_knowledge_entries()
     print(f"entries: {len(entries)}")
@@ -81,6 +85,7 @@ def main() -> None:
         print("ERROR:", str(ex)[:250])
 
     from backend.knowledge.knowledge_service import MATCH_THRESHOLD
+
     header(f"4. Semantic search - positive (threshold produksi: {MATCH_THRESHOLD})")
     for en in entries:
         q = str(en.get("title") or "")[:90]

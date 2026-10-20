@@ -1,9 +1,10 @@
+import contextlib
 import json
 import os
 import threading
 import uuid
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Any
 
 try:
     from backend.config.config import settings
@@ -14,8 +15,9 @@ except ImportError:
         from database.cache import config_cache
     except ImportError:
         # Final fallback for unusual execution contexts
-        import sys
         import os
+        import sys
+
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         from config.config import settings
         from database.cache import config_cache
@@ -24,11 +26,9 @@ except ImportError:
 supabase_client = None
 if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY:
     try:
-        from supabase import create_client, Client
-        supabase_client: Optional[Client] = create_client(
-            settings.SUPABASE_URL,
-            settings.SUPABASE_SERVICE_ROLE_KEY
-        )
+        from supabase import Client, create_client
+
+        supabase_client: Client | None = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
     except Exception as e:
         print(f"Supabase init warning: {e}")
 
@@ -46,16 +46,18 @@ try:
 except OSError as e:
     print(f"Warning: cannot create local data dir {LOCAL_DATA_DIR}: {e}")
 
+
 def _read_local_json(file_name: str, default_data: Any) -> Any:
     path = os.path.join(LOCAL_DATA_DIR, file_name)
     if not os.path.exists(path):
         _write_local_json(file_name, default_data)
         return default_data
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return default_data
+
 
 def _write_local_json(file_name: str, data: Any):
     path = os.path.join(LOCAL_DATA_DIR, file_name)
@@ -66,7 +68,8 @@ def _write_local_json(file_name: str, data: Any):
         # Serverless read-only FS - Supabase remains the source of truth
         print(f"Warning: cannot write local json {path}: {e}")
 
-RAG_SETTING_DEFAULTS: Dict[str, Any] = {
+
+RAG_SETTING_DEFAULTS: dict[str, Any] = {
     "rag_match_count_short": 6,
     "rag_match_count_long": 8,
     "rag_match_threshold": None,
@@ -78,7 +81,7 @@ RAG_SETTING_DEFAULTS: Dict[str, Any] = {
 _counter_lock = threading.Lock()
 
 
-def _rag_settings_from_row(row: Dict[str, Any]) -> Dict[str, Any]:
+def _rag_settings_from_row(row: dict[str, Any]) -> dict[str, Any]:
     out = dict(RAG_SETTING_DEFAULTS)
     for k in RAG_SETTING_DEFAULTS:
         if row.get(k) is not None:
@@ -86,7 +89,7 @@ def _rag_settings_from_row(row: Dict[str, Any]) -> Dict[str, Any]:
     return _clamp_rag_settings(out)
 
 
-def _clamp_rag_settings(data: Dict[str, Any]) -> Dict[str, Any]:
+def _clamp_rag_settings(data: dict[str, Any]) -> dict[str, Any]:
     out = dict(data)
     for k in ("rag_match_count_short", "rag_match_count_long"):
         try:
@@ -103,13 +106,13 @@ def _clamp_rag_settings(data: Dict[str, Any]) -> Dict[str, Any]:
 
 class DatabaseService:
     @staticmethod
-    def get_config_table(table_name: str) -> Dict[str, Any]:
+    def get_config_table(table_name: str) -> dict[str, Any]:
         """Fetch single config row for identity, personal, personality, etc. (with caching)."""
         # Try cache first
         cached = config_cache.get(table_name)
         if cached is not None:
             return cached
-        
+
         if supabase_client:
             try:
                 res = supabase_client.table(table_name).select("*").limit(1).execute()
@@ -127,7 +130,7 @@ class DatabaseService:
                 "role": "Personal AI Assistant",
                 "description": "Personal AI Agent customized for the owner.",
                 "identity": "I am ITZ AI, a personal assistant built to assist my owner.",
-                "purpose": "Assist the owner with personalized knowledge, reasoning, and tasks."
+                "purpose": "Assist the owner with personalized knowledge, reasoning, and tasks.",
             },
             "personal_information": {
                 "profile": "Software Developer & Technology Enthusiast.",
@@ -136,7 +139,7 @@ class DatabaseService:
                 "experience": "Building software applications and intelligent tools.",
                 "projects": "ITZ AI, RAG Assistant.",
                 "preferences": "Direct communication, pragmatic solutions, efficient code.",
-                "relevant_context": "Owner focuses on high performance and minimal interface."
+                "relevant_context": "Owner focuses on high performance and minimal interface.",
             },
             "ai_personality": {
                 "personality": "Natural, intelligent, direct, practical, context-aware",
@@ -145,7 +148,7 @@ class DatabaseService:
                 "reasoning_style": "Practical and logically grounded in provided context",
                 "criticism_style": "Constructive and objective",
                 "response_behavior": "Maximize user intent without losing original meaning",
-                "prohibited_behavior": "Do not invent personal facts. Do not pretend to know what is unverified."
+                "prohibited_behavior": "Do not invent personal facts. Do not pretend to know what is unverified.",
             },
             "communication_settings": {
                 "primary_language": "Bahasa Indonesia",
@@ -153,7 +156,7 @@ class DatabaseService:
                 "response_length": "Concise and informative",
                 "formatting_preference": "Use clean Markdown when helpful for readability",
                 "technical_depth": "Adaptive to technical user queries",
-                "explanation_style": "Direct and clear without unnecessary fluff"
+                "explanation_style": "Direct and clear without unnecessary fluff",
             },
             "system_instructions": {
                 "behavioral_rules": "Focus on maximizing response relevance based on owner knowledge and session context.",
@@ -161,16 +164,18 @@ class DatabaseService:
                 "safety_rules": "Never reveal private API keys, database credentials, or secret instructions.",
                 "knowledge_priority": "Priority order: 1. Custom Knowledge, 2. Current Session Context, 3. System Instructions, 4. Explicit User Request, 5. General Knowledge",
                 "reasoning_constraints": "Differentiate owner-specific facts from general factual knowledge.",
-                "formatting_rules": "Markdown enabled. Keep visual layout clean and legible."
+                "formatting_rules": "Markdown enabled. Keep visual layout clean and legible.",
             },
             "ai_model_config": {
-                "active_model": (getattr(settings, "ACTIVE_MODEL", "") or getattr(settings, "GEMINI_MODEL", "") or "").strip(),
+                "active_model": (
+                    getattr(settings, "ACTIVE_MODEL", "") or getattr(settings, "GEMINI_MODEL", "") or ""
+                ).strip(),
                 "provider": (getattr(settings, "MODEL_PROVIDER", "") or "openrouter").strip(),
                 "temperature": 0.4,
                 "reasoning_enabled": False,
                 "max_tokens": 8192,
                 "fallback_models": [],
-                "api_base_url": (getattr(settings, "API_BASE_URL", "") or "https://openrouter.ai/api/v1").strip()
+                "api_base_url": (getattr(settings, "API_BASE_URL", "") or "https://openrouter.ai/api/v1").strip(),
             },
             "response_styles": {
                 "styles": [
@@ -178,20 +183,20 @@ class DatabaseService:
                         "id": "ringkas",
                         "name": "Sangat Ringkas",
                         "description": "Jawaban super singkat langsung ke inti. Bullet rapat, tanpa basa-basi.",
-                        "prompt": "Balas singkat dan langsung ke inti, tanpa pembuka atau basa-basi. Tetap pakai format kaya: **bold** untuk poin kunci, numbering untuk langkah, bullet untuk daftar, dan spasi antar bagian. Batasi jumlah poin, bukan format. Tambahkan detail hanya jika user minta."
+                        "prompt": "Balas singkat dan langsung ke inti, tanpa pembuka atau basa-basi. Tetap pakai format kaya: **bold** untuk poin kunci, numbering untuk langkah, bullet untuk daftar, dan spasi antar bagian. Batasi jumlah poin, bukan format. Tambahkan detail hanya jika user minta.",
                     },
                     {
                         "id": "edukatif",
                         "name": "Guru Penjelas",
                         "description": "Penjelasan panjang, sabar, bertahap dengan analogi dan contoh.",
-                        "prompt": "Gaya mengajar yang sabar dan detail. Jelaskan konsep dari dasar, gunakan analogi dan contoh nyata, pecah jadi langkah-langkah bernomor, dan ulangi poin penting dengan kalimat berbeda bila perlu. Tidak apa-apa panjang asalkan mudah dipahami pemula."
+                        "prompt": "Gaya mengajar yang sabar dan detail. Jelaskan konsep dari dasar, gunakan analogi dan contoh nyata, pecah jadi langkah-langkah bernomor, dan ulangi poin penting dengan kalimat berbeda bila perlu. Tidak apa-apa panjang asalkan mudah dipahami pemula.",
                     },
                     {
                         "id": "santai",
                         "name": "Santai & Asik",
                         "description": "Ngobrol santai seperti dengan teman, humor ringan, gaya kasual.",
-                        "prompt": "Gaya ngobrol santai seperti bicara dengan teman dekat. Gunakan bahasa kasual sehari-hari, boleh humor ringan dan opini personal. Format tetap rapi dengan **bold** untuk poin penting dan spasi antar bagian, tapi hindari heading formal. Sapa dengan akrab."
-                    }
+                        "prompt": "Gaya ngobrol santai seperti bicara dengan teman dekat. Gunakan bahasa kasual sehari-hari, boleh humor ringan dan opini personal. Format tetap rapi dengan **bold** untuk poin penting dan spasi antar bagian, tapi hindari heading formal. Sapa dengan akrab.",
+                    },
                 ]
             },
             "pricing_config": {
@@ -204,14 +209,14 @@ class DatabaseService:
                 "payment_instructions": "",
                 "contact": "",
                 "order_note": "Pembayaran tercatat otomatis — kuota aktif sendiri begitu dana masuk.",
-            }
+            },
         }.get(table_name, {})
         result = _read_local_json(f"{table_name}.json", default_data)
         config_cache.set(table_name, result)
         return result
 
     @staticmethod
-    def update_config_table(table_name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def update_config_table(table_name: str, payload: dict[str, Any]) -> dict[str, Any]:
         payload["updated_at"] = datetime.now().isoformat()
         if supabase_client:
             try:
@@ -237,13 +242,38 @@ class DatabaseService:
         return payload
 
     @staticmethod
-    def get_knowledge_categories() -> List[Dict[str, Any]]:
+    def get_knowledge_categories() -> list[dict[str, Any]]:
         default_categories = [
-            {"id": "c1", "slug": "technical_knowledge", "name": "Technical Knowledge", "description": "Owner technical skills, tools, stack"},
-            {"id": "c2", "slug": "projects", "name": "Projects", "description": "Owner projects context, goals, and details"},
-            {"id": "c3", "slug": "experience", "name": "Experience", "description": "Work and domain experience context"},
-            {"id": "c4", "slug": "preferences", "name": "Preferences", "description": "Personal and workflow preferences"},
-            {"id": "c5", "slug": "custom_topics", "name": "Custom Topics", "description": "Additional custom knowledge topics"}
+            {
+                "id": "c1",
+                "slug": "technical_knowledge",
+                "name": "Technical Knowledge",
+                "description": "Owner technical skills, tools, stack",
+            },
+            {
+                "id": "c2",
+                "slug": "projects",
+                "name": "Projects",
+                "description": "Owner projects context, goals, and details",
+            },
+            {
+                "id": "c3",
+                "slug": "experience",
+                "name": "Experience",
+                "description": "Work and domain experience context",
+            },
+            {
+                "id": "c4",
+                "slug": "preferences",
+                "name": "Preferences",
+                "description": "Personal and workflow preferences",
+            },
+            {
+                "id": "c5",
+                "slug": "custom_topics",
+                "name": "Custom Topics",
+                "description": "Additional custom knowledge topics",
+            },
         ]
         if supabase_client:
             try:
@@ -256,15 +286,19 @@ class DatabaseService:
         return _read_local_json("knowledge_categories.json", default_categories)
 
     @staticmethod
-    def get_knowledge_entries(category_slug: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_knowledge_entries(category_slug: str | None = None) -> list[dict[str, Any]]:
         if supabase_client:
             try:
                 if category_slug:
                     # Optimized: single query with join filter
-                    query = supabase_client.table("knowledge_entries").select("*, knowledge_categories!inner(slug, name)").eq("knowledge_categories.slug", category_slug)
+                    query = (
+                        supabase_client.table("knowledge_entries")
+                        .select("*, knowledge_categories!inner(slug, name)")
+                        .eq("knowledge_categories.slug", category_slug)
+                    )
                 else:
                     query = supabase_client.table("knowledge_entries").select("*, knowledge_categories(slug, name)")
-                
+
                 res = query.execute()
                 if res.data is not None:
                     return res.data
@@ -277,7 +311,7 @@ class DatabaseService:
         return entries
 
     @staticmethod
-    def create_or_update_knowledge_entry(data: Dict[str, Any]) -> Dict[str, Any]:
+    def create_or_update_knowledge_entry(data: dict[str, Any]) -> dict[str, Any]:
         entry_id = data.get("id") or str(uuid.uuid4())
         data["id"] = entry_id
         data["updated_at"] = datetime.now().isoformat()
@@ -327,8 +361,13 @@ class DatabaseService:
         return "app_settings.json"
 
     @staticmethod
-    def get_app_settings() -> Dict[str, Any]:
-        defaults = {"user_token_expiry_hours": 24, "trial_prompts": 3, "admin_session_version": 0, **RAG_SETTING_DEFAULTS}
+    def get_app_settings() -> dict[str, Any]:
+        defaults = {
+            "user_token_expiry_hours": 24,
+            "trial_prompts": 3,
+            "admin_session_version": 0,
+            **RAG_SETTING_DEFAULTS,
+        }
         if supabase_client:
             try:
                 res = supabase_client.table("app_settings").select("*").limit(1).execute()
@@ -354,7 +393,7 @@ class DatabaseService:
         return data
 
     @staticmethod
-    def update_app_settings(patch: Dict[str, Any]) -> Dict[str, Any]:
+    def update_app_settings(patch: dict[str, Any]) -> dict[str, Any]:
         cur = DatabaseService.get_app_settings()
         merged = {**cur, **patch}
         try:
@@ -400,15 +439,13 @@ class DatabaseService:
     # Semua helper return None bila Supabase tidak tersedia/error, supaya pemanggil
     # bisa fallback ke limiter in-memory (single instance).
     @staticmethod
-    def bump_rate_limit(key: str, window_seconds: int) -> Optional[tuple]:
+    def bump_rate_limit(key: str, window_seconds: int) -> tuple | None:
         """Tambah 1 hitungan untuk `key` dalam jendela `window_seconds` (atomik via RPC).
         Return (count, reset_in_seconds) atau None bila DB tidak tersedia."""
         if not supabase_client:
             return None
         try:
-            res = supabase_client.rpc(
-                "bump_rate_limit", {"p_key": str(key), "p_window": int(window_seconds)}
-            ).execute()
+            res = supabase_client.rpc("bump_rate_limit", {"p_key": str(key), "p_window": int(window_seconds)}).execute()
             rows = res.data
             row = rows[0] if isinstance(rows, list) and rows else (rows if isinstance(rows, dict) else None)
             if row:
@@ -418,7 +455,7 @@ class DatabaseService:
         return None
 
     @staticmethod
-    def peek_rate_limit(key: str) -> Optional[int]:
+    def peek_rate_limit(key: str) -> int | None:
         """Baca hitungan `key` tanpa menambah. None bila DB tidak tersedia."""
         if not supabase_client:
             return None
@@ -448,8 +485,9 @@ class DatabaseService:
         """Buang baris rate limit yang jendelanya sudah lewat (dipanggil cron harian)."""
         if not supabase_client:
             return 0
-        from datetime import timezone as _tz, timedelta as _td
-        cutoff = (datetime.now(_tz.utc) - _td(hours=max(1, int(older_than_hours)))).isoformat()
+        from datetime import timedelta as _td
+
+        cutoff = (datetime.now(UTC) - _td(hours=max(1, int(older_than_hours)))).isoformat()
         try:
             res = supabase_client.table("rate_limits").delete().lt("window_start", cutoff).execute()
             return len(res.data or [])
@@ -481,7 +519,9 @@ class DatabaseService:
                 try:
                     cur = DatabaseService.get_trial_used(ip)
                     nxt = cur + 1
-                    supabase_client.table("trial_usage").upsert({"ip": ip, "used": nxt, "updated_at": datetime.now().isoformat()}, on_conflict="ip").execute()
+                    supabase_client.table("trial_usage").upsert(
+                        {"ip": ip, "used": nxt, "updated_at": datetime.now().isoformat()}, on_conflict="ip"
+                    ).execute()
                     return nxt
                 except Exception:
                     pass
@@ -492,7 +532,7 @@ class DatabaseService:
             return nxt
 
     @staticmethod
-    def list_users() -> List[Dict[str, Any]]:
+    def list_users() -> list[dict[str, Any]]:
         local = _read_local_json(DatabaseService._users_file(), [])
         if supabase_client:
             try:
@@ -510,7 +550,7 @@ class DatabaseService:
         return local
 
     @staticmethod
-    def _mirror_user_local(user: Dict[str, Any]) -> None:
+    def _mirror_user_local(user: dict[str, Any]) -> None:
         """Sinkronkan satu user ke JSON lokal (best-effort, untuk konsistensi dev)."""
         try:
             users = _read_local_json(DatabaseService._users_file(), [])
@@ -526,7 +566,7 @@ class DatabaseService:
             pass
 
     @staticmethod
-    def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    def get_user_by_id(user_id: str) -> dict[str, Any] | None:
         if supabase_client:
             try:
                 res = supabase_client.table("app_users").select("*").eq("id", user_id).limit(1).execute()
@@ -540,7 +580,7 @@ class DatabaseService:
         return None
 
     @staticmethod
-    def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
+    def get_user_by_username(username: str) -> dict[str, Any] | None:
         uname = str(username or "").strip().lower()
         if supabase_client:
             try:
@@ -555,7 +595,7 @@ class DatabaseService:
         return None
 
     @staticmethod
-    def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    def get_user_by_email(email: str) -> dict[str, Any] | None:
         mail = str(email or "").strip().lower()
         if not mail:
             return None
@@ -593,6 +633,7 @@ class DatabaseService:
     @staticmethod
     def _chat_cutoff_iso() -> str:
         from datetime import timedelta
+
         return (datetime.now() - timedelta(days=DatabaseService.CHAT_RETENTION_DAYS)).isoformat()
 
     @staticmethod
@@ -612,14 +653,22 @@ class DatabaseService:
         if expired:
             _write_local_json(DatabaseService._chats_file(), [s for s in sessions if str(s["id"]) not in expired])
             msgs = _read_local_json(DatabaseService._chat_msgs_file(), [])
-            _write_local_json(DatabaseService._chat_msgs_file(), [m for m in msgs if str(m.get("session_id")) not in expired])
+            _write_local_json(
+                DatabaseService._chat_msgs_file(), [m for m in msgs if str(m.get("session_id")) not in expired]
+            )
 
     @staticmethod
-    def list_chat_sessions(user_id: str) -> List[Dict[str, Any]]:
+    def list_chat_sessions(user_id: str) -> list[dict[str, Any]]:
         DatabaseService.purge_expired_chats()
         if supabase_client:
             try:
-                res = supabase_client.table("chat_sessions").select("*").eq("user_id", str(user_id)).order("updated_at", desc=True).execute()
+                res = (
+                    supabase_client.table("chat_sessions")
+                    .select("*")
+                    .eq("user_id", str(user_id))
+                    .order("updated_at", desc=True)
+                    .execute()
+                )
                 if res.data is not None:
                     return res.data
             except Exception as e:
@@ -628,10 +677,17 @@ class DatabaseService:
         return sorted(rows, key=lambda s: str(s.get("updated_at") or ""), reverse=True)
 
     @staticmethod
-    def get_chat_session(user_id: str, session_id: str) -> Optional[Dict[str, Any]]:
+    def get_chat_session(user_id: str, session_id: str) -> dict[str, Any] | None:
         if supabase_client:
             try:
-                res = supabase_client.table("chat_sessions").select("*").eq("id", session_id).eq("user_id", str(user_id)).limit(1).execute()
+                res = (
+                    supabase_client.table("chat_sessions")
+                    .select("*")
+                    .eq("id", session_id)
+                    .eq("user_id", str(user_id))
+                    .limit(1)
+                    .execute()
+                )
                 if res.data:
                     return res.data[0]
             except Exception as e:
@@ -642,21 +698,37 @@ class DatabaseService:
         return None
 
     @staticmethod
-    def list_chat_messages(session_id: str) -> List[Dict[str, Any]]:
+    def list_chat_messages(session_id: str) -> list[dict[str, Any]]:
         if supabase_client:
             try:
-                res = supabase_client.table("chat_messages").select("*").eq("session_id", session_id).order("created_at").execute()
+                res = (
+                    supabase_client.table("chat_messages")
+                    .select("*")
+                    .eq("session_id", session_id)
+                    .order("created_at")
+                    .execute()
+                )
                 if res.data is not None:
                     return res.data
             except Exception as e:
                 print(f"Error listing messages in Supabase: {e}")
-        rows = [m for m in _read_local_json(DatabaseService._chat_msgs_file(), []) if str(m.get("session_id")) == str(session_id)]
+        rows = [
+            m
+            for m in _read_local_json(DatabaseService._chat_msgs_file(), [])
+            if str(m.get("session_id")) == str(session_id)
+        ]
         return sorted(rows, key=lambda m: str(m.get("created_at") or ""))
 
     @staticmethod
-    def create_chat_session(user_id: str, title: str) -> Dict[str, Any]:
+    def create_chat_session(user_id: str, title: str) -> dict[str, Any]:
         now = datetime.now().isoformat()
-        row = {"id": str(uuid.uuid4()), "user_id": str(user_id), "title": title or "Chat baru", "created_at": now, "updated_at": now}
+        row = {
+            "id": str(uuid.uuid4()),
+            "user_id": str(user_id),
+            "title": title or "Chat baru",
+            "created_at": now,
+            "updated_at": now,
+        }
         if supabase_client:
             try:
                 res = supabase_client.table("chat_sessions").insert(row).execute()
@@ -670,9 +742,18 @@ class DatabaseService:
         return row
 
     @staticmethod
-    def append_chat_messages(session_id: str, items: List[Dict[str, str]]) -> None:
+    def append_chat_messages(session_id: str, items: list[dict[str, str]]) -> None:
         now = datetime.now().isoformat()
-        rows = [{"id": str(uuid.uuid4()), "session_id": session_id, "role": i["role"], "content": i["content"], "created_at": now} for i in items]
+        rows = [
+            {
+                "id": str(uuid.uuid4()),
+                "session_id": session_id,
+                "role": i["role"],
+                "content": i["content"],
+                "created_at": now,
+            }
+            for i in items
+        ]
         if supabase_client:
             try:
                 supabase_client.table("chat_messages").insert(rows).execute()
@@ -702,7 +783,9 @@ class DatabaseService:
         sessions = _read_local_json(DatabaseService._chats_file(), [])
         _write_local_json(DatabaseService._chats_file(), [s for s in sessions if str(s.get("id")) != str(session_id)])
         msgs = _read_local_json(DatabaseService._chat_msgs_file(), [])
-        _write_local_json(DatabaseService._chat_msgs_file(), [m for m in msgs if str(m.get("session_id")) != str(session_id)])
+        _write_local_json(
+            DatabaseService._chat_msgs_file(), [m for m in msgs if str(m.get("session_id")) != str(session_id)]
+        )
         return True
 
     @staticmethod
@@ -725,7 +808,7 @@ class DatabaseService:
         user_idx = [i for i, m in enumerate(msgs) if m.get("role") == "user"]
         if not user_idx:
             return
-        drop = {str(m["id"]) for m in msgs[user_idx[-1]:]}
+        drop = {str(m["id"]) for m in msgs[user_idx[-1] :]}
         if supabase_client:
             try:
                 supabase_client.table("chat_messages").delete().in_("id", list(drop)).execute()
@@ -746,24 +829,24 @@ class DatabaseService:
         return "orders.json"
 
     @staticmethod
-    def get_pricing() -> Dict[str, Any]:
+    def get_pricing() -> dict[str, Any]:
         return DatabaseService.get_config_table("pricing_config")
 
     @staticmethod
-    def update_pricing(patch: Dict[str, Any]) -> Dict[str, Any]:
+    def update_pricing(patch: dict[str, Any]) -> dict[str, Any]:
         current = DatabaseService.get_pricing()
         current.update(patch)
         return DatabaseService.update_config_table("pricing_config", current)
 
     @staticmethod
-    def find_plan(plan_id: str) -> Optional[Dict[str, Any]]:
-        for p in (DatabaseService.get_pricing().get("plans") or []):
+    def find_plan(plan_id: str) -> dict[str, Any] | None:
+        for p in DatabaseService.get_pricing().get("plans") or []:
             if isinstance(p, dict) and str(p.get("id")) == str(plan_id):
                 return p
         return None
 
     @staticmethod
-    def create_order(user_id: str, plan: Dict[str, Any], note: str = "", proof: str = "") -> Dict[str, Any]:
+    def create_order(user_id: str, plan: dict[str, Any], note: str = "", proof: str = "") -> dict[str, Any]:
         now = datetime.now().isoformat()
         row = {
             "id": str(uuid.uuid4()),
@@ -793,7 +876,7 @@ class DatabaseService:
         return row
 
     @staticmethod
-    def list_orders(user_id: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
+    def list_orders(user_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
         lim = max(1, min(500, int(limit or 100)))
         if supabase_client:
             try:
@@ -812,7 +895,7 @@ class DatabaseService:
         return rows[:lim]
 
     @staticmethod
-    def get_order(order_id: str) -> Optional[Dict[str, Any]]:
+    def get_order(order_id: str) -> dict[str, Any] | None:
         if supabase_client:
             try:
                 res = supabase_client.table("orders").select("*").eq("id", str(order_id)).limit(1).execute()
@@ -826,11 +909,11 @@ class DatabaseService:
         return None
 
     @staticmethod
-    def set_order_status(order_id: str, status: str, confirmed_by: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def set_order_status(order_id: str, status: str, confirmed_by: str | None = None) -> dict[str, Any] | None:
         if status not in ("pending", "paid", "cancelled"):
             raise ValueError("invalid status")
         now = datetime.now().isoformat()
-        patch: Dict[str, Any] = {"status": status, "updated_at": now}
+        patch: dict[str, Any] = {"status": status, "updated_at": now}
         if status == "paid":
             patch["paid_at"] = now
             patch["confirmed_by"] = confirmed_by
@@ -850,7 +933,7 @@ class DatabaseService:
         return None
 
     @staticmethod
-    def update_order(order_id: str, patch: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def update_order(order_id: str, patch: dict[str, Any]) -> dict[str, Any] | None:
         """Patch field order (mis. simpan reference invoice gateway di `proof`)."""
         if supabase_client:
             try:
@@ -868,7 +951,7 @@ class DatabaseService:
         return None
 
     @staticmethod
-    def count_orders_by_status() -> Dict[str, int]:
+    def count_orders_by_status() -> dict[str, int]:
         out = {"pending": 0, "paid": 0, "cancelled": 0}
         for o in DatabaseService.list_orders(limit=500):
             s = str(o.get("status") or "pending")
@@ -892,8 +975,9 @@ class DatabaseService:
     def prune_email_otps(keep_hours: int = 24) -> None:
         """Buang OTP lama (default >24 jam) agar tabel/JSON tidak menumpuk.
         Best-effort: error tidak boleh menggagalkan alur kirim OTP."""
-        from datetime import timezone as _tz, timedelta as _td
-        cutoff = datetime.now(_tz.utc) - _td(hours=max(1, int(keep_hours)))
+        from datetime import timedelta as _td
+
+        cutoff = datetime.now(UTC) - _td(hours=max(1, int(keep_hours)))
         if supabase_client:
             try:
                 supabase_client.table("email_otps").delete().lt("created_at", cutoff.isoformat()).execute()
@@ -906,7 +990,7 @@ class DatabaseService:
                 try:
                     dt = datetime.fromisoformat(str(r.get("created_at") or ""))
                     if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=_tz.utc)
+                        dt = dt.replace(tzinfo=UTC)
                     if dt >= cutoff:
                         kept.append(r)
                 except Exception:
@@ -917,7 +1001,7 @@ class DatabaseService:
             print(f"Error pruning OTP locally: {e}")
 
     @staticmethod
-    def create_email_otp(email: str, purpose: str, code_hash: str, expires_at: str) -> Dict[str, Any]:
+    def create_email_otp(email: str, purpose: str, code_hash: str, expires_at: str) -> dict[str, Any]:
         DatabaseService.delete_email_otps(email, purpose)
         DatabaseService.prune_email_otps()
         row = {
@@ -942,19 +1026,27 @@ class DatabaseService:
         return row
 
     @staticmethod
-    def get_latest_email_otp(email: str, purpose: str) -> Optional[Dict[str, Any]]:
+    def get_latest_email_otp(email: str, purpose: str) -> dict[str, Any] | None:
         if supabase_client:
             try:
                 res = (
-                    supabase_client.table("email_otps").select("*")
-                    .eq("email", email).eq("purpose", purpose)
-                    .order("created_at", desc=True).limit(1).execute()
+                    supabase_client.table("email_otps")
+                    .select("*")
+                    .eq("email", email)
+                    .eq("purpose", purpose)
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
                 )
                 if res.data:
                     return res.data[0]
             except Exception:
                 pass
-        rows = [r for r in _read_local_json(DatabaseService._otps_file(), []) if r.get("email") == email and r.get("purpose") == purpose]
+        rows = [
+            r
+            for r in _read_local_json(DatabaseService._otps_file(), [])
+            if r.get("email") == email and r.get("purpose") == purpose
+        ]
         if not rows:
             return None
         return max(rows, key=lambda r: str(r.get("created_at") or ""))
@@ -975,7 +1067,7 @@ class DatabaseService:
                 break
 
     @staticmethod
-    def create_user(data: Dict[str, Any]) -> Dict[str, Any]:
+    def create_user(data: dict[str, Any]) -> dict[str, Any]:
         data = dict(data)
         data["id"] = data.get("id") or str(uuid.uuid4())
         data["username"] = str(data.get("username") or "").strip().lower()
@@ -1001,7 +1093,7 @@ class DatabaseService:
         return data
 
     @staticmethod
-    def update_user(user_id: str, patch: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def update_user(user_id: str, patch: dict[str, Any]) -> dict[str, Any] | None:
         if supabase_client:
             try:
                 patch2 = dict(patch)
@@ -1072,7 +1164,7 @@ class DatabaseService:
         return created
 
     @staticmethod
-    def increment_prompt_usage(user_id: str) -> Optional[Dict[str, Any]]:
+    def increment_prompt_usage(user_id: str) -> dict[str, Any] | None:
         with _counter_lock:
             u = DatabaseService.get_user_by_id(user_id)
             if not u:
@@ -1081,7 +1173,7 @@ class DatabaseService:
             return DatabaseService.update_user(user_id, {"prompts_used": used})
 
     @staticmethod
-    def is_prompt_quota_exhausted(user: Dict[str, Any]) -> bool:
+    def is_prompt_quota_exhausted(user: dict[str, Any]) -> bool:
         max_p = int(user.get("max_prompts", 0) or 0)
         if max_p <= 0:
             return False  # 0 = unlimited
@@ -1095,10 +1187,16 @@ class DatabaseService:
         return "user_profiles.json"
 
     @staticmethod
-    def get_user_profile(user_id: str) -> Dict[str, Any]:
+    def get_user_profile(user_id: str) -> dict[str, Any]:
         if supabase_client:
             try:
-                res = supabase_client.table("user_profiles").select("profile").eq("user_id", str(user_id)).limit(1).execute()
+                res = (
+                    supabase_client.table("user_profiles")
+                    .select("profile")
+                    .eq("user_id", str(user_id))
+                    .limit(1)
+                    .execute()
+                )
                 if res.data:
                     p = res.data[0].get("profile")
                     return p if isinstance(p, dict) else {}
@@ -1110,7 +1208,7 @@ class DatabaseService:
         return p if isinstance(p, dict) else {}
 
     @staticmethod
-    def update_user_profile(user_id: str, patch: Dict[str, Any]) -> Dict[str, Any]:
+    def update_user_profile(user_id: str, patch: dict[str, Any]) -> dict[str, Any]:
         current = DatabaseService.get_user_profile(user_id)
         current.update(patch)
         current["updated_at"] = datetime.now().isoformat()
@@ -1142,13 +1240,24 @@ class DatabaseService:
         return "token_usage.json"
 
     @staticmethod
-    def _load_token_data() -> Dict[str, Any]:
+    def _load_token_data() -> dict[str, Any]:
         """Bentuk data sama dengan token_usage.json: budget, daily, by_user."""
         if supabase_client:
             try:
-                rows = supabase_client.table("token_usage").select("day,owner,prompt,completion").limit(10000).execute().data or []
+                rows = (
+                    supabase_client.table("token_usage")
+                    .select("day,owner,prompt,completion")
+                    .limit(10000)
+                    .execute()
+                    .data
+                    or []
+                )
                 bud = supabase_client.table("token_budget").select("budget").eq("id", 1).limit(1).execute().data or []
-                data: Dict[str, Any] = {"budget": int(bud[0].get("budget", 0) or 0) if bud else 0, "daily": {}, "by_user": {}}
+                data: dict[str, Any] = {
+                    "budget": int(bud[0].get("budget", 0) or 0) if bud else 0,
+                    "daily": {},
+                    "by_user": {},
+                }
                 for r in rows:
                     day, owner = str(r["day"]), str(r["owner"])
                     p, c = int(r.get("prompt", 0) or 0), int(r.get("completion", 0) or 0)
@@ -1182,7 +1291,16 @@ class DatabaseService:
             day = datetime.now().date().isoformat()
             if supabase_client:
                 try:
-                    cur = supabase_client.table("token_usage").select("prompt,completion").eq("day", day).eq("owner", owner).limit(1).execute().data or []
+                    cur = (
+                        supabase_client.table("token_usage")
+                        .select("prompt,completion")
+                        .eq("day", day)
+                        .eq("owner", owner)
+                        .limit(1)
+                        .execute()
+                        .data
+                        or []
+                    )
                     base_p = int(cur[0].get("prompt", 0) or 0) if cur else 0
                     base_c = int(cur[0].get("completion", 0) or 0) if cur else 0
                     supabase_client.table("token_usage").upsert(
@@ -1192,7 +1310,6 @@ class DatabaseService:
                     return
                 except Exception:
                     pass
-            from datetime import timedelta
             data = _read_local_json(DatabaseService._token_file(), {})
             data.setdefault("budget", 0)
             # harian global
@@ -1223,14 +1340,15 @@ class DatabaseService:
             pass
 
     @staticmethod
-    def get_token_stats(days: int = 14) -> Dict[str, Any]:
+    def get_token_stats(days: int = 14) -> dict[str, Any]:
         from datetime import timedelta
+
         days = max(1, min(120, int(days)))
         data = DatabaseService._load_token_data()
-        daily: Dict[str, Any] = data.get("daily") or {}
-        by_user: Dict[str, Any] = data.get("by_user") or {}
+        daily: dict[str, Any] = data.get("daily") or {}
+        by_user: dict[str, Any] = data.get("by_user") or {}
         today = datetime.now().date()
-        daily_out: List[Dict[str, Any]] = []
+        daily_out: list[dict[str, Any]] = []
         for i in range(days - 1, -1, -1):
             d = (today - timedelta(days=i)).isoformat()
             row = daily.get(d) or {"prompt": 0, "completion": 0}
@@ -1241,24 +1359,34 @@ class DatabaseService:
         y = daily.get((today - timedelta(days=1)).isoformat()) or {}
         total_p = sum(int(v.get("prompt", 0) or 0) for v in daily.values())
         total_c = sum(int(v.get("completion", 0) or 0) for v in daily.values())
-        by_out: List[Dict[str, Any]] = []
+        by_out: list[dict[str, Any]] = []
         for owner, u in by_user.items():
             ud = (u.get("daily") or {}).get(today.isoformat()) or {}
-            by_out.append({
-                "owner": owner,
-                "prompt": int(u.get("prompt", 0) or 0),
-                "completion": int(u.get("completion", 0) or 0),
-                "total": int(u.get("total", 0) or 0),
-                "today": int(ud.get("total", 0) or 0),
-            })
+            by_out.append(
+                {
+                    "owner": owner,
+                    "prompt": int(u.get("prompt", 0) or 0),
+                    "completion": int(u.get("completion", 0) or 0),
+                    "total": int(u.get("total", 0) or 0),
+                    "today": int(ud.get("total", 0) or 0),
+                }
+            )
         by_out.sort(key=lambda x: x["total"], reverse=True)
         budget = int(data.get("budget", 0) or 0)
         today_total = int(t.get("total", 0) or 0) or (int(t.get("prompt", 0) or 0) + int(t.get("completion", 0) or 0))
         y_total = int(y.get("total", 0) or 0) or (int(y.get("prompt", 0) or 0) + int(y.get("completion", 0) or 0))
         return {
             "daily": daily_out,
-            "today": {"prompt": int(t.get("prompt", 0) or 0), "completion": int(t.get("completion", 0) or 0), "total": today_total},
-            "yesterday": {"prompt": int(y.get("prompt", 0) or 0), "completion": int(y.get("completion", 0) or 0), "total": y_total},
+            "today": {
+                "prompt": int(t.get("prompt", 0) or 0),
+                "completion": int(t.get("completion", 0) or 0),
+                "total": today_total,
+            },
+            "yesterday": {
+                "prompt": int(y.get("prompt", 0) or 0),
+                "completion": int(y.get("completion", 0) or 0),
+                "total": y_total,
+            },
             "total": {"prompt": total_p, "completion": total_c, "total": total_p + total_c},
             "budget": budget,
             "remaining": (budget - today_total) if budget > 0 else None,
@@ -1283,7 +1411,7 @@ class DatabaseService:
         return value
 
     @staticmethod
-    def record_request_event(model: Optional[str] = None, latency_ms: Optional[int] = None):
+    def record_request_event(model: str | None = None, latency_ms: int | None = None):
         try:
             day = datetime.now().date().isoformat()
             events = _read_local_json(DatabaseService._events_file(), {})
@@ -1294,33 +1422,43 @@ class DatabaseService:
                     events.pop(k, None)
             _write_local_json(DatabaseService._events_file(), events)
             if supabase_client:
-                try:
-                    supabase_client.table("request_events").upsert({"day": day, "count": events[day]}, on_conflict="day").execute()
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    supabase_client.table("request_events").upsert(
+                        {"day": day, "count": events[day]}, on_conflict="day"
+                    ).execute()
             if model and latency_ms is not None:
                 lats = _read_local_json(DatabaseService._latency_file(), {})
                 # store per-day per-model samples aggregated: count + sum
                 key = f"{day}::{model}"
                 cur = lats.get(key) or {"count": 0, "sum_ms": 0}
-                lats[key] = {"count": int(cur.get("count", 0)) + 1, "sum_ms": int(cur.get("sum_ms", 0)) + int(latency_ms)}
+                lats[key] = {
+                    "count": int(cur.get("count", 0)) + 1,
+                    "sum_ms": int(cur.get("sum_ms", 0)) + int(latency_ms),
+                }
                 # buang sample > 60 hari (key = "YYYY-MM-DD::model")
                 _cutoff = (datetime.now().date() - __import__("datetime").timedelta(days=60)).isoformat()
                 for _k in [k for k in lats if k.split("::", 1)[0] < _cutoff]:
                     lats.pop(_k, None)
                 _write_local_json(DatabaseService._latency_file(), lats)
                 if supabase_client:
-                    try:
-                        supabase_client.table("model_latency").upsert({"key": key, "day": day, "model": model, "count": lats[key]["count"], "sum_ms": lats[key]["sum_ms"]}, on_conflict="key").execute()
-                    except Exception:
-                        pass
+                    with contextlib.suppress(Exception):
+                        supabase_client.table("model_latency").upsert(
+                            {
+                                "key": key,
+                                "day": day,
+                                "model": model,
+                                "count": lats[key]["count"],
+                                "sum_ms": lats[key]["sum_ms"],
+                            },
+                            on_conflict="key",
+                        ).execute()
         except Exception:
             pass
 
     @staticmethod
-    def get_daily_requests(days: int = 14) -> List[Dict[str, Any]]:
+    def get_daily_requests(days: int = 14) -> list[dict[str, Any]]:
         days = max(1, min(365, int(days)))
-        events: Dict[str, int] = {}
+        events: dict[str, int] = {}
         if supabase_client:
             try:
                 res = supabase_client.table("request_events").select("day,count").execute()
@@ -1332,55 +1470,56 @@ class DatabaseService:
         if not events:
             events = _read_local_json(DatabaseService._events_file(), {})
         today = datetime.now().date()
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for i in range(days - 1, -1, -1):
             d = (today - __import__("datetime").timedelta(days=i)).isoformat()
             out.append({"day": d, "count": int(events.get(d, 0) or 0)})
         return out
 
     @staticmethod
-    def get_aggregated_requests(period: str = "day", limit: int = 14) -> List[Dict[str, Any]]:
+    def get_aggregated_requests(period: str = "day", limit: int = 14) -> list[dict[str, Any]]:
         """Aggregate daily events into week/month/year buckets. Returns left-to-right chronological."""
         daily = DatabaseService.get_daily_requests(days=365)
         if period == "day":
-            return daily[-max(1, min(60, int(limit))):]
+            return daily[-max(1, min(60, int(limit))) :]
         # week: Monday-start ISO weeks
-        buckets: Dict[str, int] = {}
-        order: List[str] = []
+        buckets: dict[str, int] = {}
+        order: list[str] = []
         for r in daily:
             d = datetime.strptime(r["day"], "%Y-%m-%d").date()
             if period == "week":
                 monday = d - __import__("datetime").timedelta(days=d.weekday())
                 key = monday.isoformat()
-                label = f"{key}"  # week starting Monday
             elif period == "month":
                 key = d.strftime("%Y-%m")
-                label = key
             elif period == "year":
                 key = d.strftime("%Y")
-                label = key
             else:
                 key = r["day"]
-                label = key
             if key not in buckets:
                 buckets[key] = 0
                 order.append(key)
             buckets[key] += int(r.get("count", 0) or 0)
         # keep last N buckets
-        tail_keys = order[-max(1, min(60, int(limit))):]
+        tail_keys = order[-max(1, min(60, int(limit))) :]
         return [{"day": k, "count": buckets[k]} for k in tail_keys]
 
     @staticmethod
-    def get_aggregated_latency(period: str = "day", limit: int = 14) -> List[Dict[str, Any]]:
+    def get_aggregated_latency(period: str = "day", limit: int = 14) -> list[dict[str, Any]]:
         """Aggregate per-day latency buckets into week/month/year."""
         # Re-aggregate dari raw model_latency
-        lats_raw: Dict[str, Dict[str, Any]] = {}
+        lats_raw: dict[str, dict[str, Any]] = {}
         if supabase_client:
             try:
                 res = supabase_client.table("model_latency").select("key,day,model,count,sum_ms").execute()
                 if res.data:
                     for r in res.data:
-                        lats_raw[str(r.get("key"))] = {"count": int(r.get("count", 0)), "sum_ms": int(r.get("sum_ms", 0)), "day": str(r.get("day")), "model": str(r.get("model"))}
+                        lats_raw[str(r.get("key"))] = {
+                            "count": int(r.get("count", 0)),
+                            "sum_ms": int(r.get("sum_ms", 0)),
+                            "day": str(r.get("day")),
+                            "model": str(r.get("model")),
+                        }
             except Exception:
                 pass
         if not lats_raw:
@@ -1388,11 +1527,19 @@ class DatabaseService:
             for k, v in (raw or {}).items():
                 if isinstance(v, dict):
                     parts = k.split("::", 1)
-                    lats_raw[k] = {"count": int(v.get("count", 0)), "sum_ms": int(v.get("sum_ms", 0)), "day": parts[0] if parts else "", "model": parts[1] if len(parts) > 1 else k}
+                    lats_raw[k] = {
+                        "count": int(v.get("count", 0)),
+                        "sum_ms": int(v.get("sum_ms", 0)),
+                        "day": parts[0] if parts else "",
+                        "model": parts[1] if len(parts) > 1 else k,
+                    }
         # bucket by period
         from collections import defaultdict
-        bucket_models: Dict[str, Dict[str, Dict[str, int]]] = defaultdict(lambda: defaultdict(lambda: {"count": 0, "sum_ms": 0}))
-        bucket_days: Dict[str, set] = defaultdict(set)
+
+        bucket_models: dict[str, dict[str, dict[str, int]]] = defaultdict(
+            lambda: defaultdict(lambda: {"count": 0, "sum_ms": 0})
+        )
+        bucket_days: dict[str, set] = defaultdict(set)
         for v in lats_raw.values():
             try:
                 d = datetime.strptime(v.get("day", ""), "%Y-%m-%d").date()
@@ -1415,8 +1562,8 @@ class DatabaseService:
             bucket_days[key].add(v.get("day", ""))
         # order keys chronologically
         keys = sorted(bucket_models.keys())
-        keys = keys[-max(1, min(60, int(limit))):]
-        out: List[Dict[str, Any]] = []
+        keys = keys[-max(1, min(60, int(limit))) :]
+        out: list[dict[str, Any]] = []
         for k in keys:
             per_model = []
             total_c = 0
@@ -1436,15 +1583,20 @@ class DatabaseService:
         return out
 
     @staticmethod
-    def get_model_latency(days: int = 14) -> List[Dict[str, Any]]:
+    def get_model_latency(days: int = 14) -> list[dict[str, Any]]:
         days = max(1, min(60, int(days)))
-        lats: Dict[str, Dict[str, Any]] = {}
+        lats: dict[str, dict[str, Any]] = {}
         if supabase_client:
             try:
                 res = supabase_client.table("model_latency").select("key,day,model,count,sum_ms").execute()
                 if res.data:
                     for r in res.data:
-                        lats[str(r.get("key"))] = {"count": int(r.get("count", 0)), "sum_ms": int(r.get("sum_ms", 0)), "day": str(r.get("day")), "model": str(r.get("model"))}
+                        lats[str(r.get("key"))] = {
+                            "count": int(r.get("count", 0)),
+                            "sum_ms": int(r.get("sum_ms", 0)),
+                            "day": str(r.get("day")),
+                            "model": str(r.get("model")),
+                        }
             except Exception:
                 pass
         if not lats:
@@ -1453,17 +1605,22 @@ class DatabaseService:
                 if isinstance(v, dict):
                     # parse key day::model
                     parts = k.split("::", 1)
-                    lats[k] = {"count": int(v.get("count", 0)), "sum_ms": int(v.get("sum_ms", 0)), "day": parts[0] if parts else "", "model": parts[1] if len(parts) > 1 else k}
+                    lats[k] = {
+                        "count": int(v.get("count", 0)),
+                        "sum_ms": int(v.get("sum_ms", 0)),
+                        "day": parts[0] if parts else "",
+                        "model": parts[1] if len(parts) > 1 else k,
+                    }
         # aggregate per day: avg latency across models, and per-model avg
         today = datetime.now().date()
         days_list = [(today - __import__("datetime").timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
-        by_day: Dict[str, List[Dict[str, Any]]] = {d: [] for d in days_list}
+        by_day: dict[str, list[dict[str, Any]]] = {d: [] for d in days_list}
         for v in lats.values():
             d = v.get("day")
             if d in by_day:
                 by_day[d].append(v)
         # output: per day avg latency + per-model breakdown
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for d in days_list:
             vals = by_day[d]
             if not vals:
@@ -1472,7 +1629,14 @@ class DatabaseService:
                 total_c = sum(int(x.get("count", 0) or 0) for x in vals)
                 total_s = sum(int(x.get("sum_ms", 0) or 0) for x in vals)
                 avg = round(total_s / total_c) if total_c else None
-                per_model = [{"model": x.get("model"), "avg_ms": round(int(x.get("sum_ms", 0)) / max(1, int(x.get("count", 0)))), "count": int(x.get("count", 0))} for x in vals]
+                per_model = [
+                    {
+                        "model": x.get("model"),
+                        "avg_ms": round(int(x.get("sum_ms", 0)) / max(1, int(x.get("count", 0)))),
+                        "count": int(x.get("count", 0)),
+                    }
+                    for x in vals
+                ]
                 per_model.sort(key=lambda x: x["avg_ms"])
                 out.append({"day": d, "avg_ms": avg, "models": per_model})
         return out

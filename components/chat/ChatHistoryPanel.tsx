@@ -57,7 +57,11 @@ export default function ChatHistoryPanel({
       >
         <div className="flex items-center justify-between border-b border-white/[0.07] px-4 py-3">
           <h3 className="text-[15px] font-semibold text-white">Riwayat chat</h3>
-          <button onClick={onClose} aria-label="Tutup" className="rounded-lg px-2 py-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200">
+          <button
+            onClick={onClose}
+            aria-label="Tutup"
+            className="rounded-lg px-2 py-1 text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -74,7 +78,9 @@ export default function ChatHistoryPanel({
 
         <div className="flex-1 overflow-y-auto px-2 py-2">
           {items.length === 0 ? (
-            <p className="px-2 py-6 text-center text-[13px] text-zinc-500">Belum ada chat tersimpan.</p>
+            <p className="px-2 py-6 text-center text-[13px] text-zinc-500">
+              Belum ada chat tersimpan.
+            </p>
           ) : (
             <ul className="space-y-1">
               {items.map((c) => (
@@ -119,7 +125,10 @@ export default function ChatHistoryPanel({
           animate={{ opacity: 1 }}
           transition={{ duration: 0.15 }}
         >
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-[5px]" onClick={() => setConfirmId(null)} />
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-[5px]"
+            onClick={() => setConfirmId(null)}
+          />
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -129,9 +138,12 @@ export default function ChatHistoryPanel({
             aria-label="Konfirmasi hapus chat"
             className="relative w-full max-w-[340px] rounded-2xl border border-white/[0.1] bg-[#0c0c10] p-6 shadow-[0_32px_100px_-24px_rgba(0,0,0,0.85)]"
           >
-            <h3 className="text-[16px] font-semibold tracking-[-0.01em] text-white">Hapus chat ini?</h3>
+            <h3 className="text-[16px] font-semibold tracking-[-0.01em] text-white">
+              Hapus chat ini?
+            </h3>
             <p className="mt-1.5 text-[13.5px] leading-relaxed text-zinc-500">
-              <span className="font-medium text-zinc-300">&ldquo;{pending.title}&rdquo;</span> akan dihapus permanen dan tidak bisa dikembalikan.
+              <span className="font-medium text-zinc-300">&ldquo;{pending.title}&rdquo;</span> akan
+              dihapus permanen dan tidak bisa dikembalikan.
             </p>
             <div className="mt-5 flex gap-2.5">
               <button
@@ -142,7 +154,10 @@ export default function ChatHistoryPanel({
                 Batal
               </button>
               <button
-                onClick={() => { setConfirmId(null); onDeleteChat(pending.id); }}
+                onClick={() => {
+                  setConfirmId(null);
+                  onDeleteChat(pending.id);
+                }}
                 className="h-10 flex-1 rounded-xl bg-red-500 text-[14px] font-semibold text-white transition-colors hover:bg-red-600"
               >
                 Hapus

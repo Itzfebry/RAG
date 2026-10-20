@@ -1,4 +1,3 @@
-from typing import List, Dict
 import os
 import time
 
@@ -6,13 +5,11 @@ import httpx
 from langchain_text_splitters import CharacterTextSplitter
 
 try:
-    from backend.config.config import settings
-    from backend.database.db import DatabaseService, supabase_client
     from backend.database.cache import rag_cache
+    from backend.database.db import DatabaseService, supabase_client
 except ImportError:
-    from config.config import settings
-    from database.db import DatabaseService, supabase_client
     from database.cache import rag_cache
+    from database.db import DatabaseService, supabase_client
 
 # ── Embedding configuration ───────────────────────────────────────────────
 # Provider switch:
@@ -47,13 +44,8 @@ GEMINI_EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2
 # Kunci khusus embedding; fallback ke GEMINI_API_KEY (var itu juga dibaca
 # agent LLM - aman selama GROQ_API_KEY/OPENROUTER_API_KEY terisi, karena
 # urutan resolusi key agent memprioritaskan kunci provider aktif).
-GEMINI_API_KEY = (
-    os.getenv("GEMINI_EMBEDDING_API_KEY", "").strip()
-    or os.getenv("GEMINI_API_KEY", "").strip()
-)
-GEMINI_API_BASE = os.getenv(
-    "GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta"
-).rstrip("/")
+GEMINI_API_KEY = os.getenv("GEMINI_EMBEDDING_API_KEY", "").strip() or os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_API_BASE = os.getenv("GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
 
 # Dimensi vektor - WAJIB sama dengan kolom pgvector di Supabase.
 # Default 768: rekomendasi MRL Google untuk gemini-embedding-2 (MTEB 67.99,
@@ -62,9 +54,7 @@ GEMINI_API_BASE = os.getenv(
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "768"))
 # Retrieval floor: chunks below this cosine similarity are dropped.
 # Default dikalibrasi per provider (gemini: 0.649-0.796 lolos, sampah 0.498-0.63).
-MATCH_THRESHOLD = float(
-    os.getenv("MATCH_THRESHOLD", "0.64" if EMBEDDING_PROVIDER == "gemini" else "0.25")
-)
+MATCH_THRESHOLD = float(os.getenv("MATCH_THRESHOLD", "0.64" if EMBEDDING_PROVIDER == "gemini" else "0.25"))
 
 
 def _current_match_threshold() -> float:
@@ -76,6 +66,7 @@ def _current_match_threshold() -> float:
     except Exception:
         pass
     return MATCH_THRESHOLD
+
 
 # HF cold-start handling: a "loading" 503 means the model is warming up.
 _HF_MAX_RETRIES = int(os.getenv("HF_EMBEDDING_RETRIES", "4"))
@@ -92,10 +83,9 @@ def _get_embedding_model():
     if _embedding_model is None:
         try:
             from sentence_transformers import SentenceTransformer
+
             print("Loading SentenceTransformer model 'paraphrase-multilingual-MiniLM-L12-v2'...")
-            _embedding_model = SentenceTransformer(
-                "paraphrase-multilingual-MiniLM-L12-v2", device="cpu"
-            )
+            _embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2", device="cpu")
             print("Embedding model loaded successfully")
         except Exception as e:
             print(f"Error loading embedding model: {e}")
@@ -103,18 +93,17 @@ def _get_embedding_model():
     return _embedding_model
 
 
-def _hf_embed(text: str) -> List[float]:
+def _hf_embed(text: str) -> list[float]:
     """Call HuggingFace Inference API. Raises on failure."""
     if not HF_TOKEN:
         raise RuntimeError(
-            "HF_TOKEN not set - create a free read token at "
-            "https://huggingface.co/settings/tokens and put it in .env"
+            "HF_TOKEN not set - create a free read token at https://huggingface.co/settings/tokens and put it in .env"
         )
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {HF_TOKEN}"}
 
     last_err = "unknown error"
     with httpx.Client(timeout=_HF_TIMEOUT_S) as client:
-        for attempt in range(_HF_MAX_RETRIES):
+        for _attempt in range(_HF_MAX_RETRIES):
             try:
                 resp = client.post(HF_API_URL, headers=headers, json={"inputs": text})
             except httpx.HTTPError as e:
@@ -144,7 +133,7 @@ def _hf_embed(text: str) -> List[float]:
     raise RuntimeError(f"HF embedding unavailable after {_HF_MAX_RETRIES} tries: {last_err}")
 
 
-def _gemini_embed(text: str, as_query: bool = False) -> List[float]:
+def _gemini_embed(text: str, as_query: bool = False) -> list[float]:
     """Call Gemini embedContent REST. Raises on failure.
 
     Prefix task mengikuti dokumentasi resmi - DUA format berbeda:
@@ -161,15 +150,12 @@ def _gemini_embed(text: str, as_query: bool = False) -> List[float]:
     """
     if not GEMINI_API_KEY:
         raise RuntimeError(
-            "GEMINI_API_KEY not set - ambil kunci gratis di "
-            "https://aistudio.google.com/apikey lalu isi di .env"
+            "GEMINI_API_KEY not set - ambil kunci gratis di https://aistudio.google.com/apikey lalu isi di .env"
         )
 
     is_v2 = "embedding-2" in GEMINI_EMBEDDING_MODEL
     content_text = (
-        (f"task: search result | query: {text}" if as_query else f"title: none | text: {text}")
-        if is_v2
-        else text
+        (f"task: search result | query: {text}" if as_query else f"title: none | text: {text}") if is_v2 else text
     )
     body: dict = {
         "model": f"models/{GEMINI_EMBEDDING_MODEL}",
@@ -184,7 +170,7 @@ def _gemini_embed(text: str, as_query: bool = False) -> List[float]:
 
     last_err = "unknown error"
     with httpx.Client(timeout=_HF_TIMEOUT_S) as client:
-        for attempt in range(_HF_MAX_RETRIES):
+        for retry_num in range(_HF_MAX_RETRIES):
             try:
                 resp = client.post(url, headers=headers, json=body)
             except httpx.HTTPError as e:
@@ -214,20 +200,16 @@ def _gemini_embed(text: str, as_query: bool = False) -> List[float]:
             # 429 = free-tier rate limit; 5xx = server Google. Retryable.
             if resp.status_code in (429, 500, 502, 503, 504):
                 last_err = f"HTTP {resp.status_code}: {body_txt}"
-                time.sleep(_HF_RETRY_WAIT_S * (attempt + 1))
+                time.sleep(_HF_RETRY_WAIT_S * (retry_num + 1))
                 continue
             # 400/403 (key salah, model salah) → gagal cepat, jangan retry.
-            raise RuntimeError(
-                f"Gemini embedding failed: HTTP {resp.status_code}: {body_txt}"
-            )
+            raise RuntimeError(f"Gemini embedding failed: HTTP {resp.status_code}: {body_txt}")
 
-    raise RuntimeError(
-        f"Gemini embedding unavailable after {_HF_MAX_RETRIES} tries: {last_err}"
-    )
+    raise RuntimeError(f"Gemini embedding unavailable after {_HF_MAX_RETRIES} tries: {last_err}")
 
 
 # Cache untuk query embeddings (avoid re-encoding same query)
-_embedding_cache: Dict[str, List[float]] = {}
+_embedding_cache: dict[str, list[float]] = {}
 
 
 def _warmup_embedding_model():
@@ -245,6 +227,7 @@ def _warmup_embedding_model():
 
 if EMBEDDING_PROVIDER == "local" and __name__ != "__main__":
     import threading
+
     _warm_thread = threading.Thread(target=_warmup_embedding_model, daemon=True, name="emb-warmup")
     _warm_thread.start()
 
@@ -252,14 +235,48 @@ if EMBEDDING_PROVIDER == "local" and __name__ != "__main__":
 # Common Indonesian + English stopwords - excluded from keyword matching so
 # generic words ("yang", "cara", "how") don't match every entry.
 _STOPWORDS = {
-    "yang", "dan", "di", "ke", "dari", "ini", "itu", "apa", "gimana", "bagaimana",
-    "cara", "ada", "untuk", "dengan", "atau", "saya", "aku", "kamu", "anda", "kah",
-    "adalah", "pada", "juga", "bisa", "tolong", "mohon",
-    "the", "a", "an", "is", "are", "how", "what", "to", "of", "in", "for", "you",
+    "yang",
+    "dan",
+    "di",
+    "ke",
+    "dari",
+    "ini",
+    "itu",
+    "apa",
+    "gimana",
+    "bagaimana",
+    "cara",
+    "ada",
+    "untuk",
+    "dengan",
+    "atau",
+    "saya",
+    "aku",
+    "kamu",
+    "anda",
+    "kah",
+    "adalah",
+    "pada",
+    "juga",
+    "bisa",
+    "tolong",
+    "mohon",
+    "the",
+    "a",
+    "an",
+    "is",
+    "are",
+    "how",
+    "what",
+    "to",
+    "of",
+    "in",
+    "for",
+    "you",
 }
 
 
-def _keyword_search(query: str, match_count: int) -> List[str]:
+def _keyword_search(query: str, match_count: int) -> list[str]:
     """Keyword fallback - returns ONLY chunks that actually match the query.
 
     Sengaja TIDAK punya fallback "entry pertama": konten tidak relevan yang
@@ -271,6 +288,7 @@ def _keyword_search(query: str, match_count: int) -> List[str]:
     match di dalam "purnama" - konten nyasar ikut nyuntik konteks LLM.
     """
     import re as _re
+
     terms = [w for w in query.lower().split() if len(w) >= 3 and w not in _STOPWORDS]
     entries = DatabaseService.get_knowledge_entries()
     chunks = []
@@ -286,7 +304,7 @@ def _keyword_search(query: str, match_count: int) -> List[str]:
 
 class KnowledgeService:
     @staticmethod
-    def get_embedding(text: str, as_query: bool = False) -> List[float]:
+    def get_embedding(text: str, as_query: bool = False) -> list[float]:
         """Generate embedding (cached).
 
         Returns an EMBEDDING_DIM vector (default 384) representing semantic
@@ -299,11 +317,7 @@ class KnowledgeService:
         """
         # Gemini: prefix query vs dokumen beda → cache key harus dibedakan
         # agar teks identik di mode berbeda tidak saling tabrak.
-        cache_key = (
-            f"{'q:' if as_query else 'd:'}{text}"
-            if EMBEDDING_PROVIDER == "gemini"
-            else text
-        )
+        cache_key = f"{'q:' if as_query else 'd:'}{text}" if EMBEDDING_PROVIDER == "gemini" else text
         if cache_key in _embedding_cache:
             return _embedding_cache[cache_key]
 
@@ -346,15 +360,15 @@ class KnowledgeService:
         for idx, chunk in enumerate(chunks):
             embedding = KnowledgeService.get_embedding(chunk)
             if not _is_valid_vector(embedding):
-                raise RuntimeError(
-                    f"Embedding gagal pada chunk {idx}; index entry tidak diubah"
-                )
-            rows.append({
-                "entry_id": entry_id,
-                "chunk_index": idx,
-                "content_chunk": chunk,
-                "embedding": embedding,
-            })
+                raise RuntimeError(f"Embedding gagal pada chunk {idx}; index entry tidak diubah")
+            rows.append(
+                {
+                    "entry_id": entry_id,
+                    "chunk_index": idx,
+                    "content_chunk": chunk,
+                    "embedding": embedding,
+                }
+            )
 
         supabase_client.table("knowledge_embeddings").delete().eq("entry_id", entry_id).execute()
         if rows:
@@ -363,7 +377,7 @@ class KnowledgeService:
         return len(rows)
 
     @staticmethod
-    def semantic_search(query: str, match_count: int = 4) -> List[str]:
+    def semantic_search(query: str, match_count: int = 4) -> list[str]:
         """Vector search dengan threshold (match_knowledge_entries), lalu keyword
         fallback. Hasil di bawah MATCH_THRESHOLD tidak dikirim ke LLM."""
         if not supabase_client:
@@ -389,5 +403,5 @@ class KnowledgeService:
         return _keyword_search(query, match_count)
 
 
-def _is_valid_vector(vec: List[float]) -> bool:
+def _is_valid_vector(vec: list[float]) -> bool:
     return len(vec) == EMBEDDING_DIM and any(x != 0.0 for x in vec)

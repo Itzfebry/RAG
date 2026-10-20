@@ -8,8 +8,10 @@ Menutup celah miss-logic:
   OTP kirim/verifikasi, reset password + invalidasi sesi, sesi admin
   admin_session_version, serta OAuth Google (state/CSRF & status).
 """
+
 import os
 import sys
+from typing import ClassVar
 
 import pytest
 
@@ -22,11 +24,12 @@ os.environ.setdefault("ADMIN_PASSWORD_HASH", "$2b$12$abcdefghijklmnopqrstuuS4pU0
 
 # ── fake DatabaseService (in-memory) ─────────────────────────────────────────
 
+
 class _FakeDB:
-    users: dict = {}
-    profiles: dict = {}
-    otps: dict = {}
-    settings: dict = {}
+    users: ClassVar[dict] = {}
+    profiles: ClassVar[dict] = {}
+    otps: ClassVar[dict] = {}
+    settings: ClassVar[dict] = {}
 
     @classmethod
     def reset(cls):
@@ -53,8 +56,15 @@ class _FakeDB:
 
     @staticmethod
     def create_user(data):
-        row = {"id": f"u{len(_FakeDB.users) + 1}", "is_active": True, "session_version": 0,
-               "prompts_used": 0, "email_verified": False, "created_at": "", "updated_at": ""}
+        row = {
+            "id": f"u{len(_FakeDB.users) + 1}",
+            "is_active": True,
+            "session_version": 0,
+            "prompts_used": 0,
+            "email_verified": False,
+            "created_at": "",
+            "updated_at": "",
+        }
         row.update(data)
         _FakeDB.users[row["username"]] = row
         return row
@@ -87,8 +97,14 @@ class _FakeDB:
     # OTP
     @staticmethod
     def create_email_otp(email, purpose, code_hash, expires_at):
-        row = {"id": f"otp{len(_FakeDB.otps) + 1}", "email": email, "purpose": purpose,
-               "code_hash": code_hash, "expires_at": expires_at, "attempts": 0}
+        row = {
+            "id": f"otp{len(_FakeDB.otps) + 1}",
+            "email": email,
+            "purpose": purpose,
+            "code_hash": code_hash,
+            "expires_at": expires_at,
+            "attempts": 0,
+        }
         _FakeDB.otps[(email, purpose)] = row
         return row
 
@@ -110,19 +126,27 @@ class _FakeDB:
 
 
 _FAKE_METHODS = (
-    "get_user_by_username", "get_user_by_email", "create_user", "update_user",
-    "get_user_profile", "get_app_settings", "update_app_settings",
-    "is_prompt_quota_exhausted", "create_email_otp", "get_latest_email_otp",
-    "update_email_otp_attempts", "delete_email_otps",
+    "get_user_by_username",
+    "get_user_by_email",
+    "create_user",
+    "update_user",
+    "get_user_profile",
+    "get_app_settings",
+    "update_app_settings",
+    "is_prompt_quota_exhausted",
+    "create_email_otp",
+    "get_latest_email_otp",
+    "update_email_otp_attempts",
+    "delete_email_otps",
 )
 
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch):
     """Pasang fake DB, matikan email sungguhan, paksa rate-limit in-memory."""
-    from backend.database.db import DatabaseService
     import backend.security.otp as otp_mod
     import backend.security.rate_limiter as rl
+    from backend.database.db import DatabaseService
 
     _FakeDB.reset()
     for name in _FAKE_METHODS:
@@ -138,7 +162,9 @@ def _env(monkeypatch):
     rl._lockouts.clear()
 
     from fastapi.testclient import TestClient
+
     import backend.api.main as m
+
     client = TestClient(m.app)
     yield client
     client.cookies.clear()
@@ -148,9 +174,15 @@ def _env(monkeypatch):
 
 
 def _register(c, username="alice", email="alice@x.com", password="Secret123"):
-    return c.post("/api/user/register", json={
-        "username": username, "email": email, "password": password, "display_name": "Alice",
-    })
+    return c.post(
+        "/api/user/register",
+        json={
+            "username": username,
+            "email": email,
+            "password": password,
+            "display_name": "Alice",
+        },
+    )
 
 
 def _login(c, username, password):
@@ -160,11 +192,17 @@ def _login(c, username, password):
 
 # ── register ─────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.parametrize("bad", ["abcdefgh", "abcdefg1", "ABCDEFGH", "Abcdefgh", "12345678"])
 def test_register_rejects_weak_password(_env, bad):
-    r = _env.post("/api/user/register", json={
-        "username": "bob", "email": "bob@x.com", "password": bad,
-    })
+    r = _env.post(
+        "/api/user/register",
+        json={
+            "username": "bob",
+            "email": "bob@x.com",
+            "password": bad,
+        },
+    )
     assert r.status_code == 422, f"{bad!r} seharusnya ditolak, dapat {r.status_code}"
 
 
@@ -183,15 +221,19 @@ def test_register_accepts_strong_password_and_stays_unverified(_env):
 def test_register_duplicate_username_and_email(_env):
     assert _register(_env).status_code == 201
     _env.cookies.clear()
-    assert _register(_env).status_code == 409          # username sama
-    assert _register(_env, username="other",
-                     email="alice@x.com").status_code == 409  # email sama
+    assert _register(_env).status_code == 409  # username sama
+    assert _register(_env, username="other", email="alice@x.com").status_code == 409  # email sama
 
 
 def test_register_trims_and_lowercases_identity(_env):
-    r = _env.post("/api/user/register", json={
-        "username": "  CaroL  ", "email": "  Carol@X.Com ", "password": "Secret123",
-    })
+    r = _env.post(
+        "/api/user/register",
+        json={
+            "username": "  CaroL  ",
+            "email": "  Carol@X.Com ",
+            "password": "Secret123",
+        },
+    )
     assert r.status_code == 201, r.text
     assert "carol" in _FakeDB.users
     assert _FakeDB.users["carol"]["email"] == "carol@x.com"
@@ -208,6 +250,7 @@ def test_register_rate_limit_blocks_after_five(_env):
 
 # ── login ────────────────────────────────────────────────────────────────────
 
+
 def test_login_ok_and_wrong_password(_env):
     assert _register(_env).status_code == 201
     assert _login(_env, "alice", "Secret123").status_code == 200
@@ -222,6 +265,7 @@ def test_login_by_email_is_case_insensitive(_env):
 def test_legacy_weak_password_still_can_login(_env):
     """Password lama (tidak sesuai aturan baru) wajib tetap bisa login."""
     from backend.security.auth import hash_password
+
     assert _register(_env, password="Secret123").status_code == 201
     _FakeDB.users["alice"]["password_hash"] = hash_password("legacy-password")
     assert _login(_env, "alice", "legacy-password").status_code == 200
@@ -248,6 +292,7 @@ def test_lockout_is_per_account_not_global(_env):
 
 # ── gate verifikasi email ────────────────────────────────────────────────────
 
+
 class _ChatReq:
     def __init__(self, token: str = ""):
         self.cookies = {"itz_user_token": token} if token else {}
@@ -257,8 +302,9 @@ class _ChatReq:
 
 def _gate(user):
     """Jalankan gate chat dengan token JWT asli milik `user`."""
-    import backend.api.chat as chat
     from fastapi import HTTPException
+
+    import backend.api.chat as chat
     from backend.security.auth import create_user_jwt
 
     tok = create_user_jwt(user["username"], session_version=int(user.get("session_version") or 0))
@@ -283,8 +329,9 @@ def test_chat_allowed_after_verify(_env):
 
 
 def test_chat_allowed_for_accounts_without_email(_env):
-    _FakeDB.create_user({"username": "root1", "provider": "admin", "password_hash": "",
-                         "email": None, "email_verified": False})
+    _FakeDB.create_user(
+        {"username": "root1", "provider": "admin", "password_hash": "", "email": None, "email_verified": False}
+    )
     assert _gate(_FakeDB.users["root1"]) == ("ALLOWED", "root1")
 
 
@@ -299,6 +346,7 @@ def test_chat_treats_stale_session_as_guest(_env):
     """Token sv lama tidak dianggap login (bukan 403 verifikasi)."""
     import backend.api.chat as chat
     from backend.security.auth import create_user_jwt
+
     assert _register(_env).status_code == 201
     _FakeDB.users["alice"]["session_version"] = 7
     tok = create_user_jwt("alice", session_version=0)
@@ -307,10 +355,12 @@ def test_chat_treats_stale_session_as_guest(_env):
 
 def test_chat_guest_still_allowed(_env):
     import backend.api.chat as chat
+
     assert chat.get_current_chat_user_optional(_ChatReq("")) is None
 
 
 # ── OTP verifikasi email ─────────────────────────────────────────────────────
+
 
 def test_send_verify_requires_login(_env):
     assert _env.post("/api/user/verify-email/send").status_code in (401, 403)
@@ -326,14 +376,17 @@ def test_send_verify_skips_when_already_verified(_env):
 
 def test_send_verify_rejects_account_without_email(_env):
     from backend.security.auth import create_user_jwt
-    _FakeDB.create_user({"username": "noemail", "provider": "admin", "password_hash": "",
-                         "email": None, "email_verified": False})
+
+    _FakeDB.create_user(
+        {"username": "noemail", "provider": "admin", "password_hash": "", "email": None, "email_verified": False}
+    )
     _env.cookies.set("itz_user_token", create_user_jwt("noemail"))
     assert _env.post("/api/user/verify-email/send").status_code == 400
 
 
 def test_send_verify_stores_otp_for_logged_in_email(_env):
     import backend.security.otp as otp_mod
+
     assert _register(_env).status_code == 201
     r = _env.post("/api/user/verify-email/send")
     assert r.status_code == 200
@@ -349,6 +402,7 @@ def test_verify_email_rejects_mismatched_email(_env):
 
 def test_verify_email_rejects_wrong_code_and_limits_attempts(_env):
     import backend.security.otp as otp_mod
+
     assert _register(_env).status_code == 201
     for _ in range(3):
         r = _env.post("/api/user/verify-email", json={"email": "alice@x.com", "code": "000000"})
@@ -360,12 +414,16 @@ def test_verify_email_rejects_wrong_code_and_limits_attempts(_env):
 
 def test_verify_email_success_with_known_otp(_env):
     import backend.security.otp as otp_mod
+
     assert _register(_env).status_code == 201
     _env.post("/api/user/verify-email/send")
     code = "654321"
-    _FakeDB.create_email_otp("alice@x.com", otp_mod.PURPOSE_VERIFY,
-                             otp_mod.hash_code("alice@x.com", otp_mod.PURPOSE_VERIFY, code),
-                             otp_mod.expires_at_iso())
+    _FakeDB.create_email_otp(
+        "alice@x.com",
+        otp_mod.PURPOSE_VERIFY,
+        otp_mod.hash_code("alice@x.com", otp_mod.PURPOSE_VERIFY, code),
+        otp_mod.expires_at_iso(),
+    )
     r = _env.post("/api/user/verify-email", json={"email": "alice@x.com", "code": code})
     assert r.status_code == 200, r.text
     assert _FakeDB.users["alice"]["email_verified"] is True
@@ -376,11 +434,15 @@ def test_verify_email_success_with_known_otp(_env):
 def test_verify_email_otp_purposes_are_isolated(_env):
     """OTP reset password tidak boleh dipakai untuk verifikasi email."""
     import backend.security.otp as otp_mod
+
     assert _register(_env).status_code == 201
     code = "999888"
-    _FakeDB.create_email_otp("alice@x.com", otp_mod.PURPOSE_RESET,
-                             otp_mod.hash_code("alice@x.com", otp_mod.PURPOSE_RESET, code),
-                             otp_mod.expires_at_iso())
+    _FakeDB.create_email_otp(
+        "alice@x.com",
+        otp_mod.PURPOSE_RESET,
+        otp_mod.hash_code("alice@x.com", otp_mod.PURPOSE_RESET, code),
+        otp_mod.expires_at_iso(),
+    )
     r = _env.post("/api/user/verify-email", json={"email": "alice@x.com", "code": code})
     assert r.status_code == 400
     assert _FakeDB.users["alice"]["email_verified"] is False
@@ -389,6 +451,7 @@ def test_verify_email_otp_purposes_are_isolated(_env):
 def test_verify_email_uses_same_email_as_register(_env):
     """Email OTP dikirim ke email akun, bukan ke input bebas."""
     import backend.security.otp as otp_mod
+
     assert _register(_env, email="real@x.com").status_code == 201
     _env.post("/api/user/verify-email/send")
     assert ("real@x.com", otp_mod.PURPOSE_VERIFY) in _FakeDB.otps
@@ -396,9 +459,11 @@ def test_verify_email_uses_same_email_as_register(_env):
 
 # ── reset password ───────────────────────────────────────────────────────────
 
+
 def test_reset_password_rejects_weak_password(_env):
-    r = _env.post("/api/user/password/reset",
-                  json={"email": "alice@x.com", "code": "123456", "new_password": "abcdefgh"})
+    r = _env.post(
+        "/api/user/password/reset", json={"email": "alice@x.com", "code": "123456", "new_password": "abcdefgh"}
+    )
     assert r.status_code == 422
 
 
@@ -406,33 +471,40 @@ def test_reset_password_unknown_email_never_leaks(_env):
     r = _env.post("/api/user/password/forgot", json={"email": "ghost@x.com"})
     assert r.status_code == 200
     assert "sent" in r.json()["status"]
-    assert _env.post("/api/user/password/forgot",
-                     json={"email": "alice@x.com"}).status_code == 200  # sama saja
+    assert _env.post("/api/user/password/forgot", json={"email": "alice@x.com"}).status_code == 200  # sama saja
 
 
 def test_reset_password_wrong_code_rejected(_env):
     assert _register(_env).status_code == 201
     import backend.security.otp as otp_mod
-    _FakeDB.create_email_otp("alice@x.com", otp_mod.PURPOSE_RESET,
-                             otp_mod.hash_code("alice@x.com", otp_mod.PURPOSE_RESET, "112233"),
-                             otp_mod.expires_at_iso())
-    r = _env.post("/api/user/password/reset",
-                  json={"email": "alice@x.com", "code": "000000", "new_password": "Newpass99"})
+
+    _FakeDB.create_email_otp(
+        "alice@x.com",
+        otp_mod.PURPOSE_RESET,
+        otp_mod.hash_code("alice@x.com", otp_mod.PURPOSE_RESET, "112233"),
+        otp_mod.expires_at_iso(),
+    )
+    r = _env.post(
+        "/api/user/password/reset", json={"email": "alice@x.com", "code": "000000", "new_password": "Newpass99"}
+    )
     assert r.status_code == 400
 
 
 def test_reset_password_invalidates_old_session(_env):
     import backend.security.otp as otp_mod
+
     assert _register(_env).status_code == 201
     old_token = _env.cookies.get("itz_user_token")
 
     code = "112233"
-    _FakeDB.create_email_otp("alice@x.com", otp_mod.PURPOSE_RESET,
-                             otp_mod.hash_code("alice@x.com", otp_mod.PURPOSE_RESET, code),
-                             otp_mod.expires_at_iso())
+    _FakeDB.create_email_otp(
+        "alice@x.com",
+        otp_mod.PURPOSE_RESET,
+        otp_mod.hash_code("alice@x.com", otp_mod.PURPOSE_RESET, code),
+        otp_mod.expires_at_iso(),
+    )
     _env.cookies.clear()
-    r = _env.post("/api/user/password/reset",
-                  json={"email": "alice@x.com", "code": code, "new_password": "Newpass99"})
+    r = _env.post("/api/user/password/reset", json={"email": "alice@x.com", "code": code, "new_password": "Newpass99"})
     assert r.status_code == 200, r.text
     assert _FakeDB.users["alice"]["session_version"] == 1
     assert _FakeDB.users["alice"]["email_verified"] is True  # reset otomatis verify
@@ -447,27 +519,25 @@ def test_reset_password_invalidates_old_session(_env):
 
 def test_change_password_validates_rules_and_current_password(_env):
     assert _register(_env).status_code == 201
-    r = _env.put("/api/user/password",
-                 json={"current_password": "Secret123", "new_password": "weakpass"})
+    r = _env.put("/api/user/password", json={"current_password": "Secret123", "new_password": "weakpass"})
     assert r.status_code == 422
-    r = _env.put("/api/user/password",
-                 json={"current_password": "wrong", "new_password": "Goodpass1"})
+    r = _env.put("/api/user/password", json={"current_password": "wrong", "new_password": "Goodpass1"})
     assert r.status_code in (400, 401)
-    r = _env.put("/api/user/password",
-                 json={"current_password": "Secret123", "new_password": "Goodpass1"})
+    r = _env.put("/api/user/password", json={"current_password": "Secret123", "new_password": "Goodpass1"})
     assert r.status_code == 200
 
 
 # ── sesi admin (admin_session_version) ───────────────────────────────────────
 
+
 def test_admin_session_version_gate(monkeypatch):
     from fastapi.testclient import TestClient
+
     import backend.api.admin as admin
     import backend.api.main as m
     from backend.security.auth import create_jwt
 
-    monkeypatch.setattr(admin.DatabaseService, "get_app_settings",
-                        staticmethod(lambda: {"admin_session_version": 3}))
+    monkeypatch.setattr(admin.DatabaseService, "get_app_settings", staticmethod(lambda: {"admin_session_version": 3}))
 
     c = TestClient(m.app)
     c.cookies.set("itz_admin_token", create_jwt("admin", role="admin", extra={"sv": 3}))
@@ -483,8 +553,7 @@ def test_admin_session_version_gate(monkeypatch):
 def test_admin_login_locks_after_five_failures(_env):
     codes = []
     for i in range(7):
-        codes.append(_env.post("/api/admin/login",
-                               json={"username": "admin", "password": f"bad{i}"}).status_code)
+        codes.append(_env.post("/api/admin/login", json={"username": "admin", "password": f"bad{i}"}).status_code)
     assert codes[:5] == [401] * 5, codes
     assert codes[5] == 429, "harus terkunci setelah 5 gagal"
     assert codes[6] == 429
@@ -493,6 +562,7 @@ def test_admin_login_locks_after_five_failures(_env):
 def test_admin_logout_invalidates_issued_token(monkeypatch):
     """Token admin yang diterbitkan sebelum logout harus mati (sv naik)."""
     from fastapi.testclient import TestClient
+
     import backend.api.admin as admin
     import backend.api.main as m
     from backend.security.auth import create_jwt
@@ -519,6 +589,7 @@ def test_admin_logout_invalidates_issued_token(monkeypatch):
 
 # ── OAuth Google ─────────────────────────────────────────────────────────────
 
+
 def test_google_status_reports_boolean(_env):
     r = _env.get("/api/auth/google-status")
     assert r.status_code == 200
@@ -538,8 +609,7 @@ def test_google_login_issues_state_cookie_and_url(_env):
 
 
 def test_google_callback_rejects_missing_state(_env):
-    r = _env.get("/api/auth/google-callback", params={"state": "", "code": ""},
-                 follow_redirects=False)
+    r = _env.get("/api/auth/google-callback", params={"state": "", "code": ""}, follow_redirects=False)
     assert r.status_code == 302
     assert "/login?auth_error=" in r.headers["location"]
 
@@ -550,16 +620,14 @@ def test_google_callback_rejects_tampered_state_before_contacting_google(_env):
         pytest.skip("GOOGLE_CLIENT_ID/SECRET belum diisi")
     real = _env.cookies.get("google_oauth_state")
     assert real
-    r = _env.get("/api/auth/google-callback",
-                 params={"code": "abc", "state": "tampered"}, follow_redirects=False)
+    r = _env.get("/api/auth/google-callback", params={"code": "abc", "state": "tampered"}, follow_redirects=False)
     assert r.status_code == 302
     assert "state" in r.headers["location"]
     assert _env.cookies.get("google_oauth_state") == real
 
 
 def test_google_callback_rejects_provider_error(_env):
-    r = _env.get("/api/auth/google-callback",
-                 params={"error": "access_denied", "state": "s"}, follow_redirects=False)
+    r = _env.get("/api/auth/google-callback", params={"error": "access_denied", "state": "s"}, follow_redirects=False)
     assert r.status_code == 302
     assert "auth_error=" in r.headers["location"]
 
@@ -567,10 +635,13 @@ def test_google_callback_rejects_provider_error(_env):
 def test_google_login_not_advertised_when_unconfigured(monkeypatch):
     """google-status harus false bila konfigurasi Google kosong."""
     import backend.api.auth as auth
+
     monkeypatch.setattr(auth, "GOOGLE_CLIENT_ID", "")
     monkeypatch.setattr(auth, "GOOGLE_CLIENT_SECRET", "")
     from fastapi.testclient import TestClient
+
     import backend.api.main as m
+
     c = TestClient(m.app)
     assert c.get("/api/auth/google-status").json()["enabled"] is False
     assert c.get("/api/auth/google-login").status_code == 503

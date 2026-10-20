@@ -9,11 +9,28 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { SectionHeader } from "../SectionHeader";
 import {
-  cardBase, cardHeaderCls, cardContentCls, tCard, tLabel,
-  cSky, cViolet, cAmber, cEmerald, cRose, cZinc, inputCls,
+  cardBase,
+  cardHeaderCls,
+  cardContentCls,
+  tCard,
+  tLabel,
+  cSky,
+  cViolet,
+  cAmber,
+  cEmerald,
+  cRose,
+  cZinc,
+  inputCls,
 } from "../adminStyles";
 
-export type CommunicationData = { primary_language: string; tone: string; response_length: string; formatting_preference: string; technical_depth: string; explanation_style: string };
+export type CommunicationData = {
+  primary_language: string;
+  tone: string;
+  response_length: string;
+  formatting_preference: string;
+  technical_depth: string;
+  explanation_style: string;
+};
 
 const FIELDS = [
   { key: "primary_language", label: "Bahasa Utama", Icon: Globe, color: cSky },
@@ -36,8 +53,15 @@ export function CommunicationTab({
   saving: boolean;
 }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <SectionHeader title="Gaya Komunikasi" desc="Pengaturan bahasa, panjang respons, format, dan kedalaman teknis." />
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-6"
+    >
+      <SectionHeader
+        title="Gaya Komunikasi"
+        desc="Pengaturan bahasa, panjang respons, format, dan kedalaman teknis."
+      />
       <Card className={cardBase}>
         <CardHeader className={cardHeaderCls}>
           <CardTitle className={tCard}>Communication</CardTitle>
@@ -47,14 +71,27 @@ export function CommunicationTab({
             const Ico = item.Icon;
             return (
               <div key={item.key} className="space-y-2">
-                <Label className={tLabel}><span className="flex items-center gap-1.5"><Ico className={`h-3.5 w-3.5 ${item.color}`} />{item.label}</span></Label>
-                <Input value={data[item.key] || ""} onChange={(e) => onChange({ ...data, [item.key]: e.target.value })} className={inputCls} />
+                <Label className={tLabel}>
+                  <span className="flex items-center gap-1.5">
+                    <Ico className={`h-3.5 w-3.5 ${item.color}`} />
+                    {item.label}
+                  </span>
+                </Label>
+                <Input
+                  value={data[item.key] || ""}
+                  onChange={(e) => onChange({ ...data, [item.key]: e.target.value })}
+                  className={inputCls}
+                />
               </div>
             );
           })}
         </CardContent>
         <CardFooter className="justify-end p-5 pt-0">
-          <Button onClick={onSave} disabled={saving} className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5">
+          <Button
+            onClick={onSave}
+            disabled={saving}
+            className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5"
+          >
             <Save className="h-4 w-4" />
             <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
           </Button>

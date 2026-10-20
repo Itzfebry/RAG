@@ -2,31 +2,32 @@
 System prompt builder with caching for config tables.
 Reduces DB queries significantly.
 """
-from typing import List, Dict, Optional
+
 import time
 
 try:
+    from backend.agent.commands import build_command_block
+    from backend.database.cache import rag_cache
     from backend.database.db import DatabaseService
     from backend.knowledge.knowledge_service import KnowledgeService
-    from backend.database.cache import rag_cache
-    from backend.agent.commands import build_command_block
 except ImportError:
+    from agent.commands import build_command_block
+    from database.cache import rag_cache
     from database.db import DatabaseService
     from knowledge.knowledge_service import KnowledgeService
-    from database.cache import rag_cache
-    from agent.commands import build_command_block
 
 # Caching config ditangani DatabaseService (config_cache) yang di-invalidate saat
 # admin menyimpan perubahan, jadi tidak ada layer cache terpisah yang basi di sini.
 
+
 def _get_cached_configs():
     """Ambil semua config table. Cache + invalidasi mengikuti DatabaseService/config_cache."""
     return {
-        'identity': DatabaseService.get_config_table("ai_identity"),
-        'personal': DatabaseService.get_config_table("personal_information"),
-        'personality': DatabaseService.get_config_table("ai_personality"),
-        'comm': DatabaseService.get_config_table("communication_settings"),
-        'sys_instr': DatabaseService.get_config_table("system_instructions"),
+        "identity": DatabaseService.get_config_table("ai_identity"),
+        "personal": DatabaseService.get_config_table("personal_information"),
+        "personality": DatabaseService.get_config_table("ai_personality"),
+        "comm": DatabaseService.get_config_table("communication_settings"),
+        "sys_instr": DatabaseService.get_config_table("system_instructions"),
     }
 
 
@@ -37,7 +38,7 @@ def _build_pricing_block() -> str:
     except Exception:
         return ""
     plans = []
-    for p in (cfg.get("plans") or []):
+    for p in cfg.get("plans") or []:
         if not isinstance(p, dict):
             continue
         try:
@@ -54,7 +55,11 @@ def _build_pricing_block() -> str:
             original = 0
         if original > amount > 0:
             pct = round((1 - amount / original) * 100)
-            plans.append(f"- {label}: {prompts} prompt, LAGI DISKON {pct}% dari Rp{original:,} jadi Rp{amount:,}".replace(",", "."))
+            plans.append(
+                f"- {label}: {prompts} prompt, LAGI DISKON {pct}% dari Rp{original:,} jadi Rp{amount:,}".replace(
+                    ",", "."
+                )
+            )
         else:
             plans.append(f"- {label}: {prompts} prompt, Rp{amount:,}".replace(",", "."))
     if not plans:
@@ -86,7 +91,9 @@ def _build_pricing_block() -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_system_prompt(query: str, session_history: List[Dict], user_profile: Optional[Dict] = None, command_names: Optional[List[str]] = None) -> str:
+def build_system_prompt(
+    query: str, session_history: list[dict], user_profile: dict | None = None, command_names: list[str] | None = None
+) -> str:
     """
     Build the system prompt for the AI agent (optimized with caching).
     - Retrieves relevant knowledge (hybrid semantic + keyword search)
@@ -95,26 +102,26 @@ def build_system_prompt(query: str, session_history: List[Dict], user_profile: O
     """
     # Get cached configs
     configs = _get_cached_configs()
-    identity = configs['identity']
-    personal = configs['personal']
-    personality = configs['personality']
-    comm = configs['comm']
-    sys_instr = configs['sys_instr']
+    identity = configs["identity"]
+    personal = configs["personal"]
+    personality = configs["personality"]
+    comm = configs["comm"]
+    sys_instr = configs["sys_instr"]
 
     # Prompt Compression & Caching logic
     rag_cfg = DatabaseService.get_app_settings()
     match_count = int(rag_cfg.get("rag_match_count_short", 6))
     if len(query.split()) > 15:
         match_count = int(rag_cfg.get("rag_match_count_long", 8))
-    
+
     # Check cache for this specific query's knowledge
     cache_key = f"rag:{query.lower().strip()}"
     retrieved_chunks = rag_cache.get(cache_key)
-    
+
     if retrieved_chunks is None:
         retrieved_chunks = KnowledgeService.semantic_search(query, match_count=match_count)
         rag_cache.set(cache_key, retrieved_chunks)
-    
+
     # Filter unique chunks to save tokens
     seen = set()
     unique_chunks = []
@@ -122,9 +129,9 @@ def build_system_prompt(query: str, session_history: List[Dict], user_profile: O
         if c not in seen:
             unique_chunks.append(c)
             seen.add(c)
-    
+
     relevant_knowledge = "\n\n".join(unique_chunks) if unique_chunks else "Tidak ada knowledge khusus yang relevan."
-    
+
     if not unique_chunks:
         # Hanya catat metadata (panjang query + timestamp), bukan isi pesan user (PII)
         try:
@@ -133,12 +140,13 @@ def build_system_prompt(query: str, session_history: List[Dict], user_profile: O
         except Exception:
             pass
 
-
     # Get response length preference
-    response_length = comm.get('response_length', 'Concise and informative')
+    response_length = comm.get("response_length", "Concise and informative")
     length_constraint = ""
     if "concise" in response_length.lower():
-        length_constraint = "\n- Keep it focused, but never cut required steps, examples, or key details just to stay short."
+        length_constraint = (
+            "\n- Keep it focused, but never cut required steps, examples, or key details just to stay short."
+        )
     elif "detailed" in response_length.lower() or "comprehensive" in response_length.lower():
         length_constraint = "\n- Provide detailed, comprehensive answers with examples when relevant."
     elif "balanced" in response_length.lower() or "moderate" in response_length.lower():
@@ -164,14 +172,14 @@ def build_system_prompt(query: str, session_history: List[Dict], user_profile: O
             profile_lines.append("Manfaatkan tujuan tersebut untuk menjawab lebih relevan dan terarah.")
         if first_chat and uname:
             profile_lines.append(
-                f"Ini chat pertama pengguna: awali jawaban dengan sapaan singkat yang hangat menyebut namanya (contoh: \"Halo {uname}!\")."
+                f'Ini chat pertama pengguna: awali jawaban dengan sapaan singkat yang hangat menyebut namanya (contoh: "Halo {uname}!").'
             )
 
         style_prompt = ""
         if ustyle_id:
             try:
                 styles_cfg = DatabaseService.get_config_table("response_styles")
-                for s in (styles_cfg.get("styles") or []):
+                for s in styles_cfg.get("styles") or []:
                     if isinstance(s, dict) and str(s.get("id")) == ustyle_id:
                         style_prompt = str(s.get("prompt") or "").strip()
                         break
@@ -190,45 +198,45 @@ def build_system_prompt(query: str, session_history: List[Dict], user_profile: O
     pricing_block = _build_pricing_block()
 
     system_prompt = f"""
-You are {identity.get('name', 'ITZ AI')} : {identity.get('role', 'Personal AI Assistant')}.
-{identity.get('description', '')}
-{identity.get('identity', '')}
+You are {identity.get("name", "ITZ AI")} : {identity.get("role", "Personal AI Assistant")}.
+{identity.get("description", "")}
+{identity.get("identity", "")}
 
-Purpose: {identity.get('purpose', '')}
+Purpose: {identity.get("purpose", "")}
 
 # Personal Owner Context (Do NOT expose raw owner data unless relevant)
-Profile: {personal.get('profile', '')}
-Background: {personal.get('background', '')}
-Interests: {personal.get('interests', '')}
-Experience: {personal.get('experience', '')}
-Projects: {personal.get('projects', '')}
-Preferences: {personal.get('preferences', '')}
-Relevant Context: {personal.get('relevant_context', '')}
+Profile: {personal.get("profile", "")}
+Background: {personal.get("background", "")}
+Interests: {personal.get("interests", "")}
+Experience: {personal.get("experience", "")}
+Projects: {personal.get("projects", "")}
+Preferences: {personal.get("preferences", "")}
+Relevant Context: {personal.get("relevant_context", "")}
 
 # Personality
-Character: {personality.get('personality', '')}
-Tone: {personality.get('tone', '')}
-Attitude: {personality.get('attitude', '')}
-Reasoning: {personality.get('reasoning_style', '')}
-Response Behavior: {personality.get('response_behavior', '')}
-Prohibited: {personality.get('prohibited_behavior', '')}
-Criticism: {personality.get('criticism_style', '')}
+Character: {personality.get("personality", "")}
+Tone: {personality.get("tone", "")}
+Attitude: {personality.get("attitude", "")}
+Reasoning: {personality.get("reasoning_style", "")}
+Response Behavior: {personality.get("response_behavior", "")}
+Prohibited: {personality.get("prohibited_behavior", "")}
+Criticism: {personality.get("criticism_style", "")}
 
 # Communication Style
-Language (Primary): {comm.get('primary_language', 'Bahasa Indonesia')}
-Tone: {comm.get('tone', '')}
+Language (Primary): {comm.get("primary_language", "Bahasa Indonesia")}
+Tone: {comm.get("tone", "")}
 Response Format: {response_length}{length_constraint}
-Formatting: {comm.get('formatting_preference', '')}
-Technical Depth: {comm.get('technical_depth', '')}
-Style: {comm.get('explanation_style', '')}
+Formatting: {comm.get("formatting_preference", "")}
+Technical Depth: {comm.get("technical_depth", "")}
+Style: {comm.get("explanation_style", "")}
 {user_profile_block}
 # System Instructions (Highest behavioral priority - follow strictly)
-Behavioral Rules: {sys_instr.get('behavioral_rules', '')}
-Response Rules: {sys_instr.get('response_rules', '')}
-Safety Rules: {sys_instr.get('safety_rules', '')}
-Knowledge Priority: {sys_instr.get('knowledge_priority', '')}
-Reasoning Constraints: {sys_instr.get('reasoning_constraints', '')}
-Formatting Rules: {sys_instr.get('formatting_rules', '')}
+Behavioral Rules: {sys_instr.get("behavioral_rules", "")}
+Response Rules: {sys_instr.get("response_rules", "")}
+Safety Rules: {sys_instr.get("safety_rules", "")}
+Knowledge Priority: {sys_instr.get("knowledge_priority", "")}
+Reasoning Constraints: {sys_instr.get("reasoning_constraints", "")}
+Formatting Rules: {sys_instr.get("formatting_rules", "")}
 
 # Relevant Retrieved Owner Knowledge
 {relevant_knowledge}

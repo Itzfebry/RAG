@@ -4,9 +4,9 @@ AI Command System: registry terpusat untuk slash command (/explain, /summarize, 
 Setiap command punya purpose, system instruction, output format, dan execution rules.
 Instruksi command disisipkan ke system prompt di backend (context_builder), bukan sekadar label.
 """
+
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -15,11 +15,11 @@ class CommandSpec:
     purpose: str
     instruction: str
     output_format: str
-    rules: List[str] = field(default_factory=list)
+    rules: list[str] = field(default_factory=list)
     example: str = ""
 
 
-COMMANDS: Dict[str, CommandSpec] = {
+COMMANDS: dict[str, CommandSpec] = {
     "purpose": CommandSpec(
         name="purpose",
         purpose="Menentukan tujuan dan fokus utama suatu tugas.",
@@ -186,9 +186,20 @@ COMMANDS: Dict[str, CommandSpec] = {
 
 # Urutan prioritas saat beberapa command dipakai bersamaan (lebih kecil = lebih tinggi).
 # Jika ada konflik format, command yang lebih tinggi menentukan struktur utama.
-COMMAND_PRIORITY: List[str] = [
-    "debug", "code", "calculate", "research", "decision", "compare", "analyze",
-    "summarize", "explain", "translate", "write", "plan", "purpose",
+COMMAND_PRIORITY: list[str] = [
+    "debug",
+    "code",
+    "calculate",
+    "research",
+    "decision",
+    "compare",
+    "analyze",
+    "summarize",
+    "explain",
+    "translate",
+    "write",
+    "plan",
+    "purpose",
 ]
 
 MAX_ACTIVE_COMMANDS = 2
@@ -196,11 +207,11 @@ MAX_ACTIVE_COMMANDS = 2
 _COMMAND_RE = re.compile(r"^/([a-zA-Z]+)(?=\s|$)")
 
 
-def list_commands() -> List[Dict[str, str]]:
+def list_commands() -> list[dict[str, str]]:
     return [{"name": c.name, "purpose": c.purpose, "example": c.example} for c in COMMANDS.values()]
 
 
-def list_command_details() -> List[Dict[str, object]]:
+def list_command_details() -> list[dict[str, object]]:
     return [
         {
             "name": c.name,
@@ -214,7 +225,7 @@ def list_command_details() -> List[Dict[str, object]]:
     ]
 
 
-def parse_command(text: str) -> Tuple[List[str], str, Optional[str]]:
+def parse_command(text: str) -> tuple[list[str], str, str | None]:
     """
     Pisahkan slash command di awal input.
 
@@ -225,8 +236,8 @@ def parse_command(text: str) -> Tuple[List[str], str, Optional[str]]:
     - Duplikat dihapus, dibatasi MAX_ACTIVE_COMMANDS.
     """
     rest = (text or "").strip()
-    active: List[str] = []
-    unknown: Optional[str] = None
+    active: list[str] = []
+    unknown: str | None = None
 
     while rest.startswith("/"):
         m = _COMMAND_RE.match(rest)
@@ -241,18 +252,18 @@ def parse_command(text: str) -> Tuple[List[str], str, Optional[str]]:
             if len(active) >= MAX_ACTIVE_COMMANDS:
                 break
             active.append(name)
-        rest = rest[m.end():].lstrip()
+        rest = rest[m.end() :].lstrip()
 
     if unknown:
         return [], (text or "").strip(), unknown
     return active, rest, None
 
 
-def sort_by_priority(names: List[str]) -> List[str]:
+def sort_by_priority(names: list[str]) -> list[str]:
     return sorted(names, key=lambda n: COMMAND_PRIORITY.index(n) if n in COMMAND_PRIORITY else len(COMMAND_PRIORITY))
 
 
-def build_command_block(names: List[str]) -> str:
+def build_command_block(names: list[str]) -> str:
     """Blok instruksi yang disisipkan ke system prompt. Kosong jika tidak ada command."""
     if not names:
         return ""

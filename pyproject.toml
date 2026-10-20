@@ -1,0 +1,61 @@
+# Project: RAG — Personal AI Agent (FastAPI + Supabase + Next.js frontend)
+#
+# Python tooling configuration. Frontend tooling lives in package.json.
+# Lint:      python -m ruff check .
+# Format:    python -m ruff format --check .
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+# Exclude third-party / generated / vendored code.
+extend-exclude = [
+    "node_modules",
+    ".next",
+    ".venv",
+    "venv",
+    ".claude",
+    "data",
+    "migrations",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes (unused imports, undefined names, f-strings)
+    "I",   # isort (import ordering)
+    "B",   # bugbear (likely bugs: bare except, shadowed vars, mutable defaults)
+    "UP",  # pyupgrade (modernize to py311 idioms)
+    "SIM", # simplify (needless else, redundant code)
+    "C4",  # comprehensions
+    "RUF", # ruff-specific
+]
+
+ignore = [
+    "E501",  # line too long — formatter territory; long URLs/configs are OK
+    "B008",  # function call in argument default — FastAPI's Depends() idiom requires it
+    "B904",  # raise-without-from — too invasive for an incremental adoption
+    "SIM117",# nested with — contextlib.suppress refactor batchestr to Phase 2
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests: allow asserts and loose style habits.
+"backend/tests/*" = ["S101", "F841"]
+# Legacy tool scripts — cleaned up in Phase 2, not blocking.
+"backend/tools/*" = ["E722"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend", "api"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+configure_thread_native = false
+
+[tool.coverage.run]
+source = ["backend"]
+omit = ["backend/tests/*", "backend/tools/*"]

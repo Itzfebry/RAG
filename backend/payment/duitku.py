@@ -16,11 +16,12 @@ Konfigurasi env (kosongkan = gateway mati, order tetap jalan tanpa invoice):
 Spesifikasi: https://docs.duitku.com/pop/id/ (createInvoice + callback).
 Signature lama MD5/SHA256 plain sudah obsolete; pakai HMAC-SHA256.
 """
+
 import hashlib
 import hmac
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 
@@ -36,7 +37,7 @@ class DuitkuError(RuntimeError):
     """Request ke Duitku gagal atau respons bukan sukses."""
 
 
-def _cfg() -> Dict[str, str]:
+def _cfg() -> dict[str, str]:
     code = os.getenv("DUITKU_MERCHANT_CODE", "").strip()
     api_key = os.getenv("DUITKU_API_KEY", "").strip()
     env = os.getenv("DUITKU_ENV", "production").strip().lower()
@@ -75,7 +76,7 @@ def create_invoice(
     email: str,
     customer_name: str,
     phone_number: str = "",
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Buat invoice Duitku POP. Return {"reference", "payment_url"}.
 
     merchantOrderId = id order (uuid, <=50 char). Request gagal / respons
@@ -90,7 +91,7 @@ def create_invoice(
 
     timestamp = str(int(time.time() * 1000))
     signature = _sign(cfg["code"] + timestamp, cfg["api_key"])
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "paymentAmount": int(amount),
         "merchantOrderId": str(merchant_order_id)[:50],
         "productDetails": str(product_details)[:255],
@@ -119,7 +120,7 @@ def create_invoice(
     except httpx.HTTPError as exc:
         raise DuitkuError(f"network error: {exc}") from exc
 
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = res.json() if res.content else {}
     except ValueError:

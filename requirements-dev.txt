@@ -1,2 +1,5 @@
+# Development / CI only — not needed in production.
 -r requirements.txt
-pytest>=8.0
+ruff~=0.17.1
+pytest~=9.1.1
+coverage~=7.16.2

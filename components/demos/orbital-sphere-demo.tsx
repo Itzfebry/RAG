@@ -10,12 +10,9 @@ export default function OrbitalSphereDemo() {
         <span className="text-xs uppercase tracking-[0.2em] text-violet-300/70">
           Three.js · Structure Flow
         </span>
-        <h2 className="max-w-md text-3xl font-semibold text-white">
-          Orbital Sphere
-        </h2>
+        <h2 className="max-w-md text-3xl font-semibold text-white">Orbital Sphere</h2>
         <p className="max-w-sm text-sm text-white/60">
-          A violet particle synthesis sphere with encrypted orbital rings and
-          luminous data nodes.
+          A violet particle synthesis sphere with encrypted orbital rings and luminous data nodes.
         </p>
       </div>
     </div>

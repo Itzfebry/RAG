@@ -18,7 +18,11 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: { default: "ITZ AI - Chat", template: "ITZ AI - %s" },
   description: "Personal AI Agent customized with owner knowledge, personality, and context.",
-  icons: { icon: "/image/favicon.png", shortcut: "/image/favicon.png", apple: "/image/favicon.png" },
+  icons: {
+    icon: "/image/favicon.png",
+    shortcut: "/image/favicon.png",
+    apple: "/image/favicon.png",
+  },
 };
 
 export default function RootLayout({
@@ -28,9 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="id" className={cn("h-full dark", inter.variable, jetbrainsMono.variable)}>
-      <body className="font-sans bg-background text-foreground antialiased h-full">
-        {children}
-      </body>
+      <body className="font-sans bg-background text-foreground antialiased h-full">{children}</body>
     </html>
   );
 }

@@ -1,29 +1,60 @@
-from fastapi import APIRouter, HTTPException, Depends, Request, Response
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Dict, Any, List
+import contextlib
 import re
 import time
-import os
-from datetime import datetime, timezone, timedelta
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel, Field, field_validator
 
 _START_TIME = time.time()
 
 try:
-    from backend.database.db import DatabaseService
-    from backend.knowledge.knowledge_service import KnowledgeService
-    from backend.security.auth import verify_password, create_jwt, verify_jwt, COOKIE_NAME, settings, is_valid_username, JWT_EXPIRY_HOURS
-    from backend.security.rate_limiter import get_client_ip, is_rate_limited, is_locked_out, is_locked_out_durable, record_failed_login, record_failed_login_durable, clear_failed_login, clear_failed_login_durable, check_rate_limit, check_rate_limit_durable
     from backend.database.cache import rag_cache
-    from backend.knowledge.knowledge_service import EMBEDDING_PROVIDER
-    from backend.security.audit import log_action as audit_log, list_actions as list_audit
+    from backend.database.db import DatabaseService
+    from backend.knowledge.knowledge_service import EMBEDDING_PROVIDER, KnowledgeService
+    from backend.security.audit import list_actions as list_audit
+    from backend.security.audit import log_action as audit_log
+    from backend.security.auth import (
+        COOKIE_NAME,
+        JWT_EXPIRY_HOURS,
+        create_jwt,
+        settings,
+        verify_jwt,
+        verify_password,
+    )
+    from backend.security.rate_limiter import (
+        check_rate_limit,
+        check_rate_limit_durable,
+        clear_failed_login_durable,
+        get_client_ip,
+        is_locked_out_durable,
+        record_failed_login_durable,
+    )
 except ImportError:
-    from database.db import DatabaseService
-    from knowledge.knowledge_service import KnowledgeService
-    from security.auth import verify_password, create_jwt, verify_jwt, COOKIE_NAME, settings, is_valid_username, JWT_EXPIRY_HOURS
-    from security.rate_limiter import get_client_ip, is_rate_limited, is_locked_out, is_locked_out_durable, record_failed_login, record_failed_login_durable, clear_failed_login, clear_failed_login_durable, check_rate_limit, check_rate_limit_durable
     from database.cache import rag_cache
-    from knowledge.knowledge_service import EMBEDDING_PROVIDER  # type: ignore
-    from security.audit import log_action as audit_log, list_actions as list_audit  # type: ignore
+    from database.db import DatabaseService
+    from knowledge.knowledge_service import (
+        EMBEDDING_PROVIDER,  # type: ignore
+        KnowledgeService,
+    )
+    from security.audit import list_actions as list_audit
+    from security.audit import log_action as audit_log  # type: ignore
+    from security.auth import (
+        COOKIE_NAME,
+        JWT_EXPIRY_HOURS,
+        create_jwt,
+        settings,
+        verify_jwt,
+        verify_password,
+    )
+    from security.rate_limiter import (
+        check_rate_limit,
+        check_rate_limit_durable,
+        clear_failed_login_durable,
+        get_client_ip,
+        is_locked_out_durable,
+        record_failed_login_durable,
+    )
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
@@ -33,6 +64,7 @@ MAX_DICT_KEYS = 30
 MAX_DICT_VALUE_LEN = 8000
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,32}$")
 
+
 def _sanitize_str(v: Any) -> str:
     if v is None:
         return ""
@@ -41,12 +73,13 @@ def _sanitize_str(v: Any) -> str:
         raise ValueError(f"Field too long (>{MAX_STR_LEN})")
     return s
 
-def _validate_config_data(data: Dict[str, Any]) -> Dict[str, Any]:
+
+def _validate_config_data(data: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("data must be object")
     if len(data) > MAX_DICT_KEYS:
         raise ValueError(f"Too many keys (>{MAX_DICT_KEYS})")
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
     for k, v in data.items():
         if not isinstance(k, str) or len(k) > 64 or not re.match(r"^[a-zA-Z0-9_]+$", k):
             raise ValueError(f"Invalid key: {k}")
@@ -64,6 +97,7 @@ def _validate_config_data(data: Dict[str, Any]) -> Dict[str, Any]:
             out[k] = str(v).strip()[:MAX_DICT_VALUE_LEN]
     return out
 
+
 class LoginRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32)
     password: str = Field(min_length=1, max_length=128)
@@ -76,9 +110,10 @@ class LoginRequest(BaseModel):
             raise ValueError("Invalid username format")
         return v
 
+
 class ConfigUpdateRequest(BaseModel):
     section: str = Field(min_length=3, max_length=64)
-    data: Dict[str, Any]
+    data: dict[str, Any]
 
     @field_validator("section")
     @classmethod
@@ -91,20 +126,21 @@ class ConfigUpdateRequest(BaseModel):
 
 class ModelConfigUpdateRequest(BaseModel):
     """Validated model switch - accepts ANY model ID string, any OpenAI-compatible provider."""
+
     active_model: str = Field(min_length=1, max_length=256)
-    fallback_models: Optional[List[str]] = None
-    provider: Optional[str] = Field(default=None, max_length=64)
-    api_base_url: Optional[str] = Field(default=None, max_length=512)
-    temperature: Optional[float] = Field(default=None, ge=0, le=2)
-    reasoning_enabled: Optional[bool] = None
-    max_tokens: Optional[int] = Field(default=None, ge=256, le=131072)
+    fallback_models: list[str] | None = None
+    provider: str | None = Field(default=None, max_length=64)
+    api_base_url: str | None = Field(default=None, max_length=512)
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    reasoning_enabled: bool | None = None
+    max_tokens: int | None = Field(default=None, ge=256, le=131072)
 
 
 class ModelTestRequest(BaseModel):
     model: str = Field(min_length=1, max_length=256)
-    api_key: Optional[str] = Field(default=None, max_length=512)
-    base_url: Optional[str] = Field(default=None, max_length=512)
-    provider: Optional[str] = Field(default=None, max_length=64)
+    api_key: str | None = Field(default=None, max_length=512)
+    base_url: str | None = Field(default=None, max_length=512)
+    provider: str | None = Field(default=None, max_length=64)
 
     @field_validator("model")
     @classmethod
@@ -126,30 +162,34 @@ class ModelTestRequest(BaseModel):
 
 
 class CatalogPreviewRequest(BaseModel):
-    api_key: Optional[str] = Field(default=None, max_length=512)
-    base_url: Optional[str] = Field(default=None, max_length=512)
+    api_key: str | None = Field(default=None, max_length=512)
+    base_url: str | None = Field(default=None, max_length=512)
     include_free_only: bool = False
     limit: int = Field(default=60, ge=1, le=200)
 
+
 class KnowledgeEntryRequest(BaseModel):
-    id: Optional[str] = Field(default=None, max_length=64)
+    id: str | None = Field(default=None, max_length=64)
     category_id: str = Field(min_length=1, max_length=64)
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(min_length=1, max_length=10000)
-    tags: Optional[List[str]] = Field(default=None, max_length=20)
-    is_active: Optional[bool] = True
+    tags: list[str] | None = Field(default=None, max_length=20)
+    is_active: bool | None = True
 
     @field_validator("title", "content")
     @classmethod
     def strip_fields(cls, v: str) -> str:
         return v.strip()
 
+
 def get_current_admin(request: Request) -> str:
     # rate-limit token brute force: 30 checks/min per IP
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:verify:{ip}", 180, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         auth_header = request.headers.get("Authorization")
@@ -169,17 +209,24 @@ def get_current_admin(request: Request) -> str:
         raise HTTPException(status_code=401, detail="Unauthorized: Session expired")
     return payload.get("sub", "admin")
 
+
 @router.post("/login")
 def admin_login(payload: LoginRequest, request: Request, response: Response):
     ip = get_client_ip(request)
     # lockout check first
     locked, retry = is_locked_out_durable(ip)
     if locked:
-        raise HTTPException(status_code=429, detail=f"Account locked. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Account locked. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
     # rate limit login: 10/min per IP
     allowed, retry = check_rate_limit_durable(f"admin:login:{ip}", 10, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many login attempts. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many login attempts. Retry after {retry}s",
+            headers={"Retry-After": str(retry)},
+        )
     # constant-time username check - still verify dummy hash to avoid timing leak
     if payload.username != settings.ADMIN_USERNAME:
         # burn same time as verify_password
@@ -210,49 +257,73 @@ def admin_login(payload: LoginRequest, request: Request, response: Response):
     )
     return {"status": "success", "message": "Admin authenticated successfully"}
 
+
 @router.post("/logout")
 def admin_logout(request: Request, response: Response, admin: str = Depends(get_current_admin)):
     # Naikkan versi sesi -> semua token admin lama (termasuk yang dicuri) langsung invalid.
     try:
         cur = DatabaseService.get_app_settings()
-        DatabaseService.update_app_settings({"admin_session_version": int(cur.get("admin_session_version", 0) or 0) + 1})
+        DatabaseService.update_app_settings(
+            {"admin_session_version": int(cur.get("admin_session_version", 0) or 0) + 1}
+        )
     except Exception as e:
         print(f"[admin-logout] gagal invalidate sesi: {e}")
     response.delete_cookie(COOKIE_NAME, path="/")
     return {"status": "success", "message": "Logged out successfully"}
 
+
 @router.get("/verify")
 def verify_admin_session(request: Request, admin: str = Depends(get_current_admin)):
     return {"status": "authenticated", "admin": admin}
 
+
 @router.get("/config/{section}")
 def get_config(section: str, admin: str = Depends(get_current_admin)):
-    valid_sections = ["ai_identity", "personal_information", "ai_personality", "communication_settings", "system_instructions", "ai_model_config", "response_styles"]
+    valid_sections = [
+        "ai_identity",
+        "personal_information",
+        "ai_personality",
+        "communication_settings",
+        "system_instructions",
+        "ai_model_config",
+        "response_styles",
+    ]
     if section not in valid_sections:
         raise HTTPException(status_code=400, detail="Invalid configuration section")
     return DatabaseService.get_config_table(section)
 
+
 @router.put("/config")
 def update_config(payload: ConfigUpdateRequest, request: Request, admin: str = Depends(get_current_admin)):
-    valid_sections = ["ai_identity", "personal_information", "ai_personality", "communication_settings", "system_instructions", "ai_model_config", "response_styles"]
+    valid_sections = [
+        "ai_identity",
+        "personal_information",
+        "ai_personality",
+        "communication_settings",
+        "system_instructions",
+        "ai_model_config",
+        "response_styles",
+    ]
     if payload.section not in valid_sections:
         raise HTTPException(status_code=400, detail="Invalid configuration section")
     # rate-limit config writes: 20/min per IP
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:config:{ip}", 20, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
 
     # Strict Schema Validation
     schemas = {
         "communication_settings": ["primary_language", "tone"],
         "ai_identity": ["name", "role", "purpose"],
         "ai_personality": ["personality", "tone"],
-        "system_instructions": [], # Optional fields
+        "system_instructions": [],  # Optional fields
         "ai_model_config": ["active_model", "provider"],
-        "response_styles": ["styles"]
+        "response_styles": ["styles"],
     }
-    
+
     if payload.section in schemas:
         for field in schemas[payload.section]:
             if field not in payload.data or not str(payload.data[field]).strip():
@@ -282,14 +353,14 @@ def admin_list_models(
     request: Request,
     include_free_only: bool = False,
     limit: int = 60,
-    catalog_api_key: Optional[str] = None,
-    catalog_base_url: Optional[str] = None,
+    catalog_api_key: str | None = None,
+    catalog_base_url: str | None = None,
     admin: str = Depends(get_current_admin),
 ):
     """Return current model config + live catalog for the admin picker (no hardcoding).
     Optional catalog_api_key / catalog_base_url let admin preview catalog with different creds without saving."""
     try:
-        from backend.agent.agent import _resolve_base_url, _resolve_default_model, _resolve_api_key
+        from backend.agent.agent import _resolve_api_key, _resolve_base_url, _resolve_default_model
     except ImportError:
         from agent.agent import _resolve_base_url, _resolve_default_model, _resolve_api_key  # type: ignore  # noqa
     try:
@@ -304,15 +375,20 @@ def admin_list_models(
     base_url = (cfg.get("api_base_url") or "").strip() or _resolve_base_url()
 
     # If catalog overrides provided, try catalog with them (preview only, not saved)
-    live: Dict[str, Any] = {}
+    live: dict[str, Any] = {}
     if catalog_api_key is not None or catalog_base_url is not None:
         # Use override for live catalog only
         override_key = (catalog_api_key or "").strip() or None
         override_url = (catalog_base_url or "").strip().rstrip("/") or None
         # call internal fetcher with overrides
         try:
-            import json as _json, urllib.request as _ureq, ssl as _ssl
-            from backend.agent.agent import _resolve_api_key as _rak, _resolve_base_url as _rbu  # type: ignore
+            import json as _json
+            import ssl as _ssl
+            import urllib.request as _ureq
+
+            from backend.agent.agent import _resolve_api_key as _rak  # type: ignore
+            from backend.agent.agent import _resolve_base_url as _rbu
+
             api_key = override_key or _rak()
             burl = override_url or _rbu() or "https://api.groq.com/openai/v1"
             burl = burl.strip().rstrip("/")
@@ -336,11 +412,41 @@ def admin_list_models(
                     continue
             if items is not None:
                 if include_free_only:
-                    items = [it for it in items if isinstance(it, dict) and (":free" in str(it.get("id", "")) or str(it.get("pricing", {}).get("prompt", "x") if isinstance(it.get("pricing"), dict) else "") == "0")]
+                    items = [
+                        it
+                        for it in items
+                        if isinstance(it, dict)
+                        and (
+                            ":free" in str(it.get("id", ""))
+                            or str(
+                                it.get("pricing", {}).get("prompt", "x") if isinstance(it.get("pricing"), dict) else ""
+                            )
+                            == "0"
+                        )
+                    ]
                 items = items[:limit]
-                live = {"object": "list", "data": [{"id": it.get("id"), "name": it.get("name") or it.get("id"), "context_length": it.get("context_length"), "pricing": it.get("pricing"), "description": (it.get("description") or "")[:240], "object": "model"} for it in items if isinstance(it, dict) and it.get("id")]}
+                live = {
+                    "object": "list",
+                    "data": [
+                        {
+                            "id": it.get("id"),
+                            "name": it.get("name") or it.get("id"),
+                            "context_length": it.get("context_length"),
+                            "pricing": it.get("pricing"),
+                            "description": (it.get("description") or "")[:240],
+                            "object": "model",
+                        }
+                        for it in items
+                        if isinstance(it, dict) and it.get("id")
+                    ],
+                }
             else:
-                live = {"object": "list", "data": [], "error": "Catalog fetch failed with provided credentials", "fallback": None}
+                live = {
+                    "object": "list",
+                    "data": [],
+                    "error": "Catalog fetch failed with provided credentials",
+                    "fallback": None,
+                }
         except Exception as e:
             live = {"object": "list", "data": [], "error": str(e)}
     else:
@@ -370,22 +476,28 @@ def admin_catalog_preview(payload: CatalogPreviewRequest, request: Request, admi
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:catalog:{ip}", 20, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
     try:
-        from backend.agent.agent import _resolve_api_key as _rak, _resolve_base_url as _rbu  # type: ignore
+        from backend.agent.agent import _resolve_api_key as _rak  # type: ignore
+        from backend.agent.agent import _resolve_base_url as _rbu
     except ImportError:
-        from agent.agent import _resolve_api_key as _rak, _resolve_base_url as _rbu  # type: ignore
+        from agent.agent import _resolve_api_key as _rak  # type: ignore
+        from agent.agent import _resolve_base_url as _rbu
     api_key = (payload.api_key or "").strip() or _rak()
     burl = (payload.base_url or "").strip().rstrip("/") or _rbu() or "https://api.groq.com/openai/v1"
-    if payload.base_url and payload.base_url.strip():
+    if payload.base_url and payload.base_url.strip() and not re.match(r"^https://[a-zA-Z0-9._-]+", burl):
         # validate https
-        if not re.match(r"^https://[a-zA-Z0-9._-]+", burl):
-            raise HTTPException(status_code=400, detail="base_url must be https URL")
+        raise HTTPException(status_code=400, detail="base_url must be https URL")
     burl = burl.strip().rstrip("/")
     origin = burl.split("/api/")[0]
     candidates = [origin + "/api/v1/models", burl + "/models" if not burl.endswith("/models") else burl]
     candidates = list(dict.fromkeys(candidates))
-    import json as _json, urllib.request as _ureq, ssl as _ssl
+    import json as _json
+    import ssl as _ssl
+    import urllib.request as _ureq
+
     items = None
     last_err = ""
     for u in candidates:
@@ -394,7 +506,7 @@ def admin_catalog_preview(payload: CatalogPreviewRequest, request: Request, admi
             ctx = _ssl.create_default_context()
             with _ureq.urlopen(req, timeout=10, context=ctx) as resp:
                 if getattr(resp, "status", 200) != 200:
-                    last_err = f"{u} -> {getattr(resp,'status',0)}"
+                    last_err = f"{u} -> {getattr(resp, 'status', 0)}"
                     continue
                 data = _json.loads(resp.read().decode() or "{}")
                 lst = data.get("data")
@@ -407,9 +519,32 @@ def admin_catalog_preview(payload: CatalogPreviewRequest, request: Request, admi
             continue
     if items is not None:
         if payload.include_free_only:
-            items = [it for it in items if isinstance(it, dict) and (":free" in str(it.get("id", "")) or str(it.get("pricing", {}).get("prompt", "x") if isinstance(it.get("pricing"), dict) else "") == "0")]
+            items = [
+                it
+                for it in items
+                if isinstance(it, dict)
+                and (
+                    ":free" in str(it.get("id", ""))
+                    or str(it.get("pricing", {}).get("prompt", "x") if isinstance(it.get("pricing"), dict) else "")
+                    == "0"
+                )
+            ]
         items = items[: max(1, min(200, int(payload.limit)))]
-        return {"object": "list", "data": [{"id": it.get("id"), "name": it.get("name") or it.get("id"), "context_length": it.get("context_length"), "pricing": it.get("pricing"), "description": (it.get("description") or "")[:240], "object": "model"} for it in items if isinstance(it, dict) and it.get("id")]}
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": it.get("id"),
+                    "name": it.get("name") or it.get("id"),
+                    "context_length": it.get("context_length"),
+                    "pricing": it.get("pricing"),
+                    "description": (it.get("description") or "")[:240],
+                    "object": "model",
+                }
+                for it in items
+                if isinstance(it, dict) and it.get("id")
+            ],
+        }
     return {"object": "list", "data": [], "error": last_err or "Catalog fetch failed with provided credentials"}
 
 
@@ -419,26 +554,44 @@ def admin_update_models(payload: ModelConfigUpdateRequest, request: Request, adm
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:models_write:{ip}", 15, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
     if not payload.active_model or not payload.active_model.strip():
         raise HTTPException(status_code=400, detail="active_model must be a non-empty model ID string")
     active = payload.active_model.strip()
     current = DatabaseService.get_config_table("ai_model_config")
     # preserve existing values when field not sent
-    fallbacks_raw = payload.fallback_models if payload.fallback_models is not None else current.get("fallback_models", [])
+    fallbacks_raw = (
+        payload.fallback_models if payload.fallback_models is not None else current.get("fallback_models", [])
+    )
     fallbacks = [str(m).strip() for m in (fallbacks_raw or []) if str(m).strip()]
     # ensure active appears first / not duplicated weirdly
     fallbacks = [m for m in fallbacks if m != active]
 
-    updated_cfg: Dict[str, Any] = {
+    updated_cfg: dict[str, Any] = {
         **current,
         "active_model": active,
         "fallback_models": fallbacks,
-        "provider": (payload.provider.strip() if isinstance(payload.provider, str) and payload.provider.strip() else current.get("provider", "openrouter")),
-        "api_base_url": (payload.api_base_url.strip().rstrip("/") if isinstance(payload.api_base_url, str) and payload.api_base_url.strip() else current.get("api_base_url", "https://openrouter.ai/api/v1")),
-        "temperature": float(payload.temperature) if payload.temperature is not None else float(current.get("temperature", 0.4)),
-        "reasoning_enabled": bool(payload.reasoning_enabled) if payload.reasoning_enabled is not None else bool(current.get("reasoning_enabled", False)),
-        "max_tokens": int(payload.max_tokens) if payload.max_tokens is not None else int(current.get("max_tokens", 8192) or 8192),
+        "provider": (
+            payload.provider.strip()
+            if isinstance(payload.provider, str) and payload.provider.strip()
+            else current.get("provider", "openrouter")
+        ),
+        "api_base_url": (
+            payload.api_base_url.strip().rstrip("/")
+            if isinstance(payload.api_base_url, str) and payload.api_base_url.strip()
+            else current.get("api_base_url", "https://openrouter.ai/api/v1")
+        ),
+        "temperature": float(payload.temperature)
+        if payload.temperature is not None
+        else float(current.get("temperature", 0.4)),
+        "reasoning_enabled": bool(payload.reasoning_enabled)
+        if payload.reasoning_enabled is not None
+        else bool(current.get("reasoning_enabled", False)),
+        "max_tokens": int(payload.max_tokens)
+        if payload.max_tokens is not None
+        else int(current.get("max_tokens", 8192) or 8192),
     }
     # clamp temperature to valid range
     if updated_cfg["temperature"] < 0:
@@ -461,7 +614,9 @@ def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = D
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:models_test:{ip}", 12, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
     model = payload.model.strip()
     if not re.match(r"^[a-zA-Z0-9._/:-]+$", model):
         raise HTTPException(status_code=400, detail="Invalid model ID")
@@ -479,7 +634,12 @@ def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = D
         db_cfg = DatabaseService.get_config_table("ai_model_config") or {}
     except Exception:
         db_cfg = {}
-    provider = (payload.provider or "").strip() or (db_cfg.get("provider") or "").strip() or (getattr(_settings, "MODEL_PROVIDER", "") or "").strip() or "openrouter"
+    provider = (
+        (payload.provider or "").strip()
+        or (db_cfg.get("provider") or "").strip()
+        or (getattr(_settings, "MODEL_PROVIDER", "") or "").strip()
+        or "openrouter"
+    )
     # api_key priority: explicit payload > provider-resolved key > any available key
     explicit_key = (payload.api_key or "").strip()
     if explicit_key:
@@ -516,7 +676,7 @@ def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = D
             try:
                 alt = _resolve_api_key("openrouter")
                 if alt and not alt.startswith("gsk_"):
-                    print(f"[models/test] ganti key gsk_ -> openrouter karena URL openrouter")
+                    print("[models/test] ganti key gsk_ -> openrouter karena URL openrouter")
                     api_key = alt
             except Exception:
                 pass
@@ -529,28 +689,45 @@ def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = D
                 api_key = alt
         except Exception:
             pass
+
     def _mask(k: str) -> str:
         k = (k or "").strip()
-        if len(k) <= 8: return "***"
+        if len(k) <= 8:
+            return "***"
         return k[:8] + "***" + k[-4:]
+
     src = "payload" if explicit_key else "env/DB"
     import os as _os
+
     has_env_key = bool((_os.getenv("OPENROUTER_API_KEY") or "").strip() or (_os.getenv("GROQ_API_KEY") or "").strip())
     has_openrouter = bool((_os.getenv("OPENROUTER_API_KEY") or "").strip())
     has_groq = bool((_os.getenv("GROQ_API_KEY") or "").strip())
-    print(f"[models/test] provider={provider} base_url={base_url} key={_mask(api_key)} src={src} has_env_key={has_env_key} has_openrouter={has_openrouter} has_groq={has_groq} model={model}")
+    print(
+        f"[models/test] provider={provider} base_url={base_url} key={_mask(api_key)} src={src} has_env_key={has_env_key} has_openrouter={has_openrouter} has_groq={has_groq} model={model}"
+    )
     if api_key.startswith("gsk_") and "openrouter" in low_url:
-        print(f"[models/test] WARNING gsk_ key dikirim ke openrouter - pasti 401. Ganti provider=groq + base_url=https://api.groq.com/openai/v1 atau pakai sk-or- key")
+        print(
+            "[models/test] WARNING gsk_ key dikirim ke openrouter - pasti 401. Ganti provider=groq + base_url=https://api.groq.com/openai/v1 atau pakai sk-or- key"
+        )
     if api_key.startswith("sk-or-") and "groq" in low_url:
-        print(f"[models/test] WARNING sk-or- key dikirim ke groq - pasti 401")
+        print("[models/test] WARNING sk-or- key dikirim ke groq - pasti 401")
     if not api_key:
-        raise HTTPException(status_code=400, detail="No API key available - isi API KEY KATALOG atau set OPENROUTER_API_KEY/GROQ_API_KEY di .env dan restart backend")
+        raise HTTPException(
+            status_code=400,
+            detail="No API key available - isi API KEY KATALOG atau set OPENROUTER_API_KEY/GROQ_API_KEY di .env dan restart backend",
+        )
     # Probe via OpenAI SDK (stream=False, tiny tokens) - with explicit header fallback via urllib if 401
     import time as _time
+
     t0 = _time.perf_counter()
     try:
         from openai import OpenAI
-        client = OpenAI(base_url=base_url, api_key=api_key, default_headers={"Authorization": f"Bearer {api_key}"} if False else None)
+
+        client = OpenAI(
+            base_url=base_url,
+            api_key=api_key,
+            default_headers={"Authorization": f"Bearer {api_key}"} if False else None,
+        )
         # OpenAI SDK already sets Authorization: Bearer <key>; above is no-op unless needed for debugging
         resp = client.chat.completions.create(
             model=model,
@@ -558,7 +735,9 @@ def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = D
             max_tokens=8,
             temperature=0,
             stream=False,
-            extra_headers={"HTTP-Referer": "http://localhost:3000", "X-Title": "ITZ AI"} if "openrouter" in base_url else None,
+            extra_headers={"HTTP-Referer": "http://localhost:3000", "X-Title": "ITZ AI"}
+            if "openrouter" in base_url
+            else None,
         )
         latency_ms = int((_time.perf_counter() - t0) * 1000)
         choice = getattr(resp, "choices", None)
@@ -569,7 +748,15 @@ def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = D
                 text = (getattr(choice[0].message, "content", "") or "").strip()[:200]
             except Exception:
                 text = ""
-        return {"status": "ok" if ok else "error", "model": model, "latency_ms": latency_ms, "sample": text or None, "base_url": base_url, "provider": provider, "key_mask": _mask(api_key)}
+        return {
+            "status": "ok" if ok else "error",
+            "model": model,
+            "latency_ms": latency_ms,
+            "sample": text or None,
+            "base_url": base_url,
+            "provider": provider,
+            "key_mask": _mask(api_key),
+        }
     except Exception as e:
         latency_ms = int((_time.perf_counter() - t0) * 1000)
         msg = str(e)[:600]
@@ -579,7 +766,17 @@ def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = D
         if "401" in msg or "Missing Authentication" in msg:
             hint = " - cek .env OPENROUTER_API_KEY/GROQ_API_KEY tanpa kutip, tanpa spasi, restart backend (python -m backend.api.main), cek provider vs base_url (openrouter→https://openrouter.ai/api/v1, groq→https://api.groq.com/openai/v1)"
         print(f"[models/test] FAIL {msg} hint={hint}")
-        raise HTTPException(status_code=502, detail={"model": model, "latency_ms": latency_ms, "error": msg + hint, "base_url": base_url, "provider": provider, "key_mask": _mask(api_key)})
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "model": model,
+                "latency_ms": latency_ms,
+                "error": msg + hint,
+                "base_url": base_url,
+                "provider": provider,
+                "key_mask": _mask(api_key),
+            },
+        )
 
 
 @router.get("/stats")
@@ -602,6 +799,7 @@ def admin_stats(request: Request, admin: str = Depends(get_current_admin)):
     try:
         # try supabase count
         from backend.database.db import supabase_client as _supa  # type: ignore
+
         if _supa:
             try:
                 res = _supa.table("trial_usage").select("used").execute()
@@ -613,11 +811,14 @@ def admin_stats(request: Request, admin: str = Depends(get_current_admin)):
             raise RuntimeError("no supabase")
     except Exception:
         try:
-            import json as _json, os as _os
+            import json as _json
+            import os as _os
+
             from backend.database.db import LOCAL_DATA_DIR  # type: ignore
+
             p = _os.path.join(LOCAL_DATA_DIR, "trial_usage.json")
             if _os.path.exists(p):
-                with open(p, "r", encoding="utf-8") as f:
+                with open(p, encoding="utf-8") as f:
                     d = _json.load(f)
                     if isinstance(d, dict):
                         trial_total_used = sum(int(v or 0) for v in d.values())
@@ -628,7 +829,12 @@ def admin_stats(request: Request, admin: str = Depends(get_current_admin)):
     active_users = sum(1 for u in users if bool(u.get("is_active", True)))
     disabled_users = total_users - active_users
     total_prompts_used = sum(int(u.get("prompts_used", 0) or 0) for u in users)
-    exhausted = sum(1 for u in users if int(u.get("max_prompts", 0) or 0) > 0 and int(u.get("prompts_used", 0) or 0) >= int(u.get("max_prompts", 0) or 0))
+    exhausted = sum(
+        1
+        for u in users
+        if int(u.get("max_prompts", 0) or 0) > 0
+        and int(u.get("prompts_used", 0) or 0) >= int(u.get("max_prompts", 0) or 0)
+    )
     unlimited_users = sum(1 for u in users if int(u.get("max_prompts", 0) or 0) == 0)
     avg_prompts = round(total_prompts_used / total_users, 1) if total_users else 0
     # uptime
@@ -650,7 +856,7 @@ def admin_stats(request: Request, admin: str = Depends(get_current_admin)):
 
     # knowledge breakdown by category name
     cat_id_to_name = {c.get("id"): c.get("name", c.get("slug", "")) for c in cats}
-    cat_counts: Dict[str, int] = {}
+    cat_counts: dict[str, int] = {}
     for e in entries:
         name = cat_id_to_name.get(e.get("category_id")) or e.get("category_slug") or "Unknown"
         cat_counts[name] = cat_counts.get(name, 0) + 1
@@ -658,17 +864,28 @@ def admin_stats(request: Request, admin: str = Depends(get_current_admin)):
 
     # top prompts consumers
     top_users = sorted(users, key=lambda u: int(u.get("prompts_used", 0) or 0), reverse=True)[:6]
-    top_prompts = [{"username": u.get("username"), "prompts_used": int(u.get("prompts_used", 0) or 0), "max_prompts": int(u.get("max_prompts", 0) or 0)} for u in top_users]
+    top_prompts = [
+        {
+            "username": u.get("username"),
+            "prompts_used": int(u.get("prompts_used", 0) or 0),
+            "max_prompts": int(u.get("max_prompts", 0) or 0),
+        }
+        for u in top_users
+    ]
 
     total_requests = total_prompts_used + trial_total_used
     # aggregated views by period (day/week/month/year) - default 14 day buckets
     q_period = "day"
     q_limit = 14
     try:
-        qp = (request.query_params.get("period") or "day").strip().lower() if hasattr(request, "query_params") else "day"
+        qp = (
+            (request.query_params.get("period") or "day").strip().lower() if hasattr(request, "query_params") else "day"
+        )
         if qp in ("day", "week", "month", "year"):
             q_period = qp
-        q_limit = max(1, min(60, int(request.query_params.get("limit", "14")) if hasattr(request, "query_params") else 14))
+        q_limit = max(
+            1, min(60, int(request.query_params.get("limit", "14")) if hasattr(request, "query_params") else 14)
+        )
     except Exception:
         pass
     try:
@@ -723,10 +940,8 @@ def admin_token_usage(days: int = 14, admin: str = Depends(get_current_admin)):
         raise HTTPException(status_code=500, detail=f"Token stats error: {e}")
 
     users_by_id = {}
-    try:
+    with contextlib.suppress(Exception):
         users_by_id = {str(u.get("id")): u for u in DatabaseService.list_users()}
-    except Exception:
-        pass
 
     for row in stats.get("by_user", []):
         owner = row.get("owner", "")
@@ -771,7 +986,9 @@ def admin_reindex_knowledge(request: Request, admin: str = Depends(get_current_a
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:reindex:{ip}", 3, 300)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Terlalu sering. Coba lagi {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Terlalu sering. Coba lagi {retry}s", headers={"Retry-After": str(retry)}
+        )
     if EMBEDDING_PROVIDER == "off":
         raise HTTPException(status_code=400, detail="EMBEDDING_PROVIDER=off - reindex dibatalkan")
     entries = DatabaseService.get_knowledge_entries() or []
@@ -785,10 +1002,18 @@ def admin_reindex_knowledge(request: Request, admin: str = Depends(get_current_a
             plan.append({"id": e["id"], "title": e.get("title", ""), "chunks": n})
         except Exception as ex:
             audit_log(admin, "knowledge_reindex_failed", target=str(e.get("id")), detail=str(ex), ip=ip)
-            raise HTTPException(status_code=502, detail=f"Reindex gagal pada entry '{e.get('title', '?')}'. Index sebagian mungkin sudah berubah; cek log server.")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Reindex gagal pada entry '{e.get('title', '?')}'. Index sebagian mungkin sudah berubah; cek log server.",
+            )
     rag_cache.clear()
     audit_log(admin, "knowledge_reindex", detail=f"entries={len(plan)} provider={EMBEDDING_PROVIDER}", ip=ip)
-    return {"status": "success", "entries": len(plan), "chunks": sum(p["chunks"] for p in plan), "provider": EMBEDDING_PROVIDER}
+    return {
+        "status": "success",
+        "entries": len(plan),
+        "chunks": sum(p["chunks"] for p in plan),
+        "provider": EMBEDDING_PROVIDER,
+    }
 
 
 @router.get("/health")
@@ -808,7 +1033,11 @@ def admin_health(admin: str = Depends(get_current_admin)):
     token_budget = None
     try:
         stats = DatabaseService.get_token_stats(1)
-        token_budget = {"budget": stats.get("budget", 0), "today": stats.get("today", {}).get("total", 0), "remaining": stats.get("remaining")}
+        token_budget = {
+            "budget": stats.get("budget", 0),
+            "today": stats.get("today", {}).get("total", 0),
+            "remaining": stats.get("remaining"),
+        }
     except Exception:
         pass
     last_login_fail = next((r for r in list_audit(50) if r.get("action") == "login_failed"), None)
@@ -832,16 +1061,20 @@ def _active_chat_provider() -> str:
 def get_knowledge_categories(admin: str = Depends(get_current_admin)):
     return DatabaseService.get_knowledge_categories()
 
+
 @router.get("/knowledge/entries")
-def get_knowledge_entries(category: Optional[str] = None, admin: str = Depends(get_current_admin)):
+def get_knowledge_entries(category: str | None = None, admin: str = Depends(get_current_admin)):
     return DatabaseService.get_knowledge_entries(category)
+
 
 @router.post("/knowledge/entries")
 def save_knowledge_entry(payload: KnowledgeEntryRequest, request: Request, admin: str = Depends(get_current_admin)):
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:knowledge:{ip}", 30, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
     data = payload.model_dump()
     saved = DatabaseService.create_or_update_knowledge_entry(data)
     # Index synchronously - serverless runtimes (Vercel) kill background tasks
@@ -855,6 +1088,7 @@ def save_knowledge_entry(payload: KnowledgeEntryRequest, request: Request, admin
     audit_log(admin, "knowledge_save", target=str(saved.get("id")), detail=saved.get("title", ""), ip=ip)
     return {"status": "partial" if index_error else "success", "entry": saved, "index_error": index_error}
 
+
 @router.delete("/knowledge/entries/{entry_id}")
 def delete_knowledge_entry(entry_id: str, request: Request, admin: str = Depends(get_current_admin)):
     if not re.match(r"^[a-zA-Z0-9_-]{1,64}$", entry_id):
@@ -862,7 +1096,9 @@ def delete_knowledge_entry(entry_id: str, request: Request, admin: str = Depends
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:knowledge_del:{ip}", 20, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
     DatabaseService.delete_knowledge_entry(entry_id)
     rag_cache.clear()
     audit_log(admin, "knowledge_delete", target=entry_id, ip=ip)
@@ -872,13 +1108,22 @@ def delete_knowledge_entry(entry_id: str, request: Request, admin: str = Depends
 # ─── Bulk export / import (JSON upload to populate AI identity → system_instructions) ───
 # Note: ai_model_config is intentionally NOT part of bulk import/export.
 # Models are managed manually on the "AI Models" tab so bulk uploads can't overwrite them.
-ADMIN_BULK_SECTIONS = ["ai_identity", "personal_information", "ai_personality", "communication_settings", "system_instructions"]
+ADMIN_BULK_SECTIONS = [
+    "ai_identity",
+    "personal_information",
+    "ai_personality",
+    "communication_settings",
+    "system_instructions",
+]
 
 
 @router.get("/export")
 def admin_export_all(admin: str = Depends(get_current_admin)):
     """Export all admin-configurable sections + knowledge in one JSON blob."""
-    payload: Dict[str, Any] = {"version": 1, "exported_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()}
+    payload: dict[str, Any] = {
+        "version": 1,
+        "exported_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+    }
     for sec in ADMIN_BULK_SECTIONS:
         try:
             payload[sec] = DatabaseService.get_config_table(sec)
@@ -897,16 +1142,16 @@ def admin_export_all(admin: str = Depends(get_current_admin)):
 
 
 class BulkImportRequest(BaseModel):
-    ai_identity: Optional[Dict[str, Any]] = None
-    personal_information: Optional[Dict[str, Any]] = None
-    ai_personality: Optional[Dict[str, Any]] = None
-    communication_settings: Optional[Dict[str, Any]] = None
-    system_instructions: Optional[Dict[str, Any]] = None
-    knowledge_categories: Optional[List[Dict[str, Any]]] = None
-    knowledge_entries: Optional[List[Dict[str, Any]]] = None
+    ai_identity: dict[str, Any] | None = None
+    personal_information: dict[str, Any] | None = None
+    ai_personality: dict[str, Any] | None = None
+    communication_settings: dict[str, Any] | None = None
+    system_instructions: dict[str, Any] | None = None
+    knowledge_categories: list[dict[str, Any]] | None = None
+    knowledge_entries: list[dict[str, Any]] | None = None
 
 
-_BULK_REQUIRED_FIELDS: Dict[str, List[str]] = {
+_BULK_REQUIRED_FIELDS: dict[str, list[str]] = {
     "ai_identity": ["name", "role"],
     "personal_information": [],
     "ai_personality": [],
@@ -915,7 +1160,7 @@ _BULK_REQUIRED_FIELDS: Dict[str, List[str]] = {
 }
 
 
-def _validate_bulk_section(section: str, data: Dict[str, Any]) -> Optional[str]:
+def _validate_bulk_section(section: str, data: dict[str, Any]) -> str | None:
     req = _BULK_REQUIRED_FIELDS.get(section, [])
     missing = [k for k in req if not str(data.get(k) or "").strip()]
     if missing:
@@ -933,7 +1178,9 @@ def admin_import_bulk(payload: BulkImportRequest, request: Request, admin: str =
     ip = get_client_ip(request)
     allowed, retry = check_rate_limit(f"admin:import:{ip}", 10, 60)
     if not allowed:
-        raise HTTPException(status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)})
+        raise HTTPException(
+            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
+        )
     # cap bulk payload size
     raw_check = payload.model_dump(exclude_none=True)
     total_chars = len(str(raw_check))
@@ -943,10 +1190,13 @@ def admin_import_bulk(payload: BulkImportRequest, request: Request, admin: str =
         raise HTTPException(status_code=400, detail="Too many knowledge_entries (max 200)")
     raw = raw_check
     if not raw:
-        raise HTTPException(status_code=400, detail="Empty import - no recognized keys found. Expected one of: ai_identity, personal_information, ai_personality, communication_settings, system_instructions, knowledge_entries")
+        raise HTTPException(
+            status_code=400,
+            detail="Empty import - no recognized keys found. Expected one of: ai_identity, personal_information, ai_personality, communication_settings, system_instructions, knowledge_entries",
+        )
 
-    applied: Dict[str, Any] = {}
-    errors: Dict[str, str] = {}
+    applied: dict[str, Any] = {}
+    errors: dict[str, str] = {}
 
     for sec in ADMIN_BULK_SECTIONS:
         if sec not in raw:
@@ -995,18 +1245,18 @@ def admin_import_bulk(payload: BulkImportRequest, request: Request, admin: str =
                 if not title or not content:
                     continue
                 try:
-                    saved = DatabaseService.create_or_update_knowledge_entry({
-                        "id": ent.get("id"),
-                        "category_id": cat_id,
-                        "title": title,
-                        "content": content,
-                        "tags": ent.get("tags") or [],
-                        "is_active": ent.get("is_active", True),
-                    })
-                    try:
+                    saved = DatabaseService.create_or_update_knowledge_entry(
+                        {
+                            "id": ent.get("id"),
+                            "category_id": cat_id,
+                            "title": title,
+                            "content": content,
+                            "tags": ent.get("tags") or [],
+                            "is_active": ent.get("is_active", True),
+                        }
+                    )
+                    with contextlib.suppress(Exception):
                         KnowledgeService.index_entry(saved["id"], saved["content"])
-                    except Exception:
-                        pass
                     knowledge_applied += 1
                 except Exception as e:
                     errors.setdefault("knowledge_entries", "")
@@ -1028,7 +1278,7 @@ async def admin_import_file(request: Request, admin: str = Depends(get_current_a
     """Multipart JSON file upload variant of /import - POST a form field 'file' or raw JSON body."""
     try:
         ctype = (request.headers.get("content-type") or "").lower()
-        data: Dict[str, Any] = {}
+        data: dict[str, Any] = {}
         if "multipart/form-data" in ctype:
             form = await request.form()
             f = form.get("file")
@@ -1036,9 +1286,13 @@ async def admin_import_file(request: Request, admin: str = Depends(get_current_a
                 raise HTTPException(status_code=400, detail="No 'file' field in multipart upload")
             raw_bytes = await f.read()  # type: ignore
             import json as _json
-            data = _json.loads(raw_bytes.decode("utf-8") if isinstance(raw_bytes, (bytes, bytearray)) else str(raw_bytes))
+
+            data = _json.loads(
+                raw_bytes.decode("utf-8") if isinstance(raw_bytes, (bytes, bytearray)) else str(raw_bytes)
+            )
         else:
             import json as _json
+
             body = await request.body()
             data = _json.loads(body.decode("utf-8") or "{}")
 

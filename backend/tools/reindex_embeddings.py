@@ -9,16 +9,23 @@ data lama tidak tersentuh.
 
 Jalankan:  python -m backend.tools.reindex_embeddings
 """
+
 try:
-    from backend.knowledge.knowledge_service import (
-        KnowledgeService, EMBEDDING_PROVIDER, EMBEDDING_DIM, supabase_client,
-    )
     from backend.database.db import DatabaseService
-except ImportError:
-    from knowledge.knowledge_service import (  # type: ignore
-        KnowledgeService, EMBEDDING_PROVIDER, EMBEDDING_DIM, supabase_client,
+    from backend.knowledge.knowledge_service import (
+        EMBEDDING_DIM,
+        EMBEDDING_PROVIDER,
+        KnowledgeService,
+        supabase_client,
     )
+except ImportError:
     from database.db import DatabaseService  # type: ignore
+    from knowledge.knowledge_service import (  # type: ignore
+        EMBEDDING_DIM,
+        EMBEDDING_PROVIDER,
+        KnowledgeService,
+        supabase_client,
+    )
 
 from langchain_text_splitters import CharacterTextSplitter
 
@@ -52,26 +59,23 @@ def main() -> int:
         for i, c in enumerate(chunks):
             v = KnowledgeService.get_embedding(c, as_query=False)
             if _is_dummy(v):
-                print(
-                    f"ABORT: embed gagal untuk entry {e.get('title')!r} "
-                    f"chunk {i} - database TIDAK diubah."
-                )
+                print(f"ABORT: embed gagal untuk entry {e.get('title')!r} chunk {i} - database TIDAK diubah.")
                 return 1
             vectors.append(v)
         plan.append((e.get("id"), e.get("title", "?"), chunks, vectors))
 
     # 2) Tulis ulang per entry (delete lama → insert baru).
     for entry_id, title, chunks, vectors in plan:
-        supabase_client.table("knowledge_embeddings").delete().eq(
-            "entry_id", entry_id
-        ).execute()
-        for idx, (c, v) in enumerate(zip(chunks, vectors)):
-            supabase_client.table("knowledge_embeddings").insert({
-                "entry_id": entry_id,
-                "chunk_index": idx,
-                "content_chunk": c,
-                "embedding": v,
-            }).execute()
+        supabase_client.table("knowledge_embeddings").delete().eq("entry_id", entry_id).execute()
+        for idx, (c, v) in enumerate(zip(chunks, vectors, strict=False)):
+            supabase_client.table("knowledge_embeddings").insert(
+                {
+                    "entry_id": entry_id,
+                    "chunk_index": idx,
+                    "content_chunk": c,
+                    "embedding": v,
+                }
+            ).execute()
         print(f"  reindexed: {title} ({len(chunks)} chunks)")
 
     total = sum(len(v) for *_, v in plan)

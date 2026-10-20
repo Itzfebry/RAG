@@ -9,11 +9,28 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { SectionHeader } from "../SectionHeader";
 import {
-  cardBase, cardHeaderCls, cardContentCls, tCard, tLabel,
-  cSky, cViolet, cAmber, cEmerald, cRose, cZinc, textareaCls,
+  cardBase,
+  cardHeaderCls,
+  cardContentCls,
+  tCard,
+  tLabel,
+  cSky,
+  cViolet,
+  cAmber,
+  cEmerald,
+  cRose,
+  cZinc,
+  textareaCls,
 } from "../adminStyles";
 
-export type InstructionsData = { behavioral_rules: string; response_rules: string; safety_rules: string; knowledge_priority: string; reasoning_constraints: string; formatting_rules: string };
+export type InstructionsData = {
+  behavioral_rules: string;
+  response_rules: string;
+  safety_rules: string;
+  knowledge_priority: string;
+  reasoning_constraints: string;
+  formatting_rules: string;
+};
 
 const FIELDS = [
   { key: "behavioral_rules", label: "Behavioral Rules", Icon: Cog, color: cZinc },
@@ -36,8 +53,15 @@ export function InstructionsTab({
   saving: boolean;
 }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <SectionHeader title="Instruksi Sistem" desc="Layer dengan prioritas tertinggi untuk behavioral rules, safety rules, dan knowledge priority." />
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-6"
+    >
+      <SectionHeader
+        title="Instruksi Sistem"
+        desc="Layer dengan prioritas tertinggi untuk behavioral rules, safety rules, dan knowledge priority."
+      />
       <Card className={cardBase}>
         <CardHeader className={cardHeaderCls}>
           <CardTitle className={tCard}>System Instructions</CardTitle>
@@ -47,14 +71,28 @@ export function InstructionsTab({
             const Ico = item.Icon;
             return (
               <div key={item.key} className="space-y-2">
-                <Label className={tLabel}><span className="flex items-center gap-1.5"><Ico className={`h-3.5 w-3.5 ${item.color}`} />{item.label}</span></Label>
-                <Textarea rows={2} value={data[item.key] || ""} onChange={(e) => onChange({ ...data, [item.key]: e.target.value })} className={textareaCls} />
+                <Label className={tLabel}>
+                  <span className="flex items-center gap-1.5">
+                    <Ico className={`h-3.5 w-3.5 ${item.color}`} />
+                    {item.label}
+                  </span>
+                </Label>
+                <Textarea
+                  rows={2}
+                  value={data[item.key] || ""}
+                  onChange={(e) => onChange({ ...data, [item.key]: e.target.value })}
+                  className={textareaCls}
+                />
               </div>
             );
           })}
         </CardContent>
         <CardFooter className="justify-end p-5 pt-0">
-          <Button onClick={onSave} disabled={saving} className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5">
+          <Button
+            onClick={onSave}
+            disabled={saving}
+            className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium gap-1.5"
+          >
             <Save className="h-4 w-4" />
             <span>{saving ? "Menyimpan..." : "Simpan Perubahan"}</span>
           </Button>

@@ -32,8 +32,11 @@ export default function AdminLoginPage() {
         router.push("/admin");
         router.refresh();
       } else {
-        const data = await res.json().catch(() => ({} as any));
-        const msg = typeof (data as any).detail === "string" ? (data as any).detail : JSON.stringify((data as any).detail || "Login gagal");
+        const data = await res.json().catch(() => ({}) as any);
+        const msg =
+          typeof (data as any).detail === "string"
+            ? (data as any).detail
+            : JSON.stringify((data as any).detail || "Login gagal");
         setAuthError(msg);
       }
     } catch {
@@ -45,36 +48,72 @@ export default function AdminLoginPage() {
 
   return (
     <div className="flex min-h-dvh bg-black text-white relative overflow-hidden selection:bg-white selection:text-black">
-      <div aria-hidden className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:28px_28px]" />
-      <div aria-hidden className="absolute inset-0 bg-[radial-gradient(ellipse_900px_500px_at_50%_-8%,rgba(255,255,255,0.05),transparent_62%)]" />
-      <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-white/[0.02] via-transparent to-black/40" />
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:28px_28px]"
+      />
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-[radial-gradient(ellipse_900px_500px_at_50%_-8%,rgba(255,255,255,0.05),transparent_62%)]"
+      />
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-b from-white/[0.02] via-transparent to-black/40"
+      />
 
       <div className="relative flex w-full items-center justify-center px-4 py-6 sm:px-6">
         <div className="w-full max-w-[400px]">
           <div className="mb-4 flex flex-col items-center text-center">
             <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-zinc-900">
-              <img src="/image/favicon.png" alt="ITZ AI" width={36} height={36} className="h-full w-full object-cover" />
+              <img
+                src="/image/favicon.png"
+                alt="ITZ AI"
+                width={36}
+                height={36}
+                className="h-full w-full object-cover"
+              />
             </div>
             <h1 className="mt-2 text-[12px] font-medium tracking-[0.16em] text-zinc-500">ITZ</h1>
           </div>
 
-          <Card size="sm" className="border-white/[0.06] bg-[#0a0a0a]/80 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.7),0_1px_0_rgba(255,255,255,0.06)_inset] overflow-hidden">
-            <div aria-hidden className="h-px w-full bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+          <Card
+            size="sm"
+            className="border-white/[0.06] bg-[#0a0a0a]/80 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.7),0_1px_0_rgba(255,255,255,0.06)_inset] overflow-hidden"
+          >
+            <div
+              aria-hidden
+              className="h-px w-full bg-gradient-to-r from-transparent via-white/[0.08] to-transparent"
+            />
             <CardHeader className="flex flex-col items-center justify-center gap-2.5 pb-4 pt-5 text-center">
-              <span aria-hidden className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-zinc-300">
+              <span
+                aria-hidden
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-zinc-300"
+              >
                 <Lock className="h-3.5 w-3.5" />
               </span>
               <div>
-                <CardTitle className="text-[40px] font-bold tracking-[-0.03em] text-white leading-none">Login</CardTitle>
-                <p className="mt-1.5 text-[13px] font-medium tracking-[0.14em] text-zinc-500 leading-none">ADMIN</p>
+                <CardTitle className="text-[40px] font-bold tracking-[-0.03em] text-white leading-none">
+                  Login
+                </CardTitle>
+                <p className="mt-1.5 text-[13px] font-medium tracking-[0.14em] text-zinc-500 leading-none">
+                  ADMIN
+                </p>
               </div>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleLogin} className="space-y-4" noValidate>
                 <div className="space-y-2">
-                  <Label htmlFor="admin-username" className="text-[13px] font-medium tracking-[0.06em] text-zinc-400 uppercase">Username</Label>
+                  <Label
+                    htmlFor="admin-username"
+                    className="text-[13px] font-medium tracking-[0.06em] text-zinc-400 uppercase"
+                  >
+                    Username
+                  </Label>
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" aria-hidden>
+                    <span
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+                      aria-hidden
+                    >
                       <User className="h-4 w-4" />
                     </span>
                     <Input
@@ -95,9 +134,17 @@ export default function AdminLoginPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="admin-password" className="text-[13px] font-medium tracking-[0.06em] text-zinc-400 uppercase">Password</Label>
+                  <Label
+                    htmlFor="admin-password"
+                    className="text-[13px] font-medium tracking-[0.06em] text-zinc-400 uppercase"
+                  >
+                    Password
+                  </Label>
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" aria-hidden>
+                    <span
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
+                      aria-hidden
+                    >
                       <Lock className="h-4 w-4" />
                     </span>
                     <Input
@@ -126,32 +173,52 @@ export default function AdminLoginPage() {
                 </div>
 
                 {authError && (
-                  <div id="admin-login-error" role="alert" aria-live="polite" tabIndex={-1} className="flex gap-3 rounded-xl border border-red-500/15 bg-red-950/25 px-3.5 py-3">
+                  <div
+                    id="admin-login-error"
+                    role="alert"
+                    aria-live="polite"
+                    tabIndex={-1}
+                    className="flex gap-3 rounded-xl border border-red-500/15 bg-red-950/25 px-3.5 py-3"
+                  >
                     <span className="mt-0.5 shrink-0 rounded-full bg-red-500/15 p-1" aria-hidden>
                       <AlertCircle className="h-3.5 w-3.5 text-red-400" />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-medium leading-none text-red-300">Gagal masuk</p>
-                      <p className="mt-1 text-[12px] leading-[1.5] text-red-200/70 break-words">{authError}</p>
+                      <p className="text-[13px] font-medium leading-none text-red-300">
+                        Gagal masuk
+                      </p>
+                      <p className="mt-1 text-[12px] leading-[1.5] text-red-200/70 break-words">
+                        {authError}
+                      </p>
                     </div>
                   </div>
                 )}
 
-                <Button type="submit" disabled={isLoading} className="h-10 w-full bg-white text-[14px] font-medium text-black hover:bg-zinc-100 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm cursor-pointer gap-2">
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  className="h-10 w-full bg-white text-[14px] font-medium text-black hover:bg-zinc-100 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm cursor-pointer gap-2"
+                >
                   {isLoading ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Memproses…
                     </>
                   ) : (
                     <>
-                      <Lock className="h-4 w-4 opacity-70" aria-hidden /> Login <ArrowRight className="h-4 w-4 opacity-60" aria-hidden />
+                      <Lock className="h-4 w-4 opacity-70" aria-hidden /> Login{" "}
+                      <ArrowRight className="h-4 w-4 opacity-60" aria-hidden />
                     </>
                   )}
                 </Button>
               </form>
             </CardContent>
             <CardFooter className="justify-center border-t border-white/[0.06] bg-white/[0.02] py-3">
-              <Button variant="ghost" nativeButton={false} render={<Link href="/chat" />} className="h-9 gap-1.5 text-[13px] font-normal text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200 cursor-pointer">
+              <Button
+                variant="ghost"
+                nativeButton={false}
+                render={<Link href="/chat" />}
+                className="h-9 gap-1.5 text-[13px] font-normal text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200 cursor-pointer"
+              >
                 <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Kembali
               </Button>
             </CardFooter>

@@ -12,12 +12,12 @@ const nextConfig = {
     // Local dev: proxy everything to the FastAPI dev server.
     return [
       {
-        source: '/api/python/:path*',
-        destination: 'http://localhost:8000/api/:path*',
+        source: "/api/python/:path*",
+        destination: "http://localhost:8000/api/:path*",
       },
       {
-        source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*',
+        source: "/api/:path*",
+        destination: "http://localhost:8000/api/:path*",
       },
     ];
   },
