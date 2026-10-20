@@ -161,7 +161,9 @@ export default function PricingPage() {
             setOrder(null);
             setNotice(
               `Pembayaran tercatat otomatis. Paket ${plan ? plan.label : ""} (${
-                plan ? `${plan.prompts} prompt/hari${plan.days ? `, ${plan.days} hari` : ""}` : "aktif"
+                plan
+                  ? `${plan.prompts} prompt/hari${plan.days ? `, ${plan.days} hari` : ""}`
+                  : "aktif"
               }) sudah menyala.`,
             );
             loadOrders();
@@ -235,7 +237,9 @@ export default function PricingPage() {
           </div>
           <div>
             <h1 className="text-[20px] font-semibold tracking-tight text-zinc-50">ITZ AI</h1>
-            <p className="mt-0.5 text-[13px] text-zinc-500">Prompt marketplace · bayar sekali, pakai harian</p>
+            <p className="mt-0.5 text-[13px] text-zinc-500">
+              Prompt marketplace · bayar sekali, pakai harian
+            </p>
           </div>
         </div>
         <Link
@@ -269,12 +273,18 @@ export default function PricingPage() {
           <span className="font-medium text-zinc-200">{user.display_name || user.username}</span>
           {typeof user.remaining === "number" ? (
             <>
-              {" "}· sisa kuota hari ini{" "}
-              <span className="font-medium tabular-nums text-emerald-300">{user.remaining}</span>{" "}
+              {" "}
+              · sisa kuota hari ini{" "}
+              <span className="font-medium tabular-nums text-emerald-300">
+                {user.remaining}
+              </span>{" "}
               prompt
             </>
           ) : (
-            <> · kuota akunmu <span className="text-zinc-300">tanpa batas</span></>
+            <>
+              {" "}
+              · kuota akunmu <span className="text-zinc-300">tanpa batas</span>
+            </>
           )}
         </section>
       )}
@@ -291,7 +301,10 @@ export default function PricingPage() {
       )}
 
       {data && plans.length > 0 && (
-        <section aria-label="Pilih paket" className="grid grid-cols-1 content-start gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <section
+          aria-label="Pilih paket"
+          className="grid grid-cols-1 content-start gap-5 sm:grid-cols-2 lg:grid-cols-3"
+        >
           {plans.map((p) => {
             // Ikon + warna per paket: terkecil -> daun (hijau), terpopuler ->
             // roket (emas), terbesar -> diamond (biru), sisanya layers.
@@ -325,7 +338,9 @@ export default function PricingPage() {
                 {/* label + badge diskon */}
                 <div className="flex items-center justify-between gap-2">
                   <p className="flex items-center gap-2 text-[13px] font-semibold tracking-wide text-zinc-300">
-                    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/[0.1] bg-white/[0.04] ${planIconCls}`}>
+                    <span
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/[0.1] bg-white/[0.04] ${planIconCls}`}
+                    >
                       <PlanIcon className="h-3.5 w-3.5" />
                     </span>
                     {p.label}
@@ -355,11 +370,17 @@ export default function PricingPage() {
                 {/* fitur paket */}
                 <ul className="mt-5 space-y-2.5 border-t border-white/[0.07] pt-5">
                   {feats.map((f, i) => (
-                    <li key={i} className="flex items-start gap-2.5 text-[13.5px] leading-snug text-zinc-300">
+                    <li
+                      key={i}
+                      className="flex items-start gap-2.5 text-[13.5px] leading-snug text-zinc-300"
+                    >
                       {f.icon ? (
                         <f.icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" />
                       ) : (
-                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400/80" strokeWidth={2.5} />
+                        <Check
+                          className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400/80"
+                          strokeWidth={2.5}
+                        />
                       )}
                       <span>{f.text}</span>
                     </li>
@@ -445,7 +466,8 @@ export default function PricingPage() {
 
       {data && plans.length > 0 && (
         <p className="mx-auto mt-6 max-w-[560px] text-center text-[12.5px] leading-relaxed text-zinc-600">
-          {data.order_note || "Semua pembayaran terverifikasi otomatis oleh sistem. Simpan bukti transfer sampai kuota menyala."}
+          {data.order_note ||
+            "Semua pembayaran terverifikasi otomatis oleh sistem. Simpan bukti transfer sampai kuota menyala."}
         </p>
       )}
 

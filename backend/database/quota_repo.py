@@ -11,6 +11,7 @@ Sumber nilai kuota:
 Reset harian: berbasis PERIODE (kunci tanggal WIB), bukan scheduler.
 Row penggunaan hari sebelumnya tidak dihapus — hanya berganti kunci.
 """
+
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -61,7 +62,9 @@ class QuotaMixin:
                     days_left: int | None = None
                     if expiry is not None:
                         delta = expiry - (datetime.now(expiry.tzinfo) if expiry.tzinfo else datetime.now())
-                        days_left = max(0, int(delta.total_seconds() // 86400) + (1 if delta.total_seconds() % 86400 else 0))
+                        days_left = max(
+                            0, int(delta.total_seconds() // 86400) + (1 if delta.total_seconds() % 86400 else 0)
+                        )
                     return {
                         "plan_id": str(plan.get("id")),
                         "plan_label": str(plan.get("label") or plan.get("id")),

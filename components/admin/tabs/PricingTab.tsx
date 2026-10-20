@@ -211,7 +211,15 @@ export function PricingTab({
       ...pricing,
       plans: [
         ...pricing.plans,
-        { id: "", label: "", prompts: 100, days: 30, amount: 30000, popular: false, original_amount: null },
+        {
+          id: "",
+          label: "",
+          prompts: 100,
+          days: 30,
+          amount: 30000,
+          popular: false,
+          original_amount: null,
+        },
       ],
     });
 
@@ -293,7 +301,9 @@ export function PricingTab({
                     className={inputCls}
                   />
                   <p className="text-[11px] text-zinc-600">
-                    {p.days && p.days > 0 ? `≈ ${Math.round(p.days / 30 * 10) / 10} bulan` : "0 = tanpa batas waktu"}
+                    {p.days && p.days > 0
+                      ? `≈ ${Math.round((p.days / 30) * 10) / 10} bulan`
+                      : "0 = tanpa batas waktu"}
                   </p>
                 </div>
               </div>

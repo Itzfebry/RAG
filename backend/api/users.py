@@ -517,11 +517,7 @@ def user_me(request: Request, user: dict = Depends(get_current_user)):
         daily_quota = None
     max_prompts = user.get("max_prompts")
     prompts_used = user.get("prompts_used", 0)
-    remaining = (
-        max(0, int(max_prompts) - int(prompts_used))
-        if int(max_prompts or 0)
-        else None
-    )
+    remaining = max(0, int(max_prompts) - int(prompts_used)) if int(max_prompts or 0) else None
     # Mode harian menimpa angka legacy agar UI menampilkan nilai aktif.
     # Mode "expired": masa aktif paket habis -> remaining 0, bukan hitungan legacy.
     if daily_quota and daily_quota.get("mode") in ("daily", "expired"):

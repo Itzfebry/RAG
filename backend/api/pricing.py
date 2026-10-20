@@ -26,8 +26,8 @@ try:
     from backend.security.audit import log_action as audit_log
     from backend.security.rate_limiter import enforce_rate_limit, get_client_ip
 except ImportError:
-    from database.db import DatabaseService  # type: ignore
     from database.billing_repo import MAX_PLAN_DAYS, order_expiry, parse_dt  # type: ignore
+    from database.db import DatabaseService  # type: ignore
     from payment import duitku  # type: ignore
     from security.audit import log_action as audit_log  # type: ignore
     from security.rate_limiter import enforce_rate_limit, get_client_ip  # type: ignore
