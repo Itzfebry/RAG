@@ -2,15 +2,10 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Shield,
   User,
   BookOpen,
-  Sliders,
   MessageSquare,
   FileText,
-  Save,
-  Plus,
-  Trash2,
   LogOut,
   Check,
   AlertCircle,
@@ -18,111 +13,23 @@ import {
   ArrowLeft,
   Upload,
   Download,
-  Copy,
   FileJson,
   X,
-  Activity,
-  TrendingUp,
-  Database,
-  Zap,
-  Clock,
   Coins,
   BarChart3,
   Brain,
-  Lightbulb,
   Fingerprint,
-  Target,
-  ScrollText,
   Layers,
-  History,
-  GraduationCap,
-  Briefcase,
-  Rocket,
-  Heart,
-  MapPin,
-  Settings2,
   Palette,
-  Gauge,
-  Mic2,
-  Type,
-  PenTool,
-  Layers3,
-  Wrench,
-  Blocks,
-  ShieldCheck,
-  GitBranch,
-  KeyRound,
-  Cog,
-  FileCode,
-  Cpu,
-  Globe,
-  Hash,
-  Box,
-  Eye,
-  EyeOff,
   Loader2,
-  Lock,
-  ArrowRight,
-  CalendarDays,
-  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  cardBase,
-  cardHeaderCls,
-  cardContentCls,
-  tPage,
-  tSub,
-  tCard,
-  tLabel,
-  tCardPlain,
-  tLabelPlain,
-  tBody,
-  tSmall,
-  cUser,
-  cModel,
-  cSky,
-  cViolet,
-  cAmber,
-  cEmerald,
-  cRose,
-  cZinc,
-  inputCls,
-  textareaCls,
-  sectionHeaderWrap,
-} from "./adminStyles";
+import { cardBase } from "./adminStyles";
 import { IdentityTab } from "./tabs/IdentityTab";
 import { PersonalTab } from "./tabs/PersonalTab";
 import { KnowledgeTab } from "./tabs/KnowledgeTab";
@@ -144,6 +51,8 @@ import { useAdminKnowledge } from "./hooks/use-admin-knowledge";
 import { DashboardTab } from "./tabs/DashboardTab";
 import { UsersTab } from "./tabs/UsersTab";
 import { ModelsTab } from "./tabs/ModelsTab";
+import { KnowledgeEntryModal } from "./modals/KnowledgeEntryModal";
+import { JsonImportModal } from "./modals/JsonImportModal";
 
 // TabType dipindah ke hooks/use-admin-bootstrap.ts (diimport di atas).
 // RealStats dipindah ke hooks/use-admin-tokens.ts.
@@ -827,218 +736,34 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         </div>
       </main>
 
-      {/* New Knowledge Entry Modal */}
-      <Dialog open={newEntryModal} onOpenChange={setNewEntryModal}>
-        <DialogContent className="border-white/10 bg-zinc-900 text-white rounded-xl">
-          <DialogHeader>
-            <DialogTitle className="text-[14px] font-semibold tracking-[0.08em] uppercase text-white">
-              Tambah Knowledge Baru
-            </DialogTitle>
-            <DialogDescription className="text-[16px] leading-relaxed text-zinc-500">
-              Buat entri pengetahuan baru yang akan di-embedding dan dipakai sebagai konteks AI.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleSaveKnowledgeEntry} className="space-y-4">
-            <div className="space-y-2">
-              <Label className={tLabel}>Judul / Topik</Label>
-              <Input
-                value={entryForm.title}
-                onChange={(e) => setEntryForm({ ...entryForm, title: e.target.value })}
-                required
-                placeholder="Misal: Arsitektur Backend ITZ AI"
-                className={inputCls}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className={tLabel}>Kategori</Label>
-              <Select
-                value={selectedCategorySlug}
-                onValueChange={(v) => setSelectedCategorySlug(v ?? selectedCategorySlug)}
-              >
-                <SelectTrigger className="border-white/10 bg-zinc-800 text-white text-[16px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="border-white/10 bg-zinc-900 text-white">
-                  {knowledgeCategories.map((c) => (
-                    <SelectItem key={c.id} value={c.slug}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className={tLabel}>Konten Pengetahuan</Label>
-              <Textarea
-                rows={5}
-                value={entryForm.content}
-                onChange={(e) => setEntryForm({ ...entryForm, content: e.target.value })}
-                required
-                placeholder="Tuliskan pengetahuan detail yang akan diserap oleh AI..."
-                className={textareaCls}
-              />
-            </div>
-          </form>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              type="button"
-              onClick={() => setNewEntryModal(false)}
-              className="h-9 border-white/10 bg-white/[0.04] text-zinc-300 text-[16px]"
-            >
-              Batal
-            </Button>
-            <Button
-              onClick={(e) => handleSaveKnowledgeEntry(e)}
-              className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium"
-            >
-              Simpan &amp; Generate Embedding
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <KnowledgeEntryModal
+        open={newEntryModal}
+        onOpenChange={setNewEntryModal}
+        entryForm={entryForm}
+        setEntryForm={setEntryForm}
+        onSave={handleSaveKnowledgeEntry}
+        categories={knowledgeCategories}
+        selectedCategorySlug={selectedCategorySlug}
+        setSelectedCategorySlug={setSelectedCategorySlug}
+      />
 
-      {/* Bulk JSON Import/Export Modal */}
-      <Dialog open={showJsonModal} onOpenChange={setShowJsonModal}>
-        <DialogContent className="flex max-h-[92vh] max-w-3xl flex-col p-0 border-white/10 bg-zinc-900 text-white rounded-xl overflow-hidden">
-          <DialogHeader className="border-b border-white/[0.07] p-6 pb-4 px-5 pt-5">
-            <DialogTitle className="text-[14px] font-semibold tracking-[0.08em] uppercase text-white">
-              Import JSON
-            </DialogTitle>
-            <DialogDescription className="text-[16px] leading-relaxed text-zinc-500">
-              Tempel JSON atau upload file untuk mengisi konfigurasi admin.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-3 border-b border-white/[0.07] p-5 sm:grid-cols-[1fr_auto_auto_auto] sm:items-center">
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setJsonDrag(true);
-              }}
-              onDragLeave={() => setJsonDrag(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setJsonDrag(false);
-                const f = e.dataTransfer.files?.[0];
-                if (f) void handleJsonFile(f);
-              }}
-              className={`flex items-center gap-2 rounded-xl border border-dashed px-3 py-2.5 text-[16px] ${jsonDrag ? "border-white/20 bg-white/[0.06] text-white" : "border-white/10 bg-white/[0.03] text-zinc-400"}`}
-            >
-              <Upload className="h-4 w-4 shrink-0" />
-              <span>{jsonDrag ? "Lepaskan file..." : "Drag & drop .json atau"}</span>
-              <Button
-                variant="link"
-                size="sm"
-                type="button"
-                onClick={() => jsonFileRef.current?.click()}
-                className="h-auto p-0 text-[16px] underline text-zinc-400"
-              >
-                pilih file
-              </Button>
-              <Input
-                ref={jsonFileRef}
-                type="file"
-                accept="application/json,.json"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void handleJsonFile(f);
-                  e.target.value = "";
-                }}
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleBulkDownloadExample}
-              className="h-8 border-white/10 bg-white/[0.04] text-zinc-300 text-[14px] gap-1.5"
-            >
-              <FileJson className="h-3.5 w-3.5" /> Example
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const blob = new Blob([jsonText || "{}"], { type: "application/json" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = "admin-config.json";
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              className="h-8 border-white/10 bg-white/[0.04] text-zinc-300 text-[14px] gap-1.5"
-            >
-              <Download className="h-3.5 w-3.5" /> .json
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(jsonText || "");
-                } catch {}
-              }}
-              className="h-8 border-white/10 bg-white/[0.04] text-zinc-300 text-[14px] gap-1.5"
-            >
-              <Copy className="h-3.5 w-3.5" /> Copy
-            </Button>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto p-5">
-            {jsonError && (
-              <Alert variant="destructive" className="mb-3 border-red-500/30 bg-red-500/10">
-                <AlertCircle className="text-red-400 h-4 w-4" />
-                <AlertTitle className="text-red-300 text-[16px]">JSON error</AlertTitle>
-                <AlertDescription className="whitespace-pre-wrap text-red-200/70 text-[14px] leading-relaxed">
-                  {jsonError}
-                </AlertDescription>
-              </Alert>
-            )}
-            <Textarea
-              value={jsonText}
-              onChange={(e) => setJsonText(e.target.value)}
-              rows={18}
-              spellCheck={false}
-              placeholder='{"ai_identity": {...}, ...}'
-              className="text-[14px] leading-relaxed border-white/10 bg-white/[0.03] text-white font-mono"
-            />
-          </div>
-
-          <DialogFooter className="border-t border-white/[0.07] p-5">
-            <Button
-              variant="outline"
-              onClick={() => setShowJsonModal(false)}
-              className="h-9 border-white/10 bg-white/[0.04] text-zinc-300 text-[16px]"
-            >
-              Batal
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                try {
-                  applyImportedDataToState(JSON.parse(jsonText));
-                  setSaveSuccess(true);
-                  setTimeout(() => setSaveSuccess(false), 2000);
-                } catch (e) {
-                  setJsonError(`Invalid JSON: ${e instanceof Error ? e.message : String(e)}`);
-                }
-              }}
-              className="h-9 border-white/10 bg-white/[0.04] text-zinc-300 text-[16px]"
-            >
-              Isi form saja
-            </Button>
-            <Button
-              onClick={handleJsonApplyFromText}
-              disabled={saving || !jsonText.trim()}
-              className="h-9 bg-white text-black hover:bg-zinc-100 text-[16px] font-medium"
-            >
-              {saving ? "Mengimpor..." : "Validasi & Import"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <JsonImportModal
+        open={showJsonModal}
+        onOpenChange={setShowJsonModal}
+        jsonText={jsonText}
+        setJsonText={setJsonText}
+        jsonError={jsonError}
+        setJsonError={setJsonError}
+        jsonDrag={jsonDrag}
+        setJsonDrag={setJsonDrag}
+        jsonFileRef={jsonFileRef}
+        handleBulkDownloadExample={handleBulkDownloadExample}
+        handleJsonApplyFromText={handleJsonApplyFromText}
+        handleJsonFile={handleJsonFile}
+        applyImportedDataToState={applyImportedDataToState}
+        setSaveSuccess={setSaveSuccess}
+        saving={saving}
+      />
     </div>
   );
 }
