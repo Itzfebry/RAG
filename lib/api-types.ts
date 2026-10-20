@@ -259,6 +259,14 @@ export interface TokenUsageStats {
   by_user?: TokenUsageByUserRow[];
 }
 
+/* ---- admin: shared UI types untuk hook admin ---- */
+
+/** Jenis toast AdminPanel. */
+export type AdminToastKind = "success" | "error" | "info";
+
+/** Bentuk pushToast AdminPanel, dipakai lintas hook admin (Phase A). */
+export type AdminPushToast = (kind: AdminToastKind, title: string, desc?: string) => void;
+
 /* ---- admin: bulk import/export ---- */
 
 export interface KnowledgeExportEntry {
