@@ -95,5 +95,8 @@ merge-conflict, prettier untuk file TS/CSS/JSON frontend.
       dihapus), layering fix (0 akses supabase langsung di API), `db.py`
       dipecah jadi 9 module mixin + facade (1.559 → 105 baris), `agent.py`
       stream helper ekstraksi, +18 test refactor (total 134).
-- [ ] Tahap 3 — Frontend: `fetchApi<T>()` helper bertipe, turunkan `any`,
-      split `AdminPanel.tsx` (2.345 baris) menjadi hooks/komponen.
+- [x] Tahap 3 — Frontend (selesai):
+      `fetchApi<T>` helper (64 → 2 raw fetch; sisanya SSE/blob), 0 `any`
+      di app+components+lib dengan `lib/api-types.ts` shared types,
+      `AdminPanel.tsx` (4.389 baris) dipecah menjadi 4 hooks, 11 tab
+      komponen, 2 modal — sisa 735 baris shell.
