@@ -2,7 +2,6 @@ import os
 import time
 
 import httpx
-from langchain_text_splitters import CharacterTextSplitter
 
 try:
     from backend.core.logging_config import get_logger
@@ -356,6 +355,10 @@ class KnowledgeService:
         zero-vector. Return jumlah chunk yang tersimpan."""
         if EMBEDDING_PROVIDER == "off" or not supabase_client:
             return 0
+
+        # Import lazy: langchain_text_splitters menarik sentence_transformers
+        # + torch (~40s import cost) walau hanya memakai CharacterTextSplitter.
+        from langchain_text_splitters import CharacterTextSplitter
 
         splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         chunks = splitter.split_text(content)
