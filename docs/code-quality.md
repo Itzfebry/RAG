@@ -90,8 +90,10 @@ merge-conflict, prettier untuk file TS/CSS/JSON frontend.
 
 ## Roadmap ke 10/10 (tahap berikutnya)
 
-- [ ] Tahap 2 — Backend: pecah `db.py` per domain, extract rate-limit
-      decorator, hapus layering violation di API handlers, logging untuk
-      semua print() yang tersisa.
+- [x] Tahap 2 — Backend (selesai):
+      print() → logger (68 titik), `enforce_rate_limit` helper (28 boilerplate
+      dihapus), layering fix (0 akses supabase langsung di API), `db.py`
+      dipecah jadi 9 module mixin + facade (1.559 → 105 baris), `agent.py`
+      stream helper ekstraksi, +18 test refactor (total 134).
 - [ ] Tahap 3 — Frontend: `fetchApi<T>()` helper bertipe, turunkan `any`,
       split `AdminPanel.tsx` (2.345 baris) menjadi hooks/komponen.
