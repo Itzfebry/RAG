@@ -10,17 +10,21 @@ from pydantic import BaseModel, Field, field_validator
 
 try:
     from backend.api.admin import get_current_admin
+    from backend.core.logging_config import get_logger
     from backend.database.db import DatabaseService
     from backend.knowledge.knowledge_service import KnowledgeService
     from backend.security.auth import USER_COOKIE_NAME, verify_user_jwt
-    from backend.security.rate_limiter import check_rate_limit, get_client_ip
+    from backend.security.rate_limiter import enforce_rate_limit, get_client_ip
 except ImportError:
+    from core.logging_config import get_logger  # type: ignore
     from database.db import DatabaseService  # type: ignore
     from knowledge.knowledge_service import KnowledgeService  # type: ignore
     from security.auth import USER_COOKIE_NAME, verify_user_jwt  # type: ignore
-    from security.rate_limiter import check_rate_limit, get_client_ip  # type: ignore
+    from security.rate_limiter import enforce_rate_limit, get_client_ip  # type: ignore
 
     from api.admin import get_current_admin  # type: ignore
+
+logger = get_logger(__name__)
 
 try:
     from backend.agent.agent import AgentOrchestrator, _resolve_api_key, _resolve_base_url, _resolve_default_model
@@ -273,11 +277,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
         payload.message = clean_message
     user = get_current_chat_user_optional(request)
     if user is not None:
-        allowed, retry = check_rate_limit(f"chat:{user.get('id')}:{ip}", 30, 60)
-        if not allowed:
-            raise HTTPException(
-                status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-            )
+        enforce_rate_limit(f"chat:{user.get('id')}:{ip}", 30, 60)
         fresh = DatabaseService.get_user_by_id(str(user.get("id")))
         if fresh and DatabaseService.is_prompt_quota_exhausted(fresh):
             raise HTTPException(status_code=403, detail="Batas prompt habis - hubungi admin untuk menambah kuota")
@@ -285,11 +285,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
             raise HTTPException(status_code=428, detail="Isi nama tampilan di profil sebelum chat")
     else:
         # trial gate - soft setting trial_prompts (0 = trial disabled => require login)
-        allowed, retry = check_rate_limit(f"chat:trial:{ip}", 30, 60)
-        if not allowed:
-            raise HTTPException(
-                status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-            )
+        enforce_rate_limit(f"chat:trial:{ip}", 30, 60)
         s = DatabaseService.get_app_settings()
         limit = max(0, int(s.get("trial_prompts", 3)))
         if limit == 0:
@@ -357,7 +353,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
                 else:
                     DatabaseService.increment_trial(ip)
             except Exception as e:
-                print(f"[quota] gagal mencatat pemakaian: {e}")
+                logger.warning(f"[quota] gagal mencatat pemakaian: {e}")
         try:
             elapsed = int((_t.perf_counter() - t0) * 1000)
             # best-effort: use override or active config model
@@ -474,5 +470,5 @@ async def upload_knowledge_file(
 
         return {"status": "success", "entry_id": entry["id"], "chars": len(content)}
     except Exception as e:
-        print(f"[upload] gagal memproses file: {e}")
+        logger.warning(f"[upload] gagal memproses file: {e}")
         raise HTTPException(status_code=500, detail="Gagal memproses file. Cek log server.")

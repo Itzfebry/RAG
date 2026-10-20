@@ -21,12 +21,12 @@ try:
     from backend.database.db import DatabaseService
     from backend.payment import duitku
     from backend.security.audit import log_action as audit_log
-    from backend.security.rate_limiter import check_rate_limit, get_client_ip
+    from backend.security.rate_limiter import enforce_rate_limit, get_client_ip
 except ImportError:
     from database.db import DatabaseService  # type: ignore
     from payment import duitku  # type: ignore
     from security.audit import log_action as audit_log  # type: ignore
-    from security.rate_limiter import check_rate_limit, get_client_ip  # type: ignore
+    from security.rate_limiter import enforce_rate_limit, get_client_ip  # type: ignore
 
     from api.admin import get_current_admin  # type: ignore
     from api.users import get_current_user  # type: ignore
@@ -139,11 +139,7 @@ def public_pricing():
 @router.post("/user/orders")
 def user_create_order(payload: OrderCreate, request: Request, user: dict = Depends(get_current_user)):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"order:{user.get('id')}:{ip}", 10, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"order:{user.get('id')}:{ip}", 10, 60)
 
     plan = DatabaseService.find_plan(payload.plan_id)
     if plan is None:
@@ -374,11 +370,7 @@ def admin_get_pricing(admin: str = Depends(get_current_admin)):
 @admin_router.put("/pricing")
 def admin_update_pricing(payload: PricingUpdate, request: Request, admin: str = Depends(get_current_admin)):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:pricing:{ip}", 20, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"admin:pricing:{ip}", 20, 60)
 
     patch: dict[str, Any] = {}
     if payload.plans is not None:

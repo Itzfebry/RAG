@@ -131,4 +131,4 @@ def send_otp_email(to: str, code: str, purpose: str) -> None:
         logger.error("Tidak ada provider email (SMTP_* / RESEND_API_KEY) di production")
         raise MailError("Layanan email belum dikonfigurasi.")
 
-    print(f"[otp-dev] {purpose} untuk {to}: {code}")
+    logger.info(f"[otp-dev] {purpose} untuk {to}: {code}")

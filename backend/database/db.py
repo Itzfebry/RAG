@@ -8,10 +8,12 @@ from typing import Any
 
 try:
     from backend.config.config import settings
+    from backend.core.logging_config import get_logger
     from backend.database.cache import config_cache
 except ImportError:
     try:
         from config.config import settings
+        from core.logging_config import get_logger  # type: ignore
         from database.cache import config_cache
     except ImportError:
         # Final fallback for unusual execution contexts
@@ -20,7 +22,10 @@ except ImportError:
 
         sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         from config.config import settings
+        from core.logging_config import get_logger  # type: ignore
         from database.cache import config_cache
+
+logger = get_logger(__name__)
 
 # Attempt to initialize Supabase client if configured
 supabase_client = None
@@ -30,7 +35,7 @@ if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY:
 
         supabase_client: Client | None = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
     except Exception as e:
-        print(f"Supabase init warning: {e}")
+        logger.warning(f"Supabase init warning: {e}")
 
 # Local JSON store fallback directory.
 # On Vercel/serverless the root FS is read-only (only /tmp is writable) and
@@ -44,7 +49,7 @@ else:
 try:
     os.makedirs(LOCAL_DATA_DIR, exist_ok=True)
 except OSError as e:
-    print(f"Warning: cannot create local data dir {LOCAL_DATA_DIR}: {e}")
+    logger.warning(f"Warning: cannot create local data dir {LOCAL_DATA_DIR}: {e}")
 
 
 def _read_local_json(file_name: str, default_data: Any) -> Any:
@@ -66,7 +71,7 @@ def _write_local_json(file_name: str, data: Any):
             json.dump(data, f, ensure_ascii=False, indent=2)
     except OSError as e:
         # Serverless read-only FS - Supabase remains the source of truth
-        print(f"Warning: cannot write local json {path}: {e}")
+        logger.warning(f"Warning: cannot write local json {path}: {e}")
 
 
 RAG_SETTING_DEFAULTS: dict[str, Any] = {
@@ -234,7 +239,7 @@ class DatabaseService:
                     config_cache.invalidate(table_name)
                     return res.data[0]
             except Exception as e:
-                print(f"Error updating {table_name} in Supabase: {e}")
+                logger.warning(f"Error updating {table_name} in Supabase: {e}")
 
         # Local fallback
         _write_local_json(f"{table_name}.json", payload)
@@ -281,7 +286,7 @@ class DatabaseService:
                 if res.data:
                     return res.data
             except Exception as e:
-                print(f"Error fetching knowledge_categories from Supabase: {e}")
+                logger.warning(f"Error fetching knowledge_categories from Supabase: {e}")
 
         return _read_local_json("knowledge_categories.json", default_categories)
 
@@ -303,7 +308,7 @@ class DatabaseService:
                 if res.data is not None:
                     return res.data
             except Exception as e:
-                print(f"Error fetching knowledge_entries from Supabase: {e}")
+                logger.warning(f"Error fetching knowledge_entries from Supabase: {e}")
 
         entries = _read_local_json("knowledge_entries.json", [])
         if category_slug:
@@ -322,7 +327,7 @@ class DatabaseService:
                 if res.data:
                     return res.data[0]
             except Exception as e:
-                print(f"Error saving knowledge_entry in Supabase: {e}")
+                logger.warning(f"Error saving knowledge_entry in Supabase: {e}")
 
         entries = _read_local_json("knowledge_entries.json", [])
         existing_idx = next((i for i, e in enumerate(entries) if e["id"] == entry_id), -1)
@@ -343,7 +348,7 @@ class DatabaseService:
                 supabase_client.table("knowledge_entries").delete().eq("id", entry_id).execute()
                 return True
             except Exception as e:
-                print(f"Error deleting knowledge_entry in Supabase: {e}")
+                logger.warning(f"Error deleting knowledge_entry in Supabase: {e}")
 
         entries = _read_local_json("knowledge_entries.json", [])
         entries = [e for e in entries if e["id"] != entry_id]
@@ -425,7 +430,7 @@ class DatabaseService:
                         "updated_at": res.data[0].get("updated_at"),
                     }
             except Exception as e:
-                print(f"Error updating app_settings in Supabase: {e}")
+                logger.warning(f"Error updating app_settings in Supabase: {e}")
         _write_local_json(DatabaseService._settings_file(), merged)
         return {
             "user_token_expiry_hours": int(merged["user_token_expiry_hours"]),
@@ -451,7 +456,7 @@ class DatabaseService:
             if row:
                 return int(row.get("count") or 0), int(row.get("reset_in") or window_seconds)
         except Exception as e:
-            print(f"[rate_limit] bump gagal ({key}): {e}")
+            logger.warning(f"[rate_limit] bump gagal ({key}): {e}")
         return None
 
     @staticmethod
@@ -465,7 +470,7 @@ class DatabaseService:
                 return int(res.data[0].get("count") or 0)
             return 0
         except Exception as e:
-            print(f"[rate_limit] peek gagal ({key}): {e}")
+            logger.warning(f"[rate_limit] peek gagal ({key}): {e}")
             return None
 
     @staticmethod
@@ -477,7 +482,7 @@ class DatabaseService:
             supabase_client.table("rate_limits").delete().eq("key", str(key)).execute()
             return True
         except Exception as e:
-            print(f"[rate_limit] reset gagal ({key}): {e}")
+            logger.warning(f"[rate_limit] reset gagal ({key}): {e}")
             return False
 
     @staticmethod
@@ -492,7 +497,7 @@ class DatabaseService:
             res = supabase_client.table("rate_limits").delete().lt("window_start", cutoff).execute()
             return len(res.data or [])
         except Exception as e:
-            print(f"[rate_limit] prune gagal: {e}")
+            logger.warning(f"[rate_limit] prune gagal: {e}")
             return 0
 
     # trial usage per IP - local JSON + supabase optional
@@ -530,6 +535,31 @@ class DatabaseService:
             data[ip] = nxt
             _write_local_json(DatabaseService._trial_file(), data)
             return nxt
+
+    @staticmethod
+    def get_trial_usage_total() -> int:
+        """Total pemakaian trial semua IP (Supabase; fallback JSON lokal)."""
+        if supabase_client:
+            try:
+                res = supabase_client.table("trial_usage").select("used").execute()
+                if res.data:
+                    return sum(int(r.get("used", 0) or 0) for r in res.data)
+            except Exception as e:
+                logger.warning(f"[trial] hitung total usage supabase gagal: {e}")
+        data = _read_local_json(DatabaseService._trial_file(), {})
+        return sum(int(v or 0) for v in data.values())
+
+    @staticmethod
+    def probe_database() -> tuple[bool, str]:
+        """Cek kesehatan koneksi database. Return (ok, mode: lokal/supabase)."""
+        if not supabase_client:
+            return False, "lokal"
+        try:
+            supabase_client.table("app_settings").select("id").limit(1).execute()
+            return True, "supabase"
+        except Exception as e:
+            logger.warning(f"[health] probe app_settings gagal: {e}")
+            return False, "supabase (gagal)"
 
     @staticmethod
     def list_users() -> list[dict[str, Any]]:
@@ -647,7 +677,7 @@ class DatabaseService:
                     supabase_client.table("chat_messages").delete().in_("session_id", ids).execute()
                     supabase_client.table("chat_sessions").delete().in_("id", ids).execute()
             except Exception as e:
-                print(f"Error purging chats in Supabase: {e}")
+                logger.warning(f"Error purging chats in Supabase: {e}")
         sessions = _read_local_json(DatabaseService._chats_file(), [])
         expired = {str(s["id"]) for s in sessions if str(s.get("updated_at") or "") < cutoff}
         if expired:
@@ -672,7 +702,7 @@ class DatabaseService:
                 if res.data is not None:
                     return res.data
             except Exception as e:
-                print(f"Error listing chats in Supabase: {e}")
+                logger.warning(f"Error listing chats in Supabase: {e}")
         rows = [s for s in _read_local_json(DatabaseService._chats_file(), []) if str(s.get("user_id")) == str(user_id)]
         return sorted(rows, key=lambda s: str(s.get("updated_at") or ""), reverse=True)
 
@@ -691,7 +721,7 @@ class DatabaseService:
                 if res.data:
                     return res.data[0]
             except Exception as e:
-                print(f"Error reading chat in Supabase: {e}")
+                logger.warning(f"Error reading chat in Supabase: {e}")
         for s in _read_local_json(DatabaseService._chats_file(), []):
             if str(s.get("id")) == str(session_id) and str(s.get("user_id")) == str(user_id):
                 return s
@@ -711,7 +741,7 @@ class DatabaseService:
                 if res.data is not None:
                     return res.data
             except Exception as e:
-                print(f"Error listing messages in Supabase: {e}")
+                logger.warning(f"Error listing messages in Supabase: {e}")
         rows = [
             m
             for m in _read_local_json(DatabaseService._chat_msgs_file(), [])
@@ -735,7 +765,7 @@ class DatabaseService:
                 if res.data:
                     return res.data[0]
             except Exception as e:
-                print(f"Error creating chat in Supabase: {e}")
+                logger.warning(f"Error creating chat in Supabase: {e}")
         sessions = _read_local_json(DatabaseService._chats_file(), [])
         sessions.append(row)
         _write_local_json(DatabaseService._chats_file(), sessions)
@@ -760,7 +790,7 @@ class DatabaseService:
                 supabase_client.table("chat_sessions").update({"updated_at": now}).eq("id", session_id).execute()
                 return
             except Exception as e:
-                print(f"Error saving messages in Supabase: {e}")
+                logger.warning(f"Error saving messages in Supabase: {e}")
         msgs = _read_local_json(DatabaseService._chat_msgs_file(), [])
         msgs.extend(rows)
         _write_local_json(DatabaseService._chat_msgs_file(), msgs)
@@ -779,7 +809,7 @@ class DatabaseService:
                 supabase_client.table("chat_messages").delete().eq("session_id", session_id).execute()
                 supabase_client.table("chat_sessions").delete().eq("id", session_id).execute()
             except Exception as e:
-                print(f"Error deleting chat in Supabase: {e}")
+                logger.warning(f"Error deleting chat in Supabase: {e}")
         sessions = _read_local_json(DatabaseService._chats_file(), [])
         _write_local_json(DatabaseService._chats_file(), [s for s in sessions if str(s.get("id")) != str(session_id)])
         msgs = _read_local_json(DatabaseService._chat_msgs_file(), [])
@@ -795,7 +825,7 @@ class DatabaseService:
                 supabase_client.table("chat_sessions").update({"title": title}).eq("id", session_id).execute()
                 return
             except Exception as e:
-                print(f"Error renaming chat in Supabase: {e}")
+                logger.warning(f"Error renaming chat in Supabase: {e}")
         sessions = _read_local_json(DatabaseService._chats_file(), [])
         for s in sessions:
             if str(s.get("id")) == str(session_id):
@@ -814,7 +844,7 @@ class DatabaseService:
                 supabase_client.table("chat_messages").delete().in_("id", list(drop)).execute()
                 return
             except Exception as e:
-                print(f"Error truncating chat in Supabase: {e}")
+                logger.warning(f"Error truncating chat in Supabase: {e}")
         local = _read_local_json(DatabaseService._chat_msgs_file(), [])
         _write_local_json(DatabaseService._chat_msgs_file(), [m for m in local if str(m.get("id")) not in drop])
 
@@ -869,7 +899,7 @@ class DatabaseService:
                 if res.data:
                     return res.data[0]
             except Exception as e:
-                print(f"Error creating order in Supabase: {e}")
+                logger.warning(f"Error creating order in Supabase: {e}")
         orders = _read_local_json(DatabaseService._orders_file(), [])
         orders.append(row)
         _write_local_json(DatabaseService._orders_file(), orders)
@@ -887,7 +917,7 @@ class DatabaseService:
                 if res.data is not None:
                     return res.data
             except Exception as e:
-                print(f"Error listing orders in Supabase: {e}")
+                logger.warning(f"Error listing orders in Supabase: {e}")
         rows = _read_local_json(DatabaseService._orders_file(), [])
         if user_id is not None:
             rows = [o for o in rows if str(o.get("user_id")) == str(user_id)]
@@ -902,7 +932,7 @@ class DatabaseService:
                 if res.data:
                     return res.data[0]
             except Exception as e:
-                print(f"Error reading order in Supabase: {e}")
+                logger.warning(f"Error reading order in Supabase: {e}")
         for o in _read_local_json(DatabaseService._orders_file(), []):
             if str(o.get("id")) == str(order_id):
                 return o
@@ -923,7 +953,7 @@ class DatabaseService:
                 if res.data:
                     return res.data[0]
             except Exception as e:
-                print(f"Error updating order in Supabase: {e}")
+                logger.warning(f"Error updating order in Supabase: {e}")
         orders = _read_local_json(DatabaseService._orders_file(), [])
         for o in orders:
             if str(o.get("id")) == str(order_id):
@@ -941,7 +971,7 @@ class DatabaseService:
                 if res.data:
                     return res.data[0]
             except Exception as e:
-                print(f"Error updating order in Supabase: {e}")
+                logger.warning(f"Error updating order in Supabase: {e}")
         orders = _read_local_json(DatabaseService._orders_file(), [])
         for o in orders:
             if str(o.get("id")) == str(order_id):
@@ -965,7 +995,7 @@ class DatabaseService:
             try:
                 supabase_client.table("email_otps").delete().eq("email", email).eq("purpose", purpose).execute()
             except Exception as e:
-                print(f"Error deleting OTP in Supabase: {e}")
+                logger.warning(f"Error deleting OTP in Supabase: {e}")
         rows = _read_local_json(DatabaseService._otps_file(), [])
         kept = [r for r in rows if not (r.get("email") == email and r.get("purpose") == purpose)]
         if len(kept) != len(rows):
@@ -982,7 +1012,7 @@ class DatabaseService:
             try:
                 supabase_client.table("email_otps").delete().lt("created_at", cutoff.isoformat()).execute()
             except Exception as e:
-                print(f"Error pruning OTP in Supabase: {e}")
+                logger.warning(f"Error pruning OTP in Supabase: {e}")
         try:
             rows = _read_local_json(DatabaseService._otps_file(), [])
             kept = []
@@ -998,7 +1028,7 @@ class DatabaseService:
             if len(kept) != len(rows):
                 _write_local_json(DatabaseService._otps_file(), kept)
         except Exception as e:
-            print(f"Error pruning OTP locally: {e}")
+            logger.warning(f"Error pruning OTP locally: {e}")
 
     @staticmethod
     def create_email_otp(email: str, purpose: str, code_hash: str, expires_at: str) -> dict[str, Any]:
@@ -1019,7 +1049,7 @@ class DatabaseService:
                 if res.data:
                     return res.data[0]
             except Exception as e:
-                print(f"Error creating OTP in Supabase: {e}")
+                logger.warning(f"Error creating OTP in Supabase: {e}")
         rows = _read_local_json(DatabaseService._otps_file(), [])
         rows.append(row)
         _write_local_json(DatabaseService._otps_file(), rows)
@@ -1058,7 +1088,7 @@ class DatabaseService:
                 supabase_client.table("email_otps").update({"attempts": attempts}).eq("id", otp_id).execute()
                 return
             except Exception as e:
-                print(f"Error updating OTP in Supabase: {e}")
+                logger.warning(f"Error updating OTP in Supabase: {e}")
         rows = _read_local_json(DatabaseService._otps_file(), [])
         for r in rows:
             if str(r.get("id")) == str(otp_id):
@@ -1086,7 +1116,7 @@ class DatabaseService:
                     DatabaseService._mirror_user_local(res.data[0])
                     return res.data[0]
             except Exception as e:
-                print(f"Error creating user in Supabase: {e}")
+                logger.warning(f"Error creating user in Supabase: {e}")
         users = _read_local_json(DatabaseService._users_file(), [])
         users.append(data)
         _write_local_json(DatabaseService._users_file(), users)
@@ -1102,7 +1132,7 @@ class DatabaseService:
                 if res.data and len(res.data) > 0:
                     return res.data[0]
             except Exception as e:
-                print(f"Error updating user in Supabase: {e}")
+                logger.warning(f"Error updating user in Supabase: {e}")
         users = _read_local_json(DatabaseService._users_file(), [])
         for i, u in enumerate(users):
             if str(u.get("id")) == str(user_id):
@@ -1124,7 +1154,7 @@ class DatabaseService:
                 if res.data:
                     found = True
             except Exception as e:
-                print(f"Error deleting user in Supabase: {e}")
+                logger.warning(f"Error deleting user in Supabase: {e}")
         users = _read_local_json(DatabaseService._users_file(), [])
         new_users = [u for u in users if str(u.get("id")) != str(user_id)]
         if len(new_users) != len(users):
@@ -1149,7 +1179,7 @@ class DatabaseService:
             res = supabase_client.table("app_users").select("id").execute()
             existing = {str(r.get("id")) for r in (res.data or [])}
         except Exception as e:
-            print(f"Error reading users for sync: {e}")
+            logger.warning(f"Error reading users for sync: {e}")
             return 0
         created = 0
         for u in local:
@@ -1160,7 +1190,7 @@ class DatabaseService:
                 if ins.data:
                     created += 1
             except Exception as e:
-                print(f"Error syncing local user {u.get('username')}: {e}")
+                logger.warning(f"Error syncing local user {u.get('username')}: {e}")
         return created
 
     @staticmethod

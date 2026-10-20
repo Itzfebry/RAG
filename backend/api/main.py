@@ -17,7 +17,7 @@ try:
     from backend.api.users import admin_router as admin_users_router
     from backend.api.users import router as user_router
     from backend.config.config import settings
-    from backend.core.logging_config import configure_logging
+    from backend.core.logging_config import configure_logging, get_logger
     from backend.security.middleware import BodySizeLimitMiddleware, SecurityHeadersMiddleware
 except ImportError:
     from config.config import settings  # type: ignore
@@ -32,7 +32,9 @@ except ImportError:
     from api.pricing import router as pricing_router  # type: ignore
     from api.users import admin_router as admin_users_router
     from api.users import router as user_router  # type: ignore
-    from backend.core.logging_config import configure_logging  # type: ignore
+    from backend.core.logging_config import configure_logging, get_logger  # type: ignore
+
+logger = get_logger(__name__)
 
 app = FastAPI(
     title="ITZ AI Backend API",
@@ -93,7 +95,7 @@ def _friendly_validation_error(exc: RequestValidationError) -> str:
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Balas 422 dengan pesan yang berguna bagi admin/user, tanpa membocorkan
     struktur schema Pydantic (loc/ctx/input) ke client. Detail tetap di-log."""
-    print(f"[validation] {request.url.path}: {exc.errors()}")
+    logger.warning(f"[validation] {request.url.path}: {exc.errors()}")
     return JSONResponse(
         status_code=422,
         content={"detail": _friendly_validation_error(exc)},

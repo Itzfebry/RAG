@@ -18,12 +18,16 @@ from fastapi.responses import RedirectResponse
 
 try:
     from backend.config.config import settings
+    from backend.core.logging_config import get_logger
     from backend.database.db import DatabaseService
     from backend.security.auth import USER_COOKIE_NAME, create_user_jwt
 except ImportError:
     from config.config import settings  # type: ignore
+    from core.logging_config import get_logger  # type: ignore
     from database.db import DatabaseService
     from security.auth import USER_COOKIE_NAME, create_user_jwt
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -117,7 +121,7 @@ async def google_callback(request: Request, code: str = "", state: str = "", err
             )
             token_data = tok.json()
             if tok.status_code != 200 or "access_token" not in token_data:
-                print(f"[google-oauth] token exchange gagal: {tok.status_code} {tok.text[:300]}")
+                logger.warning(f"[google-oauth] token exchange gagal: {tok.status_code} {tok.text[:300]}")
                 return _redirect_with_error("Login Google gagal: verifikasi token ditolak")
 
             info = await client.get(
@@ -126,7 +130,7 @@ async def google_callback(request: Request, code: str = "", state: str = "", err
             )
             profile = info.json()
     except Exception as e:
-        print(f"[google-oauth] network error: {e}")
+        logger.warning(f"[google-oauth] network error: {e}")
         return _redirect_with_error("Login Google gagal: koneksi ke Google error")
 
     email = str(profile.get("email") or "").strip().lower()
@@ -171,7 +175,7 @@ async def google_callback(request: Request, code: str = "", state: str = "", err
                 if updated:
                     user = updated
     except Exception as e:
-        print(f"[google-oauth] db error: {e}")
+        logger.warning(f"[google-oauth] db error: {e}")
         return _redirect_with_error("Login Google gagal: gagal menyimpan akun")
 
     token = create_user_jwt(str(user["username"]), session_version=int(user.get("session_version") or 0))

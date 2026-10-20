@@ -39,12 +39,16 @@ def _clean_chunk(text: str) -> str:
 
 try:
     from backend.config.config import settings
+    from backend.core.logging_config import get_logger
     from backend.database.db import DatabaseService
     from backend.knowledge.context_builder import build_system_prompt
 except ImportError:
     from config.config import settings
+    from core.logging_config import get_logger  # type: ignore
     from database.db import DatabaseService
     from knowledge.context_builder import build_system_prompt
+
+logger = get_logger(__name__)
 
 
 def _strip_key(v: str) -> str:
@@ -126,7 +130,7 @@ class AgentOrchestrator:
                 )
                 self.client_type = "langchain_nvidia"
             except ImportError:
-                print("Warning: langchain_nvidia_ai_endpoints not installed. Falling back to OpenAI client.")
+                logger.warning("Warning: langchain_nvidia_ai_endpoints not installed. Falling back to OpenAI client.")
                 self.client = None
         else:
             # Default to OpenAI-compatible client
@@ -223,7 +227,9 @@ class AgentOrchestrator:
                     )
                     self.client_type = "langchain_nvidia"
                 except ImportError:
-                    print("Warning: langchain_nvidia_ai_endpoints not installed. Falling back to OpenAI client.")
+                    logger.warning(
+                        "Warning: langchain_nvidia_ai_endpoints not installed. Falling back to OpenAI client."
+                    )
                     self.client = None
             else:
                 # Default to OpenAI-compatible client
@@ -381,7 +387,7 @@ class AgentOrchestrator:
                         yield f"data: {json.dumps({'content': tail})}\n\n"
 
                     if _finish_reason == "length":
-                        print(
+                        logger.warning(
                             f"Warning: jawaban terpotong (finish_reason=length, max_tokens={max_tokens}, model={current_model})"
                         )
 
@@ -397,12 +403,12 @@ class AgentOrchestrator:
 
             except Exception as e:
                 last_error = str(e)
-                print(f"Model '{current_model}' failed with error: {last_error}. Trying next fallback...")
+                logger.warning(f"Model '{current_model}' failed with error: {last_error}. Trying next fallback...")
                 continue
 
         if not success:
             error_str = last_error or "Unknown API error"
-            print(f"All models failed. Last error: {error_str}")
+            logger.warning(f"All models failed. Last error: {error_str}")
             total_ms = int((time.perf_counter() - start) * 1000)
             fallback_response = f"Halo! Berdasarkan knowledge base ITZ AI dan riwayat percakapan Anda, saya memahami pertanyaan Anda mengenai '{query}'. (Catatan: Terjadi kendala saat memanggil model AI. Coba lagi beberapa saat.)"
             for chunk in fallback_response.split(" "):

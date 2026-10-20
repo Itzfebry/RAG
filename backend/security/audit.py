@@ -2,9 +2,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 try:
+    from backend.core.logging_config import get_logger
     from backend.database.db import _read_local_json, _write_local_json, supabase_client
 except ImportError:
+    from core.logging_config import get_logger  # type: ignore
     from database.db import _read_local_json, _write_local_json, supabase_client  # type: ignore
+
+logger = get_logger(__name__)
 
 AUDIT_FILE = "audit_log.json"
 MAX_LOCAL_ROWS = 500
@@ -24,7 +28,7 @@ def log_action(actor: str, action: str, target: str = "", detail: str = "", ip: 
             supabase_client.table("audit_log").insert(row).execute()
             return
         except Exception as e:
-            print(f"audit: supabase insert gagal, fallback lokal: {e}")
+            logger.warning(f"audit: supabase insert gagal, fallback lokal: {e}")
     rows = _read_local_json(AUDIT_FILE, [])
     rows.append(row)
     _write_local_json(AUDIT_FILE, rows[-MAX_LOCAL_ROWS:])
@@ -38,6 +42,6 @@ def list_actions(limit: int = 100) -> list[dict[str, Any]]:
             if res.data is not None:
                 return res.data
         except Exception as e:
-            print(f"audit: supabase read gagal, fallback lokal: {e}")
+            logger.warning(f"audit: supabase read gagal, fallback lokal: {e}")
     rows = _read_local_json(AUDIT_FILE, [])
     return list(reversed(rows))[:limit]

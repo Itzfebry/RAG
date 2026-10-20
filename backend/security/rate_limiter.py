@@ -135,6 +135,37 @@ def clear_failed_login_durable(key: str) -> None:
         clear_failed_login(key)
 
 
+def enforce_rate_limit(
+    key: str,
+    max_requests: int,
+    window_seconds: int,
+    *,
+    durable: bool = False,
+    detail: str = "Too many requests. Retry after {retry}s",
+) -> None:
+    """Satu panggilan untuk endpoint standar: cek limit, raise 429 bila melebihi.
+
+    Mengganti boilerplate:
+        ip = get_client_ip(request)
+        allowed, retry = check_rate_limit(key, max, window)
+        if not allowed:
+            raise HTTPException(429, ..., headers={"Retry-After": str(retry)})
+
+    `durable=True` memakai limiter berbasis DB yang konsisten lintas instance.
+    `detail` boleh memakai placeholder {retry}.
+    """
+    check = check_rate_limit_durable if durable else check_rate_limit
+    allowed, retry = check(key, max_requests, window_seconds)
+    if not allowed:
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=429,
+            detail=detail.format(retry=retry),
+            headers={"Retry-After": str(retry)},
+        )
+
+
 def get_client_ip(request) -> str:
     # Di belakang proxy tepercaya (Vercel), proxy menambahkan IP client di AKHIR
     # X-Forwarded-For; entri awal bisa dipalsukan client. Jadi ambil yang terakhir.

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 _START_TIME = time.time()
 
 try:
+    from backend.core.logging_config import get_logger
     from backend.database.cache import rag_cache
     from backend.database.db import DatabaseService
     from backend.knowledge.knowledge_service import EMBEDDING_PROVIDER, KnowledgeService
@@ -24,13 +25,14 @@ try:
     )
     from backend.security.rate_limiter import (
         check_rate_limit,
-        check_rate_limit_durable,
         clear_failed_login_durable,
+        enforce_rate_limit,
         get_client_ip,
         is_locked_out_durable,
         record_failed_login_durable,
     )
 except ImportError:
+    from core.logging_config import get_logger  # type: ignore
     from database.cache import rag_cache
     from database.db import DatabaseService
     from knowledge.knowledge_service import (
@@ -49,12 +51,14 @@ except ImportError:
     )
     from security.rate_limiter import (
         check_rate_limit,
-        check_rate_limit_durable,
         clear_failed_login_durable,
+        enforce_rate_limit,
         get_client_ip,
         is_locked_out_durable,
         record_failed_login_durable,
     )
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
@@ -220,13 +224,9 @@ def admin_login(payload: LoginRequest, request: Request, response: Response):
             status_code=429, detail=f"Account locked. Retry after {retry}s", headers={"Retry-After": str(retry)}
         )
     # rate limit login: 10/min per IP
-    allowed, retry = check_rate_limit_durable(f"admin:login:{ip}", 10, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Too many login attempts. Retry after {retry}s",
-            headers={"Retry-After": str(retry)},
-        )
+    enforce_rate_limit(
+        f"admin:login:{ip}", 10, 60, durable=True, detail="Too many login attempts. Retry after {retry}s"
+    )
     # constant-time username check - still verify dummy hash to avoid timing leak
     if payload.username != settings.ADMIN_USERNAME:
         # burn same time as verify_password
@@ -267,7 +267,7 @@ def admin_logout(request: Request, response: Response, admin: str = Depends(get_
             {"admin_session_version": int(cur.get("admin_session_version", 0) or 0) + 1}
         )
     except Exception as e:
-        print(f"[admin-logout] gagal invalidate sesi: {e}")
+        logger.warning(f"[admin-logout] gagal invalidate sesi: {e}")
     response.delete_cookie(COOKIE_NAME, path="/")
     return {"status": "success", "message": "Logged out successfully"}
 
@@ -308,11 +308,7 @@ def update_config(payload: ConfigUpdateRequest, request: Request, admin: str = D
         raise HTTPException(status_code=400, detail="Invalid configuration section")
     # rate-limit config writes: 20/min per IP
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:config:{ip}", 20, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"admin:config:{ip}", 20, 60)
 
     # Strict Schema Validation
     schemas = {
@@ -474,11 +470,7 @@ def admin_catalog_preview(payload: CatalogPreviewRequest, request: Request, admi
     """Preview catalog with supplied credentials via POST body - avoids leaking key in URL/logs.
     Body: {api_key, base_url, include_free_only, limit}. preview-only, not saved."""
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:catalog:{ip}", 20, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"admin:catalog:{ip}", 20, 60)
     try:
         from backend.agent.agent import _resolve_api_key as _rak  # type: ignore
         from backend.agent.agent import _resolve_base_url as _rbu
@@ -552,11 +544,7 @@ def admin_catalog_preview(payload: CatalogPreviewRequest, request: Request, admi
 def admin_update_models(payload: ModelConfigUpdateRequest, request: Request, admin: str = Depends(get_current_admin)):
     """Switch active model + fallbacks. Any model ID accepted - no whitelist, no Gemini hardcoding."""
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:models_write:{ip}", 15, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"admin:models_write:{ip}", 15, 60)
     if not payload.active_model or not payload.active_model.strip():
         raise HTTPException(status_code=400, detail="active_model must be a non-empty model ID string")
     active = payload.active_model.strip()
@@ -612,11 +600,7 @@ def admin_update_models(payload: ModelConfigUpdateRequest, request: Request, adm
 def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = Depends(get_current_admin)):
     """Lightweight probe - does chat/completions accept this model with current (or override) creds?"""
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:models_test:{ip}", 12, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"admin:models_test:{ip}", 12, 60)
     model = payload.model.strip()
     if not re.match(r"^[a-zA-Z0-9._/:-]+$", model):
         raise HTTPException(status_code=400, detail="Invalid model ID")
@@ -669,19 +653,19 @@ def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = D
     # auto-correct provider vs base_url mismatch (gsk_ ke openrouter = 401 pasti)
     low_url = base_url.lower()
     if "openrouter" in low_url and provider.lower() == "groq":
-        print(f"[models/test] auto-correct provider groq->openrouter karena base_url {base_url}")
+        logger.info(f"[models/test] auto-correct provider groq->openrouter karena base_url {base_url}")
         provider = "openrouter"
         # re-resolve key for openrouter if we used groq key
         if api_key.startswith("gsk_"):
             try:
                 alt = _resolve_api_key("openrouter")
                 if alt and not alt.startswith("gsk_"):
-                    print("[models/test] ganti key gsk_ -> openrouter karena URL openrouter")
+                    logger.info("[models/test] ganti key gsk_ -> openrouter karena URL openrouter")
                     api_key = alt
             except Exception:
                 pass
     if "groq" in low_url and provider.lower() == "openrouter" and api_key.startswith("sk-or-"):
-        print(f"[models/test] auto-correct provider openrouter->groq karena base_url {base_url}")
+        logger.info(f"[models/test] auto-correct provider openrouter->groq karena base_url {base_url}")
         provider = "groq"
         try:
             alt = _resolve_api_key("groq")
@@ -702,15 +686,15 @@ def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = D
     has_env_key = bool((_os.getenv("OPENROUTER_API_KEY") or "").strip() or (_os.getenv("GROQ_API_KEY") or "").strip())
     has_openrouter = bool((_os.getenv("OPENROUTER_API_KEY") or "").strip())
     has_groq = bool((_os.getenv("GROQ_API_KEY") or "").strip())
-    print(
+    logger.info(
         f"[models/test] provider={provider} base_url={base_url} key={_mask(api_key)} src={src} has_env_key={has_env_key} has_openrouter={has_openrouter} has_groq={has_groq} model={model}"
     )
     if api_key.startswith("gsk_") and "openrouter" in low_url:
-        print(
+        logger.warning(
             "[models/test] WARNING gsk_ key dikirim ke openrouter - pasti 401. Ganti provider=groq + base_url=https://api.groq.com/openai/v1 atau pakai sk-or- key"
         )
     if api_key.startswith("sk-or-") and "groq" in low_url:
-        print("[models/test] WARNING sk-or- key dikirim ke groq - pasti 401")
+        logger.warning("[models/test] WARNING sk-or- key dikirim ke groq - pasti 401")
     if not api_key:
         raise HTTPException(
             status_code=400,
@@ -765,7 +749,7 @@ def admin_test_model(payload: ModelTestRequest, request: Request, admin: str = D
         hint = ""
         if "401" in msg or "Missing Authentication" in msg:
             hint = " - cek .env OPENROUTER_API_KEY/GROQ_API_KEY tanpa kutip, tanpa spasi, restart backend (python -m backend.api.main), cek provider vs base_url (openrouter→https://openrouter.ai/api/v1, groq→https://api.groq.com/openai/v1)"
-        print(f"[models/test] FAIL {msg} hint={hint}")
+        logger.warning(f"[models/test] FAIL {msg} hint={hint}")
         raise HTTPException(
             status_code=502,
             detail={
@@ -794,36 +778,11 @@ def admin_stats(request: Request, admin: str = Depends(get_current_admin)):
         cats = DatabaseService.get_knowledge_categories()
     except Exception:
         cats = []
-    # trial total - local file + supabase best-effort
-    trial_total_used = 0
+    # trial total - diserap ke DatabaseService (supabase + fallback lokal)
     try:
-        # try supabase count
-        from backend.database.db import supabase_client as _supa  # type: ignore
-
-        if _supa:
-            try:
-                res = _supa.table("trial_usage").select("used").execute()
-                if res.data:
-                    trial_total_used = sum(int(r.get("used", 0) or 0) for r in res.data)
-            except Exception:
-                raise
-        else:
-            raise RuntimeError("no supabase")
+        trial_total_used = DatabaseService.get_trial_usage_total()
     except Exception:
-        try:
-            import json as _json
-            import os as _os
-
-            from backend.database.db import LOCAL_DATA_DIR  # type: ignore
-
-            p = _os.path.join(LOCAL_DATA_DIR, "trial_usage.json")
-            if _os.path.exists(p):
-                with open(p, encoding="utf-8") as f:
-                    d = _json.load(f)
-                    if isinstance(d, dict):
-                        trial_total_used = sum(int(v or 0) for v in d.values())
-        except Exception:
-            trial_total_used = 0
+        trial_total_used = 0
 
     total_users = len(users)
     active_users = sum(1 for u in users if bool(u.get("is_active", True)))
@@ -984,11 +943,7 @@ def admin_reindex_knowledge(request: Request, admin: str = Depends(get_current_a
     """Embed ulang SEMUA entry ke provider aktif. Semua embedding divalidasi dulu;
     kalau ada yang gagal, index lama tidak disentuh."""
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:reindex:{ip}", 3, 300)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Terlalu sering. Coba lagi {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"admin:reindex:{ip}", 3, 300, detail="Terlalu sering. Coba lagi {retry}s")
     if EMBEDDING_PROVIDER == "off":
         raise HTTPException(status_code=400, detail="EMBEDDING_PROVIDER=off - reindex dibatalkan")
     entries = DatabaseService.get_knowledge_entries() or []
@@ -1019,17 +974,10 @@ def admin_reindex_knowledge(request: Request, admin: str = Depends(get_current_a
 @router.get("/health")
 def admin_health(admin: str = Depends(get_current_admin)):
     """Ringkasan kesehatan untuk sidebar & dashboard admin."""
-    db_ok, db_mode = False, "lokal"
     try:
-        from backend.database.db import supabase_client as _sc
-    except ImportError:
-        from database.db import supabase_client as _sc  # type: ignore
-    if _sc:
-        try:
-            _sc.table("app_settings").select("id").limit(1).execute()
-            db_ok, db_mode = True, "supabase"
-        except Exception:
-            db_mode = "supabase (gagal)"
+        db_ok, db_mode = DatabaseService.probe_database()
+    except Exception:
+        db_ok, db_mode = False, "lokal"
     token_budget = None
     try:
         stats = DatabaseService.get_token_stats(1)
@@ -1070,11 +1018,7 @@ def get_knowledge_entries(category: str | None = None, admin: str = Depends(get_
 @router.post("/knowledge/entries")
 def save_knowledge_entry(payload: KnowledgeEntryRequest, request: Request, admin: str = Depends(get_current_admin)):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:knowledge:{ip}", 30, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"admin:knowledge:{ip}", 30, 60)
     data = payload.model_dump()
     saved = DatabaseService.create_or_update_knowledge_entry(data)
     # Index synchronously - serverless runtimes (Vercel) kill background tasks
@@ -1084,7 +1028,7 @@ def save_knowledge_entry(payload: KnowledgeEntryRequest, request: Request, admin
         KnowledgeService.index_entry(saved["id"], saved["content"])
     except Exception as e:
         index_error = str(e)
-        print(f"Warning: indexing failed for entry {saved.get('id')}: {e}")
+        logger.warning(f"Warning: indexing failed for entry {saved.get('id')}: {e}")
     audit_log(admin, "knowledge_save", target=str(saved.get("id")), detail=saved.get("title", ""), ip=ip)
     return {"status": "partial" if index_error else "success", "entry": saved, "index_error": index_error}
 
@@ -1094,11 +1038,7 @@ def delete_knowledge_entry(entry_id: str, request: Request, admin: str = Depends
     if not re.match(r"^[a-zA-Z0-9_-]{1,64}$", entry_id):
         raise HTTPException(status_code=400, detail="Invalid entry_id")
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:knowledge_del:{ip}", 20, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"admin:knowledge_del:{ip}", 20, 60)
     DatabaseService.delete_knowledge_entry(entry_id)
     rag_cache.clear()
     audit_log(admin, "knowledge_delete", target=entry_id, ip=ip)
@@ -1176,11 +1116,7 @@ def admin_import_bulk(payload: BulkImportRequest, request: Request, admin: str =
     Any subset of keys accepted. Unknown keys at top level are ignored.
     """
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:import:{ip}", 10, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"admin:import:{ip}", 10, 60)
     # cap bulk payload size
     raw_check = payload.model_dump(exclude_none=True)
     total_chars = len(str(raw_check))

@@ -5,11 +5,15 @@ import httpx
 from langchain_text_splitters import CharacterTextSplitter
 
 try:
+    from backend.core.logging_config import get_logger
     from backend.database.cache import rag_cache
     from backend.database.db import DatabaseService, supabase_client
 except ImportError:
+    from core.logging_config import get_logger  # type: ignore
     from database.cache import rag_cache
     from database.db import DatabaseService, supabase_client
+
+logger = get_logger(__name__)
 
 # ── Embedding configuration ───────────────────────────────────────────────
 # Provider switch:
@@ -84,11 +88,11 @@ def _get_embedding_model():
         try:
             from sentence_transformers import SentenceTransformer
 
-            print("Loading SentenceTransformer model 'paraphrase-multilingual-MiniLM-L12-v2'...")
+            logger.info("Loading SentenceTransformer model 'paraphrase-multilingual-MiniLM-L12-v2'...")
             _embedding_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2", device="cpu")
-            print("Embedding model loaded successfully")
+            logger.info("Embedding model loaded successfully")
         except Exception as e:
-            print(f"Error loading embedding model: {e}")
+            logger.exception(f"Error loading embedding model: {e}")
             _embedding_model = None
     return _embedding_model
 
@@ -222,7 +226,7 @@ def _warmup_embedding_model():
     try:
         _get_embedding_model()
     except Exception as e:
-        print(f"Embedding warmup skipped: {e}")
+        logger.warning(f"Embedding warmup skipped: {e}")
 
 
 if EMBEDDING_PROVIDER == "local" and __name__ != "__main__":
@@ -323,7 +327,7 @@ class KnowledgeService:
 
         # TEMPORARY TEST SWITCH: "off" = no embeddings, keyword fallback only.
         if EMBEDDING_PROVIDER == "off":
-            print("Embedding disabled (EMBEDDING_PROVIDER=off) -> keyword fallback")
+            logger.info("Embedding disabled (EMBEDDING_PROVIDER=off) -> keyword fallback")
             return [0.0] * EMBEDDING_DIM
 
         try:
@@ -332,7 +336,7 @@ class KnowledgeService:
             elif EMBEDDING_PROVIDER == "local":
                 model = _get_embedding_model()
                 if model is None:
-                    print("Warning: Using dummy embeddings (local model not loaded)")
+                    logger.warning("Warning: Using dummy embeddings (local model not loaded)")
                     return [0.0] * EMBEDDING_DIM
                 embedding = model.encode(text, convert_to_tensor=False, show_progress_bar=False)
                 result = [float(x) for x in embedding.tolist()]
@@ -342,7 +346,7 @@ class KnowledgeService:
             return result
         except Exception as e:
             # Dummy vector -> semantic_search falls back to keyword search
-            print(f"Error generating embedding ({EMBEDDING_PROVIDER}): {e}")
+            logger.warning(f"Error generating embedding ({EMBEDDING_PROVIDER}): {e}")
             return [0.0] * EMBEDDING_DIM
 
     @staticmethod
@@ -398,7 +402,7 @@ class KnowledgeService:
                 if res.data:
                     return [row["content_chunk"] for row in res.data]
             except Exception as e:
-                print(f"Search error: {e}")
+                logger.warning(f"Search error: {e}")
 
         return _keyword_search(query, match_count)
 

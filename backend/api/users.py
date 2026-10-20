@@ -27,9 +27,8 @@ try:
         verify_user_jwt,
     )
     from backend.security.rate_limiter import (
-        check_rate_limit,
-        check_rate_limit_durable,
         clear_failed_login_durable,
+        enforce_rate_limit,
         get_client_ip,
         is_locked_out_durable,
         record_failed_login_durable,
@@ -48,9 +47,8 @@ except ImportError:
         verify_user_jwt,
     )
     from security.rate_limiter import (
-        check_rate_limit,
-        check_rate_limit_durable,
         clear_failed_login_durable,
+        enforce_rate_limit,
         get_client_ip,
         is_locked_out_durable,
         record_failed_login_durable,
@@ -210,13 +208,7 @@ def user_login(payload: UserLoginRequest, request: Request, response: Response):
         raise HTTPException(
             status_code=429, detail=f"Account locked. Retry after {retry}s", headers={"Retry-After": str(retry)}
         )
-    allowed, retry = check_rate_limit_durable(f"user:login:{ip}", 10, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Too many login attempts. Retry after {retry}s",
-            headers={"Retry-After": str(retry)},
-        )
+    enforce_rate_limit(f"user:login:{ip}", 10, 60, durable=True, detail="Too many login attempts. Retry after {retry}s")
     if not user or not verify_password(payload.password, user.get("password_hash") or ""):
         record_failed_login_durable(lock_key)
         audit_log(
@@ -324,13 +316,9 @@ def _set_user_cookie(response: Response, user: dict[str, Any]) -> None:
 @router.post("/user/register", status_code=201)
 def user_register(payload: UserRegisterRequest, request: Request, response: Response):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit_durable(f"user:register:{ip}", 5, 600)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Terlalu banyak pendaftaran. Coba lagi dalam {retry}s",
-            headers={"Retry-After": str(retry)},
-        )
+    enforce_rate_limit(
+        f"user:register:{ip}", 5, 600, durable=True, detail="Terlalu banyak pendaftaran. Coba lagi dalam {retry}s"
+    )
     if DatabaseService.get_user_by_username(payload.username):
         raise HTTPException(status_code=409, detail="Nama pengguna sudah dipakai")
     if DatabaseService.get_user_by_email(payload.email):
@@ -425,13 +413,9 @@ def _check_otp(email: str, purpose: str, code: str) -> None:
 @router.post("/user/verify-email/send")
 def user_send_verify(request: Request, user: dict = Depends(get_current_user)):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit_durable(f"user:otp_send:{ip}", 3, 600)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Terlalu sering meminta kode. Coba lagi dalam {retry}s",
-            headers={"Retry-After": str(retry)},
-        )
+    enforce_rate_limit(
+        f"user:otp_send:{ip}", 3, 600, durable=True, detail="Terlalu sering meminta kode. Coba lagi dalam {retry}s"
+    )
     if user.get("email_verified"):
         return {"status": "already_verified"}
     if not user.get("email"):
@@ -443,13 +427,9 @@ def user_send_verify(request: Request, user: dict = Depends(get_current_user)):
 @router.post("/user/verify-email")
 def user_verify_email(payload: OtpVerifyRequest, request: Request, user: dict = Depends(get_current_user)):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit_durable(f"user:otp_verify:{ip}", 10, 600)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s",
-            headers={"Retry-After": str(retry)},
-        )
+    enforce_rate_limit(
+        f"user:otp_verify:{ip}", 10, 600, durable=True, detail="Terlalu banyak percobaan. Coba lagi dalam {retry}s"
+    )
     if not user.get("email") or str(user["email"]).lower() != payload.email:
         raise HTTPException(status_code=400, detail="Email tidak cocok dengan akun")
     _check_otp(payload.email, otp.PURPOSE_VERIFY, payload.code)
@@ -460,13 +440,9 @@ def user_verify_email(payload: OtpVerifyRequest, request: Request, user: dict = 
 @router.post("/user/password/forgot")
 def user_password_forgot(payload: EmailOnlyRequest, request: Request):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit_durable(f"user:reset_send:{ip}", 3, 600)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Terlalu sering meminta kode. Coba lagi dalam {retry}s",
-            headers={"Retry-After": str(retry)},
-        )
+    enforce_rate_limit(
+        f"user:reset_send:{ip}", 3, 600, durable=True, detail="Terlalu sering meminta kode. Coba lagi dalam {retry}s"
+    )
     # Respons selalu sama agar tidak membocorkan email terdaftar atau tidak.
     if DatabaseService.get_user_by_email(payload.email):
         with contextlib.suppress(HTTPException):
@@ -477,13 +453,9 @@ def user_password_forgot(payload: EmailOnlyRequest, request: Request):
 @router.post("/user/password/reset")
 def user_password_reset(payload: PasswordResetRequest, request: Request, response: Response):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit_durable(f"user:reset_verify:{ip}", 10, 600)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s",
-            headers={"Retry-After": str(retry)},
-        )
+    enforce_rate_limit(
+        f"user:reset_verify:{ip}", 10, 600, durable=True, detail="Terlalu banyak percobaan. Coba lagi dalam {retry}s"
+    )
     user = DatabaseService.get_user_by_email(payload.email)
     if not user or not user.get("is_active", True):
         raise HTTPException(status_code=400, detail="Kode tidak valid. Minta kode baru.")
@@ -627,13 +599,9 @@ def user_change_password(
     payload: UserPasswordChangeRequest, request: Request, response: Response, user: dict = Depends(get_current_user)
 ):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit_durable(f"user:password:{ip}", 5, 300)
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Terlalu banyak percobaan. Coba lagi dalam {retry}s",
-            headers={"Retry-After": str(retry)},
-        )
+    enforce_rate_limit(
+        f"user:password:{ip}", 5, 300, durable=True, detail="Terlalu banyak percobaan. Coba lagi dalam {retry}s"
+    )
 
     current_hash = user.get("password_hash") or ""
     if current_hash and (not payload.current_password or not verify_password(payload.current_password, current_hash)):
@@ -659,11 +627,7 @@ def user_change_password(
 @router.put("/user/profile")
 def user_update_profile(payload: UserProfileUpdateRequest, request: Request, user: dict = Depends(get_current_user)):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"user:profile:{ip}", 10, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"user:profile:{ip}", 10, 60)
 
     updates: dict[str, Any] = {}
     if payload.display_name is not None:
@@ -830,11 +794,7 @@ def admin_list_users(admin: str = Depends(get_current_admin)):
 @admin_router.post("/users")
 def admin_create_user(payload: UserCreateRequest, request: Request, admin: str = Depends(get_current_admin)):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:users_create:{ip}", 20, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"admin:users_create:{ip}", 20, 60)
     username = payload.username.strip().lower()
     if DatabaseService.get_user_by_username(username):
         raise HTTPException(status_code=409, detail="Username already exists")
@@ -867,11 +827,7 @@ def admin_update_user(
     user_id: str, payload: UserUpdateRequest, request: Request, admin: str = Depends(get_current_admin)
 ):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:users_update:{ip}", 30, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"admin:users_update:{ip}", 30, 60)
     existing = DatabaseService.get_user_by_id(user_id)
     if not existing:
         raise HTTPException(status_code=404, detail="User not found")
@@ -902,11 +858,7 @@ def admin_update_user(
 @admin_router.delete("/users/{user_id}")
 def admin_delete_user(user_id: str, request: Request, admin: str = Depends(get_current_admin)):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:users_del:{ip}", 20, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"admin:users_del:{ip}", 20, 60)
     ok = DatabaseService.delete_user(user_id)
     if not ok:
         raise HTTPException(status_code=404, detail="User not found")
@@ -967,11 +919,7 @@ def trial_info_admin(request: Request, admin: str = Depends(get_current_admin)):
 @admin_router.put("/settings")
 def admin_update_settings(payload: AppSettingsUpdateRequest, request: Request, admin: str = Depends(get_current_admin)):
     ip = get_client_ip(request)
-    allowed, retry = check_rate_limit(f"admin:settings:{ip}", 20, 60)
-    if not allowed:
-        raise HTTPException(
-            status_code=429, detail=f"Too many requests. Retry after {retry}s", headers={"Retry-After": str(retry)}
-        )
+    enforce_rate_limit(f"admin:settings:{ip}", 20, 60)
     patch = {
         "user_token_expiry_hours": int(payload.user_token_expiry_hours),
         "trial_prompts": int(payload.trial_prompts),
