@@ -1,6 +1,9 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
+
+// LazyMotion renders `m` components; alias keeps all call sites unchanged.
+const motion = m;
 import { X, Zap } from "lucide-react";
 
 /**

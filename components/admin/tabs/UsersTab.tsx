@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { motion } from "framer-motion";
 import { SectionHeader } from "../SectionHeader";
 import { FieldInfo } from "../FieldInfo";
 import {
@@ -76,11 +75,7 @@ export function UsersTab({
   onResetUsage: handleResetUsage,
 }: UsersTabProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-300 fill-mode-both">
       <SectionHeader
         title="Users"
         desc="Kelola akun pengguna, batas prompt, dan pengaturan akses."
@@ -538,6 +533,6 @@ export function UsersTab({
           </Card>
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

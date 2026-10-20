@@ -6,7 +6,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { motion } from "framer-motion";
 import { SectionHeader } from "../SectionHeader";
 import {
   cardBase,
@@ -43,11 +42,7 @@ export function IdentityTab({
   saving: boolean;
 }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-300 fill-mode-both">
       <SectionHeader
         title="Identitas AI"
         desc="Menentukan identitas dasar, nama, peran, dan tujuan ITZ AI."
@@ -137,6 +132,6 @@ export function IdentityTab({
           </Button>
         </CardFooter>
       </Card>
-    </motion.div>
+    </div>
   );
 }

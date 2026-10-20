@@ -1,13 +1,20 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
 import { Check, Copy, RotateCw } from "lucide-react";
 import { TripleDotSpinner } from "@/components/ui/triple-dot-spinner";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
+
+// LazyMotion renders `m` components; alias keeps all call sites unchanged.
+const motion = m;
+
+// Markdown deps (react-markdown + remark-gfm + rehype-raw) are code-split and
+// loaded lazily; plain text is rendered as fallback while the chunk loads.
+const loadMarkdown = () =>
+  import("./markdown") as Promise<{
+    default: React.ComponentType<{ children: string }>;
+  }>;
 
 interface Props {
   role: "user" | "assistant";
@@ -30,6 +37,18 @@ export const MessageBubble: React.FC<Props> = ({
   onRegenerate,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [Markdown, setMarkdown] = useState<React.ComponentType<{ children: string }> | null>(null);
+
+  // Lazy markdown chunk; before it resolves we fall back to plain text.
+  useEffect(() => {
+    let alive = true;
+    loadMarkdown().then((mod) => {
+      if (alive) setMarkdown(() => mod.default);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const raw =
     typeof content === "string"
       ? content
@@ -120,15 +139,7 @@ export const MessageBubble: React.FC<Props> = ({
       </div>
       <div className="min-w-0 flex-1 pt-0.5">
         <div className="prose prose-itz max-w-none text-[15px] font-[450] leading-[1.72] tracking-[-0.012em] text-zinc-200 prose-headings:font-semibold prose-headings:tracking-tight prose-headings:text-zinc-100 prose-strong:font-semibold prose-strong:text-white prose-a:text-[#8ab4ff] prose-a:no-underline hover:prose-a:underline prose-code:rounded-md prose-code:bg-white/[0.08] prose-code:px-1.5 prose-code:py-0.5 prose-code:text-[13px] prose-code:font-medium prose-code:text-zinc-100 prose-code:ring-1 prose-code:ring-white/[0.09] prose-li:marker:text-zinc-500 prose-hr:hidden prose-table:w-full prose-th:text-left prose-th:text-zinc-100 prose-td:text-zinc-300 prose-td:align-top">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeRaw]}
-            components={{
-              br: () => <br />,
-            }}
-          >
-            {cleaned}
-          </ReactMarkdown>
+          {Markdown ? <Markdown>{cleaned}</Markdown> : <span>{cleaned}</span>}
           {isStreaming && !!cleaned && (
             <span className="ml-1 inline-block h-[15px] w-[2.5px] translate-y-[2px] animate-pulse rounded-full bg-zinc-300" />
           )}

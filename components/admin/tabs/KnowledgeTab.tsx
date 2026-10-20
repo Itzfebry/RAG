@@ -4,7 +4,6 @@ import React from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { motion } from "framer-motion";
 import { SectionHeader } from "../SectionHeader";
 import { cardBase, cardHeaderCls, cardContentCls, tCard } from "../adminStyles";
 
@@ -32,11 +31,7 @@ export function KnowledgeTab({
   });
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-300 fill-mode-both">
       <SectionHeader
         title="Basis Pengetahuan"
         desc="Pengetahuan owner terstruktur dan persisten dengan pencarian embedding semantik."
@@ -103,6 +98,6 @@ export function KnowledgeTab({
           </div>
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }

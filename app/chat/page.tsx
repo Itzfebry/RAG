@@ -8,7 +8,10 @@ import QuotaOfferModal, { QuotaOfferVariant } from "@/components/chat/QuotaOffer
 import QuotaNotice from "@/components/chat/QuotaNotice";
 import ChatHistoryPanel, { ChatSummary } from "@/components/chat/ChatHistoryPanel";
 import OnboardingTour, { TourStep } from "@/components/chat/OnboardingTour";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
+
+// LazyMotion renders `m` components; alias keeps all call sites unchanged.
+const motion = m;
 import { AlertTriangle, Info, X } from "lucide-react";
 import { ApiError, fetchApi, tryFetch } from "@/lib/fetch-api";
 import type { Me, TrialInfo } from "@/lib/api-types";

@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
+
+// LazyMotion renders `m` components; alias keeps all call sites unchanged.
+const motion = m;
 import { ArrowUpRight, Check, Copy, Gauge, Hourglass, LogIn, MessageCircle, X } from "lucide-react";
 import Link from "next/link";
 import { fetchApi } from "@/lib/fetch-api";

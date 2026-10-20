@@ -19,7 +19,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { motion } from "framer-motion";
 import { ApiError, fetchApi } from "@/lib/fetch-api";
 import type { PricingData, PricingPlan } from "@/lib/api-types";
 import { SectionHeader } from "../SectionHeader";
@@ -217,11 +216,7 @@ export function PricingTab({
   const visible = filter === "all" ? orders : orders.filter((o) => o.status === filter);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-300 fill-mode-both">
       <SectionHeader
         title="Harga & Paket"
         desc="Atur paket prompt dan info pembayaran. Pembayaran masuk mengaktifkan kuota otomatis lewat notifikasi gateway - konfirmasi manual hanya jaga-jaga bila notifikasi gagal. Pantau lewat log pembayaran di bawah."
@@ -664,6 +659,6 @@ export function PricingTab({
           )}
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }

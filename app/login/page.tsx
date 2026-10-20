@@ -7,7 +7,10 @@ import Link from "next/link";
 import { AlertCircle, Loader2, Zap, MessageSquare, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
+
+// LazyMotion renders `m` components; alias keeps all call sites unchanged.
+const motion = m;
 import { ApiError, apiErrorMessage, fetchApi, tryFetch } from "@/lib/fetch-api";
 
 type LoginResponse = { email_verified?: boolean; email?: string };

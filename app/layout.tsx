@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import MotionProvider from "@/components/motion-provider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -32,7 +33,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="id" className={cn("h-full dark", inter.variable, jetbrainsMono.variable)}>
-      <body className="font-sans bg-background text-foreground antialiased h-full">{children}</body>
+      <body className="font-sans bg-background text-foreground antialiased h-full">
+        <MotionProvider>{children}</MotionProvider>
+      </body>
     </html>
   );
 }

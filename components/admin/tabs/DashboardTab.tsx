@@ -45,7 +45,6 @@ import {
   Cell,
   ReferenceLine,
 } from "recharts";
-import { motion } from "framer-motion";
 import {
   cardBase,
   cardHeaderCls,
@@ -164,11 +163,7 @@ export function DashboardTab({
       : null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-300 fill-mode-both">
       <div className={sectionHeaderWrap}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -404,11 +399,10 @@ export function DashboardTab({
             ].map((stat, idx) => {
               const Icon = stat.icon;
               return (
-                <motion.div
+                <div
                   key={stat.label}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
+                  style={{ animationDelay: `${idx * 50}ms` }}
+                  className="animate-in fade-in slide-in-from-bottom-2 duration-300 fill-mode-both"
                 >
                   <Card className={`${cardBase} hover:border-white/[0.12] transition-colors`}>
                     <CardContent className="p-5">
@@ -432,7 +426,7 @@ export function DashboardTab({
                       </div>
                     </CardContent>
                   </Card>
-                </motion.div>
+                </div>
               );
             })}
           </div>
@@ -1361,6 +1355,6 @@ export function DashboardTab({
           </section>
         </>
       )}
-    </motion.div>
+    </div>
   );
 }

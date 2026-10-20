@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { motion } from "framer-motion";
 import { X, Trash2, Plus } from "lucide-react";
 
 export interface ChatSummary {
@@ -119,24 +118,16 @@ export default function ChatHistoryPanel({
 
       {/* Konfirmasi hapus chat */}
       {pending && (
-        <motion.div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.15 }}
-        >
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div
             className="absolute inset-0 bg-black/70 backdrop-blur-[5px]"
             onClick={() => setConfirmId(null)}
           />
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ type: "spring", stiffness: 340, damping: 28 }}
+          <div
             role="dialog"
             aria-modal="true"
             aria-label="Konfirmasi hapus chat"
-            className="relative w-full max-w-[340px] rounded-2xl border border-white/[0.1] bg-[#0c0c10] p-6 shadow-[0_32px_100px_-24px_rgba(0,0,0,0.85)]"
+            className="relative w-full max-w-[340px] rounded-2xl border border-white/[0.1] bg-[#0c0c10] p-6 shadow-[0_32px_100px_-24px_rgba(0,0,0,0.85)] animate-in fade-in zoom-in-95 slide-in-from-bottom-3 duration-300 fill-mode-both"
           >
             <h3 className="text-[16px] font-semibold tracking-[-0.01em] text-white">
               Hapus chat ini?
@@ -163,8 +154,8 @@ export default function ChatHistoryPanel({
                 Hapus
               </button>
             </div>
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       )}
     </div>
   );

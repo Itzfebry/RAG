@@ -37,7 +37,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { motion } from "framer-motion";
 import { SectionHeader } from "../SectionHeader";
 import { FieldInfo } from "../FieldInfo";
 import {
@@ -103,11 +102,7 @@ export function ModelsTab({
   refreshAvailableModels,
 }: ModelsTabProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-300 fill-mode-both">
       <SectionHeader
         title="Model AI"
         desc="Model yang sedang dipakai ditampilkan pertama. Pilih dari katalog live atau ketik ID model apa pun."
@@ -592,6 +587,6 @@ export function ModelsTab({
           </div>
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   );
 }

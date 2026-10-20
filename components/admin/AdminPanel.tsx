@@ -28,7 +28,10 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
+
+// LazyMotion renders `m` components; alias keeps all call sites unchanged.
+const motion = m;
 import { cardBase } from "./adminStyles";
 import { IdentityTab } from "./tabs/IdentityTab";
 import { PersonalTab } from "./tabs/PersonalTab";
@@ -314,11 +317,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           aria-hidden
           className="absolute inset-0 bg-[radial-gradient(ellipse_800px_400px_at_50%_-10%,rgba(255,255,255,0.05),transparent_60%)]"
         />
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="relative flex flex-col items-center gap-4"
-        >
+        <div className="relative flex flex-col items-center gap-4 animate-in fade-in duration-300">
           <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-zinc-900">
             <img
               src="/image/favicon.png"
@@ -332,7 +331,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
             <span>Memeriksa sesi…</span>
           </div>
-        </motion.div>
+        </div>
       </div>
     );
   }
@@ -365,11 +364,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
         className={`${mobileNavOpen ? "fixed inset-y-0 left-0 z-30 flex" : "hidden"} w-[272px] shrink-0 flex-col justify-between border-r border-white/[0.07] bg-[#050507] p-5 md:relative md:z-10 md:flex`}
       >
         <div>
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="mb-8 flex items-center gap-3"
-          >
+          <div className="mb-8 flex items-center gap-3 animate-in fade-in slide-in-from-left-5 duration-300 fill-mode-both">
             <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-black">
               <img
                 src="/image/favicon.png"
@@ -383,7 +378,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               <h1 className="text-[16px] font-semibold tracking-[0.08em] text-white">ITZ AI</h1>
               <p className="text-[13px] font-medium tracking-[0.14em] text-zinc-500">CONSOLE</p>
             </div>
-          </motion.div>
+          </div>
 
           <nav className="space-y-5" aria-label="Navigasi admin">
             {[
