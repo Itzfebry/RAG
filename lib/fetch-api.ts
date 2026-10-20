@@ -43,10 +43,13 @@ export async function fetchApi<T = unknown>(
   { fallbackError = "Gagal terhubung ke server" }: { fallbackError?: string } = {},
 ): Promise<T> {
   const { json, headers, ...rest } = init;
+  // json dipakai tanpa method eksplisit -> default POST
+  const method = rest.method ?? (json !== undefined ? "POST" : undefined);
   let res: Response;
   try {
     res = await fetch(path, {
       ...rest,
+      method,
       credentials: "include",
       headers: {
         ...(json !== undefined ? { "Content-Type": "application/json" } : null),
