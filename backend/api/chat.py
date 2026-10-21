@@ -408,8 +408,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
                         )
                         usage_recorded = True
                         tokens_total = int(u.get("total_tokens", 0) or 0) or (
-                            int(u.get("prompt_tokens", 0) or 0)
-                            + int(u.get("completion_tokens", 0) or 0)
+                            int(u.get("prompt_tokens", 0) or 0) + int(u.get("completion_tokens", 0) or 0)
                         )
                     except Exception:
                         pass

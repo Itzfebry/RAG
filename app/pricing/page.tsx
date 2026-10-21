@@ -206,7 +206,11 @@ export default function PricingPage() {
     const days = p.days && p.days > 0 ? p.days : 0;
     const totalPrompts = days > 0 ? p.prompts * days : 0;
     const perPrompt =
-      days > 0 && p.prompts > 0 ? Math.round(p.amount / totalPrompts) : p.prompts > 0 ? Math.round(p.amount / p.prompts) : 0;
+      days > 0 && p.prompts > 0
+        ? Math.round(p.amount / totalPrompts)
+        : p.prompts > 0
+          ? Math.round(p.amount / p.prompts)
+          : 0;
     const feats: Array<{ icon: React.ElementType | null; text: string }> = [
       { icon: Zap, text: `${p.prompts} prompt / hari` },
     ];

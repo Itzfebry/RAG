@@ -1162,7 +1162,13 @@ export function DashboardTab({
                         content={<ChartTooltip unit=" token" />}
                         cursor={{ fill: "rgba(255,255,255,0.03)" }}
                       />
-                      <Bar dataKey="prompt" name="Prompt" stackId="u" fill="#8b5cf6" radius={[0, 0, 0, 0]} />
+                      <Bar
+                        dataKey="prompt"
+                        name="Prompt"
+                        stackId="u"
+                        fill="#8b5cf6"
+                        radius={[0, 0, 0, 0]}
+                      />
                       <Bar
                         dataKey="completion"
                         name="Completion"
