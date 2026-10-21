@@ -922,6 +922,20 @@ def admin_token_usage(days: int = 14, admin: str = Depends(get_current_admin)):
     return stats
 
 
+@router.get("/rate-stats")
+def admin_rate_stats(admin: str = Depends(get_current_admin)):
+    """Metrik rate live: RPM & TPM (jendela 60 detik) + RPD (dari request_events hari ini)."""
+    from backend.database.rate_repo import rate_tracker
+
+    live = rate_tracker.stats()
+    try:
+        rows = DatabaseService.get_daily_requests(days=1)
+        rpd = int(rows[0]["count"]) if rows else 0
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Rate stats error: {e}")
+    return {"rpd": rpd, "rpm": live["rpm"], "tpm": live["tpm"], "window_seconds": live["window"]}
+
+
 @router.put("/token-budget")
 def admin_token_budget(payload: TokenBudgetRequest, request: Request, admin: str = Depends(get_current_admin)):
     """Budget token harian global (0 = tanpa batas)."""

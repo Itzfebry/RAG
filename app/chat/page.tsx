@@ -468,7 +468,11 @@ export default function ChatPage() {
           if (e instanceof ApiError && e.status === 409) {
             // batas 3 chat tercapai: jawaban tetap tampil, tapi tidak disimpan
             const d = (e.data ?? null) as { detail?: unknown } | null;
-            setQuotaAlert(typeof d?.detail === "string" ? d.detail : "Maksimal 3 chat tersimpan.");
+            setQuotaAlert(
+              typeof d?.detail === "string"
+                ? d.detail
+                : "Memori Chat maksimal menyimpan 3 riwayat pesan. Chat ini tidak akan tersimpan — hapus salah satu chat dulu.",
+            );
           }
           return;
         }
@@ -1271,26 +1275,45 @@ export default function ChatPage() {
           >
             <div
               role="alert"
-              className="flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-[13px] leading-5 text-amber-200"
+              className="relative flex items-start gap-3.5 overflow-hidden rounded-xl border border-white/[0.07] bg-[#101014] px-4 py-3.5 shadow-[0_16px_40px_-20px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.04)]"
             >
-              <motion.span
+              {/* hairline gradient senada identitas ITZ */}
+              <span
                 aria-hidden
-                animate={{ rotate: [0, -12, 12, -8, 8, 0] }}
-                transition={{ duration: 0.7, delay: 0.2, ease: "easeInOut" }}
-                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/20 text-amber-300"
-              >
-                <AlertTriangle className="h-3.5 w-3.5" />
-              </motion.span>
-              <span className="flex-1">
+                className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-fuchsia-400/50 via-violet-400/40 to-sky-400/40"
+              />
+              <span
+                aria-hidden
+                className="absolute inset-0 -z-10 bg-[radial-gradient(320px_80px_at_10%_0%,rgba(124,92,255,0.08),transparent_70%)]"
+              />
+              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-white/[0.09] bg-gradient-to-b from-white/[0.07] to-white/[0.02] text-violet-300">
+                <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2.2} />
+              </span>
+              <span className="flex-1 text-[13px] leading-[1.55]">
                 {quotaAlert.includes("Budget token") ? (
-                  <>Batas harian ITZ AI sudah tercapai. Coba lagi besok atau hubungi admin.</>
+                  <>
+                    <span className="mb-0.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                      Batas harian
+                    </span>
+                    <span className="text-zinc-300">
+                      Batas harian ITZ AI sudah tercapai. Coba lagi besok atau hubungi admin.
+                    </span>
+                  </>
                 ) : (
                   <>
-                    {quotaAlert}{" "}
-                    <a href="/login" className="underline underline-offset-2 hover:text-amber-100">
-                      Login
-                    </a>{" "}
-                    atau hubungi admin.
+                    <span className="mb-0.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                      Batas penyimpanan
+                    </span>
+                    <span className="text-zinc-300">
+                      {quotaAlert}{" "}
+                      <a
+                        href="/login"
+                        className="font-medium text-white underline decoration-white/30 underline-offset-2 transition-colors hover:decoration-white"
+                      >
+                        Login
+                      </a>{" "}
+                      atau hubungi admin.
+                    </span>
                   </>
                 )}
               </span>
@@ -1300,7 +1323,7 @@ export default function ChatPage() {
                 whileHover={{ scale: 1.06 }}
                 whileTap={{ scale: 0.92 }}
                 aria-label="Tutup peringatan"
-                className="shrink-0 rounded-md p-1 text-amber-300 transition-colors hover:bg-white/10"
+                className="shrink-0 rounded-md p-1 text-zinc-600 transition-colors hover:bg-white/[0.06] hover:text-zinc-300"
               >
                 <X className="h-3.5 w-3.5" />
               </motion.button>

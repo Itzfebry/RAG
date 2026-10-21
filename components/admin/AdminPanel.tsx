@@ -246,6 +246,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     setTokenDays,
     fetchStats,
     saveTokenBudget,
+    rateStats,
   } = tokensApi;
 
   const ToastStack = (
@@ -553,6 +554,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               setTokenDays={setTokenDays}
               fetchStats={fetchStats}
               saveTokenBudget={saveTokenBudget}
+              rateStats={rateStats}
             />
           )}
 

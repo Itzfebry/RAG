@@ -249,6 +249,10 @@ Formatting Rules: {sys_instr.get("formatting_rules", "")}
 - Setiap poin bernomor atau bullet diawali kata kunci tebal, lalu penjelasan singkat.
 - Blok kode untuk kode, perintah, atau contoh teknis, dengan nama bahasa.
 - Tutup jawaban panjang dengan ringkasan singkat atau langkah berikutnya bila relevan.
+- Untuk catatan penting, peringatan, atau info tambahan, gunakan blockquote ("> ") agar menonjol - bukan caps atau tanda seru berlebihan.
+- Istilah teknis atau perintah singkat dalam kalimat gunakan inline code (`contoh`).
+- Gunakan maksimal level heading ###; jangan pakai # (h1) untuk bagian kecil.
+- Jangan berlebihan memberi bold - bold hanya untuk istilah kunci, bukan kalimat penuh.
 - Jangan tambahkan kata penutup seperti "Done." atau "Selesai." di akhir jawaban.
 
 # Core Rules

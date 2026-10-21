@@ -384,6 +384,8 @@ async def stream_chat(payload: ChatRequest, request: Request):
     async def generate():
         answered = False
         streamed = False  # konten sudah sampai client? (untuk keputusan refund saat cancel)
+        usage_recorded = False  # apakah event usage dari agent sudah dicatat?
+        tokens_total = 0  # akumulasi token request ini (untuk rate tracker)
         try:
             async for chunk in agent_orchestrator.stream_chat_response(
                 payload.message,
@@ -403,6 +405,11 @@ async def stream_chat(payload: ChatRequest, request: Request):
                             int(u.get("prompt_tokens", 0) or 0),
                             int(u.get("completion_tokens", 0) or 0),
                             model_name,
+                        )
+                        usage_recorded = True
+                        tokens_total = int(u.get("total_tokens", 0) or 0) or (
+                            int(u.get("prompt_tokens", 0) or 0)
+                            + int(u.get("completion_tokens", 0) or 0)
                         )
                     except Exception:
                         pass
@@ -439,9 +446,22 @@ async def stream_chat(payload: ChatRequest, request: Request):
         try:
             elapsed = int((_t.perf_counter() - t0) * 1000)
             DatabaseService.record_request_event(model=model_name, latency_ms=elapsed)
+            # Rate live (RPM/TPM): window 60 detik, in-memory.
+            from backend.database.rate_repo import rate_tracker
+
+            rate_tracker.record(tokens=tokens_total)
         except Exception:
             with contextlib.suppress(Exception):
                 DatabaseService.record_request_event()
+        # Diagnostik: stream selesai normal tapi provider tidak mengirim token usage
+        # -> data analytics kosong padahal request tercatat. Warn agar mudah dilacak.
+        if not usage_recorded and answered:
+            logger.warning(
+                "[usage] stream selesai tanpa event usage (owner=%s model=%s) - "
+                "token hari ini tidak tercatat di analytics",
+                usage_owner,
+                model_name,
+            )
 
     return StreamingResponse(
         generate(),

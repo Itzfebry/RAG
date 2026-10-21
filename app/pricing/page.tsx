@@ -202,11 +202,23 @@ export default function PricingPage() {
   ];
 
   const planFeatures = (p: Plan) => {
-    const perPrompt = p.prompts > 0 ? Math.round(p.amount / p.prompts) : 0;
+    // prompts = kuota per hari; jadi total prompt selama masa aktif = prompts x days.
+    const days = p.days && p.days > 0 ? p.days : 0;
+    const totalPrompts = days > 0 ? p.prompts * days : 0;
+    const perPrompt =
+      days > 0 && p.prompts > 0 ? Math.round(p.amount / totalPrompts) : p.prompts > 0 ? Math.round(p.amount / p.prompts) : 0;
     const feats: Array<{ icon: React.ElementType | null; text: string }> = [
       { icon: Zap, text: `${p.prompts} prompt / hari` },
     ];
-    if (perPrompt > 0) feats.push({ icon: null, text: `≈ ${rupiah(perPrompt)} / prompt` });
+    if (perPrompt > 0) {
+      feats.push({
+        icon: null,
+        text:
+          days > 0
+            ? `≈ ${rupiah(perPrompt)} / prompt (${totalPrompts.toLocaleString("id-ID")} prompt total)`
+            : `≈ ${rupiah(perPrompt)} / prompt hari pertama`,
+      });
+    }
     feats.push({ icon: ShieldCheck, text: "Aktivasi otomatis, tanpa konfirmasi manual" });
     return feats;
   };
@@ -244,9 +256,11 @@ export default function PricingPage() {
         </div>
         <Link
           href="/chat"
-          className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-1.5 text-[13px] text-zinc-300 transition-colors hover:bg-white/[0.06]"
+          aria-label="Kembali ke chat"
+          title="Kembali ke chat"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.1] text-zinc-300 transition-colors hover:bg-white/[0.06]"
         >
-          <ArrowLeft className="h-3.5 w-3.5" /> Ke chat
+          <ArrowLeft className="h-4 w-4" />
         </Link>
       </header>
 
@@ -261,10 +275,6 @@ export default function PricingPage() {
             kuota langsung aktif
           </span>
         </h2>
-        <p className="mx-auto mt-3 max-w-[520px] text-[14.5px] leading-relaxed text-zinc-400">
-          Kuota prompt ITZ AI aktif otomatis begitu pembayaran tercatat — tanpa konfirmasi manual.
-          Semua paket memakai model AI yang sama, bedanya hanya jumlah kuota dan masa aktif.
-        </p>
       </section>
 
       {user && (
@@ -323,6 +333,9 @@ export default function PricingPage() {
                 : rank === plans.length - 1
                   ? "text-sky-400"
                   : "text-zinc-300";
+            // Warna aksen masa aktif: gradient fuchsia-violet-sky, senada teks judul hero.
+            const activeCls =
+              "font-semibold bg-gradient-to-r from-fuchsia-400 via-violet-300 to-sky-400 bg-clip-text text-transparent";
             const off =
               typeof p.discount_percent === "number" &&
               p.discount_percent > 0 &&
@@ -385,10 +398,10 @@ export default function PricingPage() {
                       <span>{f.text}</span>
                     </li>
                   ))}
-                  {/* masa aktif: digabung di daftar keterangan bawah, aksen oranye matte */}
+                  {/* masa aktif: digabung di daftar keterangan bawah, warna mengikuti paket */}
                   <li className="flex items-start gap-2.5 text-[13.5px] leading-snug">
-                    <Timer className="mt-0.5 h-3.5 w-3.5 shrink-0 text-orange-400/70" />
-                    <span className="text-orange-300/90">
+                    <Timer className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-300" />
+                    <span className={activeCls}>
                       {p.days && p.days > 0 ? `${p.days} hari masa aktif` : "Masa aktif selamanya"}
                     </span>
                   </li>

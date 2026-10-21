@@ -94,6 +94,7 @@ export type DashboardTabProps = {
   setTokenDays: Dispatch<SetStateAction<number>>;
   fetchStats: (period?: string) => Promise<void>;
   saveTokenBudget: () => Promise<void>;
+  rateStats: { rpd: number; rpm: number; tpm: number } | null;
 };
 
 export function DashboardTab({
@@ -117,6 +118,7 @@ export function DashboardTab({
   setTokenDays,
   fetchStats,
   saveTokenBudget,
+  rateStats,
 }: DashboardTabProps) {
   const tokDelta =
     tokenStats && Number(tokenStats.yesterday?.total || 0) > 0
@@ -431,6 +433,63 @@ export function DashboardTab({
             })}
           </div>
 
+          {/* Rate live: RPM / TPM (jendela 60 detik) + RPD hari ini */}
+          <div className="grid gap-4 md:grid-cols-3">
+            {[
+              {
+                label: "RPM",
+                hint: "request / menit terakhir",
+                value: rateStats ? String(rateStats.rpm) : "-",
+                icon: Activity,
+                iconColor: "text-sky-400",
+                iconBg: "bg-sky-500/10 border-sky-500/15",
+              },
+              {
+                label: "TPM",
+                hint: "token / menit terakhir",
+                value: rateStats ? fmtNum(rateStats.tpm) : "-",
+                icon: Coins,
+                iconColor: "text-violet-400",
+                iconBg: "bg-violet-500/10 border-violet-500/15",
+              },
+              {
+                label: "RPD",
+                hint: "request hari ini",
+                value: rateStats ? fmtNum(rateStats.rpd) : "-",
+                icon: CalendarDays,
+                iconColor: "text-emerald-400",
+                iconBg: "bg-emerald-500/10 border-emerald-500/15",
+              },
+            ].map((m) => {
+              const Icon = m.icon;
+              return (
+                <Card key={m.label} className={cardBase}>
+                  <CardContent className="flex items-center justify-between gap-3 p-4">
+                    <div>
+                      <p className={`${tLabel} flex items-center gap-1.5`}>
+                        <span
+                          className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"
+                          aria-hidden
+                        />
+                        {m.label}
+                      </p>
+                      <p className="mt-1.5 text-[24px] font-semibold leading-none tracking-tight text-white tabular-nums">
+                        {m.value}
+                      </p>
+                      <p className={tSmall}>{m.hint}</p>
+                    </div>
+                    <span
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${m.iconBg}`}
+                      aria-hidden
+                    >
+                      <Icon className={`h-4 w-4 ${m.iconColor}`} />
+                    </span>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
           <div className="grid gap-4 lg:grid-cols-3">
             {/* HERO: grafik token + delta + tab periode + 3 mini stat (alà Total Profit) */}
             <Card className={`${cardBase} lg:col-span-2`}>
@@ -442,7 +501,7 @@ export function DashboardTab({
                       <p className="text-[34px] font-semibold leading-none tracking-tight text-white tabular-nums">
                         {tokenStats ? fmtNum(tokenStats.today?.total) : "-"}
                       </p>
-                      <DeltaChip v={tokDelta} />
+                      <DeltaChip v={tokDelta} vs="kemarin" />
                     </div>
                     <p className="mt-2 text-[13px] text-zinc-500">
                       hari ini · {tokenStats ? fmtNum(tokenStats.today?.prompt) : "-"} prompt +{" "}
@@ -963,6 +1022,157 @@ export function DashboardTab({
                       </div>
                     ) : null;
                   })()}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Grafik token harian + kontribusi per user */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card className={cardBase}>
+              <CardHeader className={cardHeaderCls}>
+                <CardTitle className={`${tCard} flex items-center gap-2`}>
+                  <TrendingUp className="h-3.5 w-3.5 text-emerald-400" /> Tren Token Harian
+                </CardTitle>
+              </CardHeader>
+              <CardContent className={cardContentCls}>
+                {!Array.isArray(tokenStats?.daily) || tokenStats!.daily!.length === 0 ? (
+                  <div className="py-16 text-center text-[16px] text-zinc-500">
+                    Belum ada token tercatat.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <AreaChart
+                      data={tokenStats!.daily!.map((d) => ({
+                        day: fmtDay(String(d.day)),
+                        full: fmtDayFull(String(d.day)),
+                        prompt: d.prompt ?? 0,
+                        completion: d.completion ?? 0,
+                      }))}
+                      margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="tokPrompt" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.55} />
+                          <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.06} />
+                        </linearGradient>
+                        <linearGradient id="tokCompletion" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.55} />
+                          <stop offset="100%" stopColor="#38bdf8" stopOpacity={0.06} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="#27272a"
+                        opacity={0.35}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="day"
+                        stroke="#52525b"
+                        fontSize={11}
+                        fontFamily="monospace"
+                        tickLine={false}
+                        axisLine={{ stroke: "#27272a" }}
+                      />
+                      <YAxis
+                        stroke="#52525b"
+                        fontSize={11}
+                        fontFamily="monospace"
+                        tickFormatter={fmtCompact}
+                        width={44}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <Tooltip
+                        content={<ChartTooltip unit=" token" />}
+                        labelFormatter={(_, payload) => payload?.[0]?.payload?.full || _}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="prompt"
+                        name="Prompt"
+                        stackId="tok"
+                        stroke="#8b5cf6"
+                        strokeWidth={1.5}
+                        fill="url(#tokPrompt)"
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="completion"
+                        name="Completion"
+                        stackId="tok"
+                        stroke="#38bdf8"
+                        strokeWidth={1.5}
+                        fill="url(#tokCompletion)"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+            <Card className={cardBase}>
+              <CardHeader className={cardHeaderCls}>
+                <CardTitle className={`${tCard} flex items-center gap-2`}>
+                  <User className="h-3.5 w-3.5 text-sky-400" /> Token per User
+                </CardTitle>
+              </CardHeader>
+              <CardContent className={cardContentCls}>
+                {!Array.isArray(tokenStats?.by_user) || tokenStats!.by_user!.length === 0 ? (
+                  <div className="py-16 text-center text-[16px] text-zinc-500">
+                    Belum ada token tercatat.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart
+                      layout="vertical"
+                      data={tokenStats!.by_user!.map((r) => ({
+                        label: r.label || r.owner || "-",
+                        prompt: r.prompt ?? 0,
+                        completion: r.completion ?? 0,
+                        full: r.label || r.owner || "-",
+                      }))}
+                      margin={{ top: 4, right: 12, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="#27272a"
+                        opacity={0.35}
+                        horizontal={false}
+                      />
+                      <XAxis
+                        type="number"
+                        stroke="#52525b"
+                        fontSize={11}
+                        fontFamily="monospace"
+                        tickFormatter={fmtCompact}
+                        axisLine={{ stroke: "#27272a" }}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="label"
+                        stroke="#52525b"
+                        fontSize={11}
+                        fontFamily="monospace"
+                        width={110}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <Tooltip
+                        content={<ChartTooltip unit=" token" />}
+                        cursor={{ fill: "rgba(255,255,255,0.03)" }}
+                      />
+                      <Bar dataKey="prompt" name="Prompt" stackId="u" fill="#8b5cf6" radius={[0, 0, 0, 0]} />
+                      <Bar
+                        dataKey="completion"
+                        name="Completion"
+                        stackId="u"
+                        fill="#38bdf8"
+                        radius={[0, 3, 3, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </div>

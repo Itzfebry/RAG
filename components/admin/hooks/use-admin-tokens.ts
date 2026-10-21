@@ -113,6 +113,29 @@ export function useAdminTokens({
     return () => clearInterval(t);
   }, [isAuthenticated, fetchStats]);
 
+  // Rate live (RPM/TPM/RPD): refresh 10 detik, independen dari stats utama.
+  const [rateStats, setRateStats] = useState<{ rpd: number; rpm: number; tpm: number } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let alive = true;
+    const load = () => {
+      fetchApi<{ rpd: number; rpm: number; tpm: number }>("/api/python/admin/rate-stats")
+        .then((j) => {
+          if (alive) setRateStats(j);
+        })
+        .catch(() => {});
+    };
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+    const t = setInterval(load, 10000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [isAuthenticated]);
+
   const saveTokenBudget = async () => {
     const v = Math.max(0, parseInt(budgetInput || "0", 10) || 0);
     try {
@@ -158,6 +181,7 @@ export function useAdminTokens({
     setTokenDays,
     fetchStats,
     saveTokenBudget,
+    rateStats,
   };
 }
 

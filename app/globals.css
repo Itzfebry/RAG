@@ -140,14 +140,48 @@
 }
 .prose-itz :where(h2) {
   font-size: 1.16em;
+  color: rgb(250 250 250);
 }
 .prose-itz :where(h3) {
   font-size: 1.06em;
+  color: rgb(196 181 253);
 }
 .prose-itz :where(ul, ol) {
   margin-top: 0.85em;
   margin-bottom: 0.85em;
   padding-left: 1.6em;
+}
+.prose-itz :where(ul) {
+  list-style: none;
+}
+.prose-itz :where(ol) {
+  list-style: decimal;
+}
+.prose-itz :where(ul > li) {
+  position: relative;
+  padding-left: 0.35em;
+}
+.prose-itz :where(ul > li)::before {
+  content: "";
+  position: absolute;
+  left: -0.9em;
+  top: 0.72em;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, rgb(124 92 255), rgb(56 189 248));
+}
+.prose-itz :where(ul ul > li)::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 2px;
+  transform: rotate(45deg);
+  background: rgba(124, 92, 255, 0.65);
+}
+.prose-itz :where(ol > li)::marker {
+  color: rgb(196 181 253);
+  font-weight: 600;
+  font-size: 0.92em;
 }
 .prose-itz :where(li) {
   margin-top: 0.4em;
@@ -159,7 +193,7 @@
   color: rgb(250 250 250);
 }
 .prose-itz :where(blockquote) {
-  border-left: 2px solid rgba(255, 255, 255, 0.1);
+  border-left: 2px solid rgba(124, 92, 255, 0.55);
   padding-left: 1.1em;
   color: rgb(161 161 170);
   font-style: normal;

@@ -717,7 +717,7 @@ def user_create_chat(payload: ChatSessionCreate, user: dict = Depends(get_curren
     if DatabaseService.count_chat_sessions(uid) >= DatabaseService.CHAT_MAX_PER_USER:
         raise HTTPException(
             status_code=409,
-            detail=f"Maksimal {DatabaseService.CHAT_MAX_PER_USER} chat tersimpan. Hapus salah satu dulu.",
+            detail=f"Memori Chat maksimal menyimpan {DatabaseService.CHAT_MAX_PER_USER} riwayat pesan. Chat lebih dari itu tidak akan tersimpan — hapus salah satu chat dulu untuk membebaskan slot.",
         )
     s = DatabaseService.create_chat_session(uid, (payload.title or "").strip() or "Chat baru")
     return {"id": s["id"], "title": s.get("title"), "updated_at": s.get("updated_at")}
