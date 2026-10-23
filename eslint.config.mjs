@@ -3,6 +3,9 @@ import coreWebVitals from "eslint-config-next/core-web-vitals";
 const eslintConfig = [
   ...coreWebVitals,
   {
+    // Samakan cakupan file dengan config `next` supaya plugin `react-hooks`
+    // (didaftarkan di sana) ter-resolve saat aturan di bawah dievaluasi.
+    files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
     rules: {
       // Leftover debugging / noise in production code.
       "no-console": ["warn", { allow: ["warn", "error"] }],
@@ -17,7 +20,7 @@ const eslintConfig = [
     },
   },
   {
-    ignores: ["node_modules/**", ".next/**", ".claude/**", "out/**", "public/**"],
+    ignores: ["node_modules/**", ".next/**", ".claude/**", ".ua/**", "out/**", "public/**"],
   },
 ];
 
