@@ -787,14 +787,52 @@ def admin_stats(request: Request, admin: str = Depends(get_current_admin)):
     total_users = len(users)
     active_users = sum(1 for u in users if bool(u.get("is_active", True)))
     disabled_users = total_users - active_users
-    total_prompts_used = sum(int(u.get("prompts_used", 0) or 0) for u in users)
-    exhausted = sum(
-        1
-        for u in users
-        if int(u.get("max_prompts", 0) or 0) > 0
-        and int(u.get("prompts_used", 0) or 0) >= int(u.get("max_prompts", 0) or 0)
-    )
-    unlimited_users = sum(1 for u in users if int(u.get("max_prompts", 0) or 0) == 0)
+    # Kuota harian-only: metrik prompt dihitung dari pemakaian HARI INI (WIB),
+    # bukan counter kumulatif legacy `prompts_used` yang sudah tidak dipakai.
+    from backend.database.quota_repo import _wib_day
+
+    today = _wib_day()
+    daily_usage: dict[str, int] = {}
+    try:
+        from backend.database.db import _read_local_json, supabase_client
+
+        if supabase_client:
+            with contextlib.suppress(Exception):
+                rows = (
+                    supabase_client.table("user_daily_quota")
+                    .select("user_id,prompts_used")
+                    .eq("quota_day", today)
+                    .limit(10000)
+                    .execute()
+                    .data
+                    or []
+                )
+                for r in rows:
+                    daily_usage[str(r.get("user_id"))] = int(r.get("prompts_used") or 0)
+        if not daily_usage:
+            local = _read_local_json("user_daily_quota.json", {})
+            for uid, row in (local.get(today) or {}).items():
+                daily_usage[str(uid)] = int((row or {}).get("prompts_used") or 0)
+    except Exception:
+        pass
+    total_prompts_used = sum(daily_usage.values())
+    # exhausted / unlimited: resolusi batas harian per user yang memakai kuota hari ini.
+    daily_limits: dict[str, int] = {}
+    exhausted = 0
+    for u in users:
+        uid = str(u.get("id"))
+        if uid not in daily_usage:
+            continue
+        try:
+            plan = DatabaseService.resolve_daily_plan(uid)
+            limit = 0 if (not plan or plan.get("expired")) else int(plan.get("daily_limit") or 0)
+        except Exception:
+            limit = -1  # db error → jangan hitung sebagai exhausted/unlimited pasti
+        daily_limits[uid] = limit
+        if limit > 0 and daily_usage[uid] >= limit:
+            exhausted += 1
+    # Unlimited hanya via flag per user (tombol admin), bukan nilai kuota 0.
+    unlimited_users = sum(1 for u in users if bool(u.get("unlimited", False)))
     avg_prompts = round(total_prompts_used / total_users, 1) if total_users else 0
     # uptime
     try:
@@ -821,15 +859,15 @@ def admin_stats(request: Request, admin: str = Depends(get_current_admin)):
         cat_counts[name] = cat_counts.get(name, 0) + 1
     knowledge_by_category = [{"name": k, "value": v} for k, v in cat_counts.items()]
 
-    # top prompts consumers
-    top_users = sorted(users, key=lambda u: int(u.get("prompts_used", 0) or 0), reverse=True)[:6]
+    # top prompts consumers: peringkat berdasar pemakaian kuota HARI INI (WIB)
+    ranked = sorted((u for u in users), key=lambda u: daily_usage.get(str(u.get("id")), 0), reverse=True)[:6]
     top_prompts = [
         {
             "username": u.get("username"),
-            "prompts_used": int(u.get("prompts_used", 0) or 0),
-            "max_prompts": int(u.get("max_prompts", 0) or 0),
+            "prompts_used": daily_usage.get(str(u.get("id")), 0),
+            "max_prompts": daily_limits.get(str(u.get("id")), 0),
         }
-        for u in top_users
+        for u in ranked
     ]
 
     total_requests = total_prompts_used + trial_total_used
@@ -908,8 +946,18 @@ def admin_token_usage(days: int = 14, admin: str = Depends(get_current_admin)):
             u = users_by_id[owner]
             row["label"] = u.get("display_name") or u.get("username") or owner
             row["kind"] = "user"
-            row["prompts_used"] = int(u.get("prompts_used", 0) or 0)
-            row["max_prompts"] = int(u.get("max_prompts", 0) or 0)
+            # Kuota harian-only: batas/pemakaian dibaca dari paket harian, bukan counter legacy.
+            try:
+                q = DatabaseService.get_quota_status(u)
+                unlimited = bool(u.get("unlimited", False))
+                row["prompts_used"] = int(q.get("used_today") or 0) if q.get("mode") == "daily" else 0
+                row["max_prompts"] = (
+                    0 if unlimited else int(q.get("daily_limit") or 0) if q.get("mode") == "daily" else 0
+                )
+                row["unlimited"] = unlimited
+            except Exception:
+                row["prompts_used"] = 0
+                row["max_prompts"] = 0
             row["status"] = u.get("status", "active")
         elif str(owner).startswith("trial:"):
             row["label"] = f"Trial {str(owner).split(':', 1)[1]}"

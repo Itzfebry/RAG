@@ -1,6 +1,7 @@
 import contextlib
 import hmac
 import re
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -79,6 +80,7 @@ class UserCreateRequest(BaseModel):
     display_name: str | None = Field(default=None, max_length=64)
     max_prompts: int = Field(default=50, ge=0, le=100000)
     is_active: bool = True
+    unlimited: bool = False
 
     @field_validator("username")
     @classmethod
@@ -108,6 +110,7 @@ class UserUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, max_length=64)
     max_prompts: int | None = Field(default=None, ge=0, le=100000)
     is_active: bool | None = None
+    unlimited: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=128)
 
     @field_validator("password")
@@ -475,13 +478,8 @@ def user_password_reset(payload: PasswordResetRequest, request: Request, respons
 
 @router.get("/user/verify")
 def user_verify(request: Request, user: dict = Depends(get_current_user)):
-    remaining = (
-        max(0, int(user.get("max_prompts", 0)) - int(user.get("prompts_used", 0)))
-        if int(user.get("max_prompts", 0)) > 0
-        else None
-    )
-    # Mode harian menimpa angka legacy agar konsisten dengan /user/me.
-    # Mode "expired": masa aktif paket habis -> sisa kuota dianggap 0.
+    # Kuota harian-only: tanpa paket harian = tanpa batas (None).
+    remaining = None
     try:
         q = DatabaseService.get_quota_status(user)
         if q.get("mode") in ("daily", "expired"):
@@ -516,13 +514,13 @@ def user_me(request: Request, user: dict = Depends(get_current_user)):
     except Exception:
         daily_quota = None
     max_prompts = user.get("max_prompts")
-    prompts_used = user.get("prompts_used", 0)
-    remaining = max(0, int(max_prompts) - int(prompts_used)) if int(max_prompts or 0) else None
-    # Mode harian menimpa angka legacy agar UI menampilkan nilai aktif.
-    # Mode "expired": masa aktif paket habis -> remaining 0, bukan hitungan legacy.
-    if daily_quota and daily_quota.get("mode") in ("daily", "expired"):
+    remaining = None  # unlimited default; daily plan overrides below
+    prompts_used = 0  # legacy cumulative counter no longer authoritative
+    # Mode harian mengisi angka aktif agar UI menampilkan nilai berjalan.
+    # Mode "expired": masa aktif paket habis -> remaining 0.
+    if daily_quota and daily_quota.get("mode") in ("daily", "expired", "unlimited"):
         remaining = daily_quota.get("remaining")
-        prompts_used = daily_quota.get("used_today")
+        prompts_used = daily_quota.get("used_today") or 0
     return {
         "username": user["username"],
         "display_name": user.get("display_name"),
@@ -772,6 +770,30 @@ def user_delete_chat(session_id: str, user: dict = Depends(get_current_user)):
 
 @admin_router.get("/bootstrap")
 def admin_bootstrap(request: Request, admin: str = Depends(get_current_admin)):
+    # Live model catalog = HTTP call ke provider (timeout s/d 10s). Jangan
+    # dibebankan ke bootstrap yang dipanggil di setiap halaman admin; tab
+    # Models memuat katalog sendiri via /admin/models saat dibuka.
+    include_catalog = True
+    with contextlib.suppress(Exception):
+        raw = (request.query_params.get("include_catalog") or "").strip().lower()
+        if raw in ("0", "false", "no", "off"):
+            include_catalog = False
+    if include_catalog:
+        models = admin_list_models(request, admin=admin)
+    else:
+        cfg = DatabaseService.get_config_table("ai_model_config")
+        models = {
+            "current": {
+                "active_model": cfg.get("active_model") or "",
+                "fallback_models": cfg.get("fallback_models") or [],
+                "provider": cfg.get("provider") or "openrouter",
+                "api_base_url": cfg.get("api_base_url") or "",
+                "temperature": cfg.get("temperature", 0.4),
+                "reasoning_enabled": cfg.get("reasoning_enabled", False),
+                "max_tokens": cfg.get("max_tokens", 8192),
+            },
+            "live_catalog": {"object": "list", "data": [], "deferred": True},
+        }
     return {
         "config": {
             "identity": get_config("ai_identity", admin),
@@ -784,31 +806,55 @@ def admin_bootstrap(request: Request, admin: str = Depends(get_current_admin)):
         },
         "categories": get_knowledge_categories(admin),
         "entries": get_knowledge_entries(None, admin),
-        "models": admin_list_models(request, admin=admin),
+        "models": models,
         "users": admin_list_users(admin),
         "settings": admin_get_settings(admin),
     }
 
 
+class UserQuotaGrantRequest(BaseModel):
+    """Grant kuota manual dari panel admin (angka ditentukan admin + paket)."""
+
+    prompts: int = Field(ge=1, le=100000, description="Kuota harian yang diberikan")
+    plan_id: str | None = Field(default=None, max_length=64, description="Paket acuan (opsional)")
+    label: str | None = Field(default=None, max_length=64, description="Label tampilan (opsional)")
+    days: int = Field(default=0, ge=0, le=3650, description="0 = tanpa batas waktu")
+
+
 @admin_router.get("/users")
 def admin_list_users(admin: str = Depends(get_current_admin)):
     users = DatabaseService.list_users()
-    # never leak password_hash
-    return [
-        {
-            "id": u.get("id"),
-            "username": u.get("username"),
-            "display_name": u.get("display_name"),
-            "email": u.get("email"),
-            "provider": u.get("provider") or "manual",
-            "max_prompts": u.get("max_prompts"),
-            "prompts_used": u.get("prompts_used", 0),
-            "is_active": u.get("is_active", True),
-            "created_at": u.get("created_at"),
-            "updated_at": u.get("updated_at"),
-        }
-        for u in users
-    ]
+    # Status kuota harian per user (bulk: 3 query total, hindari N+1 di panel admin).
+    try:
+        quota = DatabaseService.status_map(users)
+    except Exception:
+        quota = {}
+    rows = []
+    for u in users:
+        # never leak password_hash / session_version
+        uid = str(u.get("id"))
+        rows.append(
+            {
+                "id": uid,
+                "username": u.get("username"),
+                "display_name": u.get("display_name"),
+                "email": u.get("email"),
+                "provider": u.get("provider") or "manual",
+                "max_prompts": u.get("max_prompts"),
+                "prompts_used": u.get("prompts_used", 0),
+                "is_active": u.get("is_active", True),
+                "unlimited": bool(u.get("unlimited", False)),
+                # Satu sumber kuota: object `quota` (harian WIB).
+                "quota": quota.get(uid),
+                # Grant manual admin (jika ada) supaya form bisa menampilkannya.
+                "manual_daily_limit": u.get("manual_daily_limit"),
+                "manual_plan_label": u.get("manual_plan_label"),
+                "manual_expires_at": u.get("manual_expires_at"),
+                "created_at": u.get("created_at"),
+                "updated_at": u.get("updated_at"),
+            }
+        )
+    return rows
 
 
 @admin_router.post("/users")
@@ -827,6 +873,7 @@ def admin_create_user(payload: UserCreateRequest, request: Request, admin: str =
             "max_prompts": int(payload.max_prompts),
             "prompts_used": 0,
             "is_active": bool(payload.is_active),
+            "unlimited": bool(payload.unlimited),
         }
     )
     return {
@@ -838,6 +885,7 @@ def admin_create_user(payload: UserCreateRequest, request: Request, admin: str =
             "max_prompts": user.get("max_prompts"),
             "prompts_used": 0,
             "is_active": user.get("is_active"),
+            "unlimited": bool(user.get("unlimited", False)),
         },
     }
 
@@ -858,10 +906,25 @@ def admin_update_user(
         updates["max_prompts"] = int(payload.max_prompts)
     if payload.is_active is not None:
         updates["is_active"] = bool(payload.is_active)
+    if payload.unlimited is not None:
+        updates["unlimited"] = bool(payload.unlimited)
     if payload.password:
         updates["password_hash"] = hash_password(payload.password)
         updates["prompts_used"] = existing.get("prompts_used", 0)  # keep counter unless reset explicitly
     updated = DatabaseService.update_user(user_id, updates)
+    if updated is None:
+        raise HTTPException(status_code=500, detail="Gagal memperbarui user di database")
+    # Jangan lapor sukses kalau flag unlimited tidak benar-benar tersimpan
+    # (skenario: kolom app_users.unlimited belum ada → update Supabase gagal
+    # lalu di-log sebagai warning). Jalankan migrations/supabase_migration_unlimited.sql.
+    if payload.unlimited is not None and bool(updated.get("unlimited", False)) != bool(payload.unlimited):
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Flag unlimited tidak tersimpan. Cek kolom app_users.unlimited "
+                "(jalankan migrations/supabase_migration_unlimited.sql) dan log server."
+            ),
+        )
     return {
         "status": "success",
         "user": {
@@ -871,7 +934,87 @@ def admin_update_user(
             "max_prompts": updated.get("max_prompts"),
             "prompts_used": updated.get("prompts_used", 0),
             "is_active": updated.get("is_active"),
+            "unlimited": bool(updated.get("unlimited", False)),
         },
+    }
+
+
+@admin_router.post("/users/{user_id}/quota")
+def admin_grant_user_quota(
+    user_id: str,
+    payload: UserQuotaGrantRequest,
+    request: Request,
+    admin: str = Depends(get_current_admin),
+):
+    """Beri/ubah kuota manual user: angka ditentukan admin + paket acuan opsional.
+
+    Grant manual menang atas paket paid dan kuota default global, tapi tetap
+    kalah dari flag Unlimited. `days` menentukan masa aktif (0 = tanpa batas).
+    """
+    ip = get_client_ip(request)
+    enforce_rate_limit(f"admin:users_quota:{ip}", 30, 60)
+    existing = DatabaseService.get_user_by_id(user_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    plan_label = (payload.label or "").strip() or None
+    if payload.plan_id:
+        plan = DatabaseService.find_plan(str(payload.plan_id))
+        if not plan:
+            raise HTTPException(status_code=400, detail=f"Paket tidak ditemukan: {payload.plan_id}")
+        plan_label = plan_label or f"{plan.get('label') or plan.get('id')} (manual)"
+
+    expires_at: str | None = None
+    if int(payload.days) > 0:
+        expires_at = (datetime.now() + timedelta(days=int(payload.days))).isoformat()
+
+    updates: dict[str, Any] = {
+        "manual_daily_limit": int(payload.prompts),
+        "manual_plan_label": plan_label or "Kuota manual",
+        "manual_expires_at": expires_at,
+    }
+    updated = DatabaseService.update_user(user_id, updates)
+    if updated is None:
+        raise HTTPException(status_code=500, detail="Gagal menyimpan kuota manual user")
+    if int(updated.get("manual_daily_limit") or 0) != int(payload.prompts):
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Kuota manual tidak tersimpan. Cek kolom app_users.manual_daily_limit "
+                "(jalankan migrations/supabase_migration_manual_quota.sql) dan log server."
+            ),
+        )
+    return {
+        "status": "success",
+        "user": {
+            "id": updated.get("id"),
+            "username": updated.get("username"),
+            "manual_daily_limit": updated.get("manual_daily_limit"),
+            "manual_plan_label": updated.get("manual_plan_label"),
+            "manual_expires_at": updated.get("manual_expires_at"),
+        },
+        "quota": DatabaseService.get_quota_status(updated),
+    }
+
+
+@admin_router.delete("/users/{user_id}/quota")
+def admin_clear_user_quota(user_id: str, request: Request, admin: str = Depends(get_current_admin)):
+    """Hapus grant kuota manual; user kembali ke paket paid / kuota default."""
+    ip = get_client_ip(request)
+    enforce_rate_limit(f"admin:users_quota_del:{ip}", 30, 60)
+    existing = DatabaseService.get_user_by_id(user_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="User not found")
+    updated = DatabaseService.update_user(
+        user_id,
+        {"manual_daily_limit": None, "manual_plan_label": None, "manual_expires_at": None},
+    )
+    if updated is None:
+        raise HTTPException(status_code=500, detail="Gagal menghapus kuota manual user")
+    return {
+        "status": "success",
+        "user": {"id": updated.get("id"), "username": updated.get("username")},
+        "quota": DatabaseService.get_quota_status(updated),
     }
 
 
@@ -891,6 +1034,8 @@ def admin_reset_usage(user_id: str, request: Request, admin: str = Depends(get_c
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
     updated = DatabaseService.update_user(user_id, {"prompts_used": 0})
+    if updated is None:
+        raise HTTPException(status_code=500, detail="Gagal mereset pemakaian user")
     return {
         "status": "success",
         "user": {"id": updated.get("id"), "username": updated.get("username"), "prompts_used": 0},

@@ -33,7 +33,7 @@ _tmp*.txt
 
 # Log runtime
 *.log
-
+.ua
 # OS files
 .DS_Store
 Thumbs.db

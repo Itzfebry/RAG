@@ -61,8 +61,15 @@ export function useAdminUsers({ authExpired, pushToast }: AdminUsersDeps) {
     username: "",
     password: "",
     display_name: "",
-    max_prompts: 50,
     is_active: true,
+    unlimited: false,
+  });
+  // Form grant kuota manual (dipakai modal edit; tidak perlu effect prefill).
+  const [grantForm, setGrantForm] = useState({
+    plan_id: "",
+    prompts: "",
+    days: "0",
+    label: "",
   });
 
   const loadUsersAndSettings = async () => {
@@ -121,16 +128,16 @@ export function useAdminUsers({ authExpired, pushToast }: AdminUsersDeps) {
     const body = isEdit
       ? {
           display_name: userForm.display_name || null,
-          max_prompts: Number(userForm.max_prompts),
           is_active: userForm.is_active,
+          unlimited: userForm.unlimited,
           ...(userForm.password ? { password: userForm.password } : {}),
         }
       : {
           username: userForm.username.trim().toLowerCase(),
           password: userForm.password,
           display_name: userForm.display_name || null,
-          max_prompts: Number(userForm.max_prompts),
           is_active: userForm.is_active,
+          unlimited: userForm.unlimited,
         };
     try {
       await fetchApi(url, { method, json: body });
@@ -141,9 +148,10 @@ export function useAdminUsers({ authExpired, pushToast }: AdminUsersDeps) {
         username: "",
         password: "",
         display_name: "",
-        max_prompts: 50,
         is_active: true,
+        unlimited: false,
       });
+      setGrantForm({ plan_id: "", prompts: "", days: "0", label: "" });
       loadUsersAndSettings();
     } catch (e) {
       if (e instanceof ApiError && e.status > 0 && authExpired(e.status)) return;
@@ -178,6 +186,54 @@ export function useAdminUsers({ authExpired, pushToast }: AdminUsersDeps) {
     } catch (e) {
       if (e instanceof ApiError && e.status > 0 && authExpired(e.status)) return;
       pushToast("error", "Gagal reset");
+    }
+  };
+
+  const handleGrantQuota = async (
+    id: string,
+    body: { prompts: number; plan_id?: string | null; days?: number; label?: string | null },
+  ) => {
+    if (savingUser) return;
+    setSavingUser(true);
+    try {
+      await fetchApi(`/api/python/admin/users/${id}/quota`, { method: "POST", json: body });
+      pushToast(
+        "success",
+        "Kuota manual disimpan",
+        `${body.prompts} prompt/hari${body.days ? ` selama ${body.days} hari` : " tanpa batas waktu"}`,
+      );
+      loadUsersAndSettings();
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0 && authExpired(e.status)) return;
+      if (e instanceof ApiError && e.status > 0) {
+        const d = (e.data ?? {}) as { detail?: unknown };
+        pushToast(
+          "error",
+          "Gagal simpan kuota",
+          typeof d.detail === "string" ? d.detail : `HTTP ${e.status}`,
+        );
+      } else {
+        pushToast("error", "Gagal simpan kuota", "Tidak bisa menghubungi backend");
+      }
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
+  const handleClearQuota = async (id: string) => {
+    if (!confirm("Hapus kuota manual user ini? User kembali ke paket paid / kuota default."))
+      return;
+    if (savingUser) return;
+    setSavingUser(true);
+    try {
+      await fetchApi(`/api/python/admin/users/${id}/quota`, { method: "DELETE" });
+      pushToast("success", "Kuota manual dihapus");
+      loadUsersAndSettings();
+    } catch (e) {
+      if (e instanceof ApiError && e.status > 0 && authExpired(e.status)) return;
+      pushToast("error", "Gagal hapus kuota");
+    } finally {
+      setSavingUser(false);
     }
   };
 
@@ -231,11 +287,15 @@ export function useAdminUsers({ authExpired, pushToast }: AdminUsersDeps) {
     setEditingUserId,
     userForm,
     setUserForm,
+    grantForm,
+    setGrantForm,
     loadUsersAndSettings,
     handleSyncLocalUsers,
     handleCreateOrUpdateUser,
     handleDeleteUser,
     handleResetUsage,
+    handleGrantQuota,
+    handleClearQuota,
     handleSaveSettings,
   };
 }

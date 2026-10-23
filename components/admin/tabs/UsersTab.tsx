@@ -8,7 +8,7 @@
  */
 
 import React, { type Dispatch, type FormEvent, type SetStateAction } from "react";
-import { AlertCircle, Check, Loader2, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
+import { AlertCircle, Check, Loader2, Plus, RefreshCw, Save, Stamp, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,15 +26,29 @@ import {
   inputCls,
 } from "../adminStyles";
 import { fmtDateTime } from "../lib-helpers";
-import type { AdminUser } from "@/lib/api-types";
+import type { AdminUser, PricingPlanSummary } from "@/lib/api-types";
 import type { AppSettings, AppSettingsSetter } from "../hooks/use-admin-users";
+
+export type ManualQuotaPayload = {
+  prompts: number;
+  plan_id?: string | null;
+  days?: number;
+  label?: string | null;
+};
 
 export type UserFormState = {
   username: string;
   password: string;
   display_name: string;
-  max_prompts: number;
   is_active: boolean;
+  unlimited: boolean;
+};
+
+export type GrantFormState = {
+  plan_id: string;
+  prompts: string;
+  days: string;
+  label: string;
 };
 
 export type UsersTabProps = {
@@ -43,6 +57,8 @@ export type UsersTabProps = {
   syncingUsers: boolean;
   appSettings: AppSettings;
   setAppSettings: AppSettingsSetter;
+  /** Paket dari tab Pricing (default kuota, kuota paket) untuk grant manual. */
+  plans: PricingPlanSummary[];
   onSaveSettings: () => Promise<void>;
   onSyncLocalUsers: () => Promise<void>;
   userModalOpen: boolean;
@@ -53,9 +69,13 @@ export type UsersTabProps = {
   setEditingUserId: Dispatch<SetStateAction<string | null>>;
   userForm: UserFormState;
   setUserForm: Dispatch<SetStateAction<UserFormState>>;
+  grantForm: GrantFormState;
+  setGrantForm: Dispatch<SetStateAction<GrantFormState>>;
   onSubmitUser: (e: FormEvent) => Promise<void>;
   onDeleteUser: (id: string) => Promise<void>;
   onResetUsage: (id: string) => Promise<void>;
+  onGrantQuota: (id: string, body: ManualQuotaPayload) => Promise<void>;
+  onClearQuota: (id: string) => Promise<void>;
 };
 
 export function UsersTab({
@@ -64,6 +84,7 @@ export function UsersTab({
   syncingUsers,
   appSettings,
   setAppSettings,
+  plans,
   onSaveSettings: handleSaveSettings,
   onSyncLocalUsers: handleSyncLocalUsers,
   userModalOpen,
@@ -74,10 +95,29 @@ export function UsersTab({
   setEditingUserId,
   userForm,
   setUserForm,
+  grantForm,
+  setGrantForm,
   onSubmitUser: handleCreateOrUpdateUser,
   onDeleteUser: handleDeleteUser,
   onResetUsage: handleResetUsage,
+  onGrantQuota: handleGrantQuota,
+  onClearQuota: handleClearQuota,
 }: UsersTabProps) {
+  const editingUser = editingUserId
+    ? users.find((u) => String(u.id) === String(editingUserId))
+    : null;
+  const submitGrant = async () => {
+    if (!editingUserId) return;
+    const prompts = Math.floor(Number(grantForm.prompts));
+    if (!Number.isFinite(prompts) || prompts <= 0) return;
+    const selected = plans.find((p) => String(p.id) === grantForm.plan_id);
+    await handleGrantQuota(editingUserId, {
+      prompts,
+      plan_id: grantForm.plan_id || null,
+      days: Math.max(0, Math.floor(Number(grantForm.days) || 0)),
+      label: grantForm.label.trim() || (selected ? `${selected.label} (manual)` : "Kuota manual"),
+    });
+  };
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-3 duration-300 fill-mode-both">
       <SectionHeader
@@ -236,9 +276,10 @@ export function UsersTab({
                 username: "",
                 password: "",
                 display_name: "",
-                max_prompts: 50,
                 is_active: true,
+                unlimited: false,
               });
+              setGrantForm({ plan_id: "", prompts: "", days: "0", label: "" });
               setUserModalOpen(true);
             }}
             className="h-9 bg-white text-black hover:bg-zinc-100 gap-1.5 text-[16px] font-medium"
@@ -271,7 +312,10 @@ export function UsersTab({
                       Status
                     </th>
                     <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">
-                      Kuota prompt
+                      Status langganan
+                    </th>
+                    <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">
+                      Kuota harian (WIB)
                     </th>
                     <th className="px-4 py-3 text-[12px] font-semibold tracking-[0.08em] text-zinc-500">
                       Dibuat
@@ -286,12 +330,50 @@ export function UsersTab({
                 </thead>
                 <tbody className="divide-y divide-white/[0.06]">
                   {users.map((u) => {
-                    const isUnlimited = Number(u.max_prompts) === 0;
+                    // Unlimited HANYA flag admin; max_prompts legacy 0 tidak lagi berarti ∞.
+                    // Sumber kebenaran kuota = status harian dari backend (field `quota`).
+                    const quota = u.quota;
+                    // Sumber kebenaran: object `quota` (harian WIB). Legacy max_prompts
+                    // hanya fallback tampilan untuk user lama.
+                    const isUnlimited = Boolean(u.unlimited) || quota?.mode === "unlimited";
+                    const dailyLimit = quota?.daily_limit ?? null;
+                    const dailyUsed = quota?.used_today ?? null;
+                    const dailyRemaining = quota?.remaining ?? null;
+                    const quotaExpired = quota?.mode === "expired";
+                    const hasDaily = !isUnlimited && !quotaExpired && dailyLimit != null;
+                    const planSource = quota?.plan_source ?? null;
+                    const planLabel = quota?.plan_label ?? (u.manual_plan_label || null);
+                    const planDaysLeft = quota?.plan_days_left ?? null;
+                    const subscription = isUnlimited
+                      ? { text: "Tanpa batas" }
+                      : planSource === "manual"
+                        ? {
+                            text: quotaExpired
+                              ? "Manual habis"
+                              : `Manual: ${planLabel || "kuota manual"}`,
+                          }
+                        : planSource === "plan"
+                          ? {
+                              text: quotaExpired
+                                ? "Langganan habis"
+                                : `Langganan: ${planLabel || "-"}`,
+                            }
+                          : planSource === "default"
+                            ? { text: "Tidak berlangganan" }
+                            : { text: "Tidak diketahui" };
+                    // max_prompts legacy > 0 = batas kumulatif lama; 0 = tak dipakai lagi,
+                    // jadi jangan tampilkan "kuota habis" atau ∞ palsu.
+                    const hasLegacyLimit = Number(u.max_prompts) > 0;
                     const exhausted =
-                      !isUnlimited && Number(u.prompts_used || 0) >= Number(u.max_prompts);
-                    const remaining = isUnlimited
-                      ? Infinity
-                      : Math.max(0, Number(u.max_prompts) - Number(u.prompts_used || 0));
+                      !isUnlimited &&
+                      (quotaExpired || (hasDaily && Number(dailyUsed || 0) >= Number(dailyLimit)));
+                    const remaining = hasDaily
+                      ? Math.max(0, Number(dailyRemaining ?? 0))
+                      : isUnlimited
+                        ? Infinity
+                        : hasLegacyLimit
+                          ? Math.max(0, Number(u.max_prompts) - Number(u.prompts_used || 0))
+                          : NaN;
                     const isGoogle = (u.provider || "").toLowerCase() === "google";
                     return (
                       <tr key={u.id} className="transition-colors hover:bg-white/[0.02]">
@@ -376,20 +458,62 @@ export function UsersTab({
                           )}
                         </td>
                         <td className="px-4 py-3.5">
-                          <div className="text-[14px] font-medium tabular-nums text-zinc-200">
-                            {u.prompts_used || 0} / {isUnlimited ? "∞" : u.max_prompts}
-                            {!isUnlimited && (
-                              <span className="ml-1.5 text-zinc-500">(sisa {remaining})</span>
+                          <div className="flex flex-col items-start gap-1">
+                            <span className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 text-[11.5px] font-medium text-zinc-400">
+                              {subscription.text}
+                            </span>
+                            {!isUnlimited && planSource !== "default" && planDaysLeft != null && (
+                              <span className="text-[12px] text-zinc-500">
+                                {planDaysLeft} hari lagi
+                              </span>
                             )}
                           </div>
-                          {!isUnlimited && (
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="text-[14px] font-medium tabular-nums text-zinc-200">
+                            {isUnlimited
+                              ? "∞ tanpa batas"
+                              : quotaExpired
+                                ? "sisa 0 / paket habis"
+                                : hasDaily
+                                  ? `sisa ${remaining} / ${dailyLimit}`
+                                  : hasLegacyLimit
+                                    ? `sisa ${Math.max(
+                                        0,
+                                        Number(u.max_prompts) - Number(u.prompts_used || 0),
+                                      )} / ${u.max_prompts}`
+                                    : "tidak diketahui"}
+                            {hasDaily && (
+                              <span className="ml-1.5 text-zinc-500">
+                                (terpakai {dailyUsed || 0})
+                              </span>
+                            )}
+                          </div>
+                          {hasDaily && (
                             <div className="mt-1.5 h-1 w-28 overflow-hidden rounded-full bg-white/[0.06]">
                               <div
-                                className={`h-full rounded-full ${exhausted ? "bg-amber-500" : "bg-emerald-500"}`}
+                                className="h-full rounded-full bg-white/40"
                                 style={{
-                                  width: `${Math.min(100, Math.round((Number(u.prompts_used || 0) / Number(u.max_prompts)) * 100))}%`,
+                                  width: `${Math.min(
+                                    100,
+                                    Math.round(
+                                      (Number(remaining) / Math.max(1, Number(dailyLimit))) * 100,
+                                    ),
+                                  )}%`,
                                 }}
                               />
+                            </div>
+                          )}
+                          <div className="mt-1 text-[12px] text-zinc-500">
+                            {isUnlimited
+                              ? "tanpa batas harian"
+                              : u.plan_label
+                                ? `paket: ${u.plan_label} · reset 00:00 WIB`
+                                : "paket tidak dikenal"}
+                          </div>
+                          {hasLegacyLimit && !hasDaily && (
+                            <div className="mt-1 text-[12px] text-zinc-600">
+                              legacy kumulatif: {u.prompts_used || 0} / {u.max_prompts}
                             </div>
                           )}
                         </td>
@@ -419,8 +543,14 @@ export function UsersTab({
                                   username: u.username,
                                   password: "",
                                   display_name: u.display_name || "",
-                                  max_prompts: Number(u.max_prompts),
                                   is_active: Boolean(u.is_active),
+                                  unlimited: Boolean(u.unlimited),
+                                });
+                                setGrantForm({
+                                  plan_id: "",
+                                  prompts: u.manual_daily_limit ? String(u.manual_daily_limit) : "",
+                                  days: "0",
+                                  label: u.manual_plan_label || "",
                                 });
                                 setUserModalOpen(true);
                               }}
@@ -502,17 +632,26 @@ export function UsersTab({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className={tLabelPlain}>Batas prompt (0 = unlimited)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100000}
-                    value={userForm.max_prompts}
-                    onChange={(e) =>
-                      setUserForm((p) => ({ ...p, max_prompts: Number(e.target.value) }))
+                  <Label className={tLabelPlain}>Unlimited</Label>
+                  <Button
+                    type="button"
+                    variant={userForm.unlimited ? "default" : "outline"}
+                    onClick={() => setUserForm((p) => ({ ...p, unlimited: !p.unlimited }))}
+                    className={
+                      userForm.unlimited
+                        ? "h-9 w-full bg-emerald-500/90 text-[13px] font-semibold text-black hover:bg-emerald-400"
+                        : "h-9 w-full border-white/10 text-[13px]"
                     }
-                    className={inputCls}
-                  />
+                    title="Tanpa batas prompt harian untuk user ini"
+                  >
+                    {userForm.unlimited
+                      ? "Unlimited aktif ∞ (klik untuk matikan)"
+                      : "Set Unlimited (tanpa batas)"}
+                  </Button>
+                  <p className="text-[12px] text-zinc-500">
+                    Satu-satunya cara memberi akses tanpa batas. User lain memakai kuota harian
+                    (paket paid atau default di tab Pricing).
+                  </p>
                 </div>
                 <label className="flex items-center gap-2 text-[16px] text-zinc-300">
                   <input
@@ -523,6 +662,99 @@ export function UsersTab({
                   />{" "}
                   Aktif
                 </label>
+                {editingUserId && (
+                  <div className="space-y-3 rounded-lg border border-white/[0.08] bg-white/[0.02] p-3">
+                    <div className="flex items-center gap-2">
+                      <Stamp className="h-4 w-4 text-sky-400/80" />
+                      <span className="text-[14px] font-medium text-zinc-200">Kuota manual</span>
+                    </div>
+                    <p className="text-[12px] text-zinc-500">
+                      Status saat ini:{" "}
+                      {editingUser?.unlimited
+                        ? "Unlimited"
+                        : editingUser?.plan_source === "manual"
+                          ? `manual — ${editingUser?.manual_plan_label || "kuota manual"}`
+                          : editingUser?.plan_source === "plan"
+                            ? `langganan — ${editingUser?.plan_label || "-"}`
+                            : "tidak berlangganan"}
+                      {editingUser?.manual_daily_limit
+                        ? ` · ${editingUser.manual_daily_limit} prompt/hari`
+                        : ""}
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label className={tLabelPlain}>Kuota harian</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={100000}
+                          value={grantForm.prompts}
+                          onChange={(e) => setGrantForm((p) => ({ ...p, prompts: e.target.value }))}
+                          placeholder="mis. 500"
+                          className={inputCls}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className={tLabelPlain}>Masa aktif (hari)</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={3650}
+                          value={grantForm.days}
+                          onChange={(e) => setGrantForm((p) => ({ ...p, days: e.target.value }))}
+                          className={inputCls}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className={tLabelPlain}>Paket acuan (opsional)</Label>
+                      <select
+                        value={grantForm.plan_id}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          const p = plans.find((pl) => String(pl.id) === id);
+                          setGrantForm((prev) => ({
+                            ...prev,
+                            plan_id: id,
+                            prompts: prev.prompts || (p ? String(p.prompts) : prev.prompts),
+                            days: prev.days && prev.days !== "0" ? prev.days : String(p?.days || 0),
+                          }));
+                        }}
+                        className="h-9 w-full rounded-md border border-white/10 bg-zinc-900 px-3 text-[14px] text-zinc-200"
+                      >
+                        <option value="">Tanpa paket (angka manual saja)</option>
+                        {plans.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.label} · {p.prompts} prompt/hari
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[12px] text-zinc-500">
+                        0 hari = tanpa batas waktu. Grant manual menang atas paket paid & kuota
+                        default, tapi kalah dari Unlimited.
+                      </p>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={savingUser || !editingUser?.manual_daily_limit}
+                        onClick={() => editingUserId && handleClearQuota(editingUserId)}
+                        className="h-9 border-white/10 text-[14px]"
+                      >
+                        Hapus kuota manual
+                      </Button>
+                      <Button
+                        type="button"
+                        disabled={savingUser || !grantForm.prompts}
+                        onClick={submitGrant}
+                        className="h-9 bg-sky-500/90 text-[14px] font-medium text-black hover:bg-sky-400 disabled:opacity-50"
+                      >
+                        {editingUser?.manual_daily_limit ? "Update kuota" : "Beri kuota"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 <div className="flex justify-end gap-2 pt-2">
                   <Button
                     type="button"

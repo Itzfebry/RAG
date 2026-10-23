@@ -151,6 +151,7 @@ class ConfigMixin:
                 ]
             },
             "pricing_config": {
+                "default_daily_prompts": 20,
                 "plans": [
                     {"id": "100", "label": "Paket 100 Prompt", "prompts": 100, "amount": 30000, "popular": False},
                     {"id": "200", "label": "Paket 200 Prompt", "prompts": 200, "amount": 50000, "popular": True},

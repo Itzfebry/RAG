@@ -174,7 +174,7 @@ export function useAdminBootstrap({
     setUsersLoading(true);
     try {
       const b = await fetchApi<AdminBootstrap>(
-        "/api/python/admin/bootstrap",
+        "/api/python/admin/bootstrap?include_catalog=0",
         {},
         { fallbackError: "Gagal memuat data admin" },
       );

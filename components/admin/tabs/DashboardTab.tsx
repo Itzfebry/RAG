@@ -561,7 +561,8 @@ export function DashboardTab({
                         stroke="#52525b"
                         fontSize={11}
                         fontFamily="monospace"
-                        interval={0}
+                        interval={tokenDays <= 7 ? 0 : tokenDays <= 14 ? 1 : 5}
+                        minTickGap={36}
                         tickLine={false}
                         axisLine={{ stroke: "#27272a" }}
                       />

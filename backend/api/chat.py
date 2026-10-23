@@ -83,7 +83,11 @@ def get_current_chat_user_optional(request: Request) -> dict | None:
 
 
 def _active_daily_plan(user: dict) -> dict | None:
-    """Paket harian aktif user dari database (None = legacy/unlimited)."""
+    """Paket harian aktif user dari database (None = unlimited/default-off)."""
+    from backend.database.quota_repo import QuotaMixin
+
+    if QuotaMixin._is_unlimited(user):
+        return None  # tombol Unlimited tidak dipakai kuota harian
     try:
         return DatabaseService.resolve_daily_plan(str(user.get("id")))
     except Exception:

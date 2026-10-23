@@ -4,6 +4,18 @@ from typing import Any
 
 MAX_PLAN_DAYS = 3650
 
+# Kolom order yang dibutuhkan resolusi kuota — `select("*")` ikut menarik `proof`
+# (base64 screenshot pembayaran) sehingga payload admin bisa membengkak.
+ORDER_QUOTA_COLUMNS = "id,user_id,plan_id,status,paid_at,days,created_at"
+
+
+def _project_order(row: dict[str, Any], columns: str | None) -> dict[str, Any]:
+    """Batasi field order sesuai `columns` (None = apa adanya)."""
+    if not columns or not isinstance(row, dict):
+        return row
+    wanted = [c.strip() for c in columns.split(",") if c.strip()]
+    return {k: row.get(k) for k in wanted}
+
 
 def parse_dt(value: Any) -> datetime | None:
     """Parse ISO timestamp (mis. order.paid_at). None bila tidak valid."""
@@ -97,25 +109,25 @@ class BillingMixin:
         return row
 
     @staticmethod
-    def list_orders(user_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    def list_orders(user_id: str | None = None, limit: int = 100, columns: str | None = None) -> list[dict[str, Any]]:
         from backend.database.db import DatabaseService, _read_local_json, logger, supabase_client
 
         lim = max(1, min(500, int(limit or 100)))
         if supabase_client:
             try:
-                q = supabase_client.table("orders").select("*")
+                q = supabase_client.table("orders").select(columns or "*")
                 if user_id is not None:
                     q = q.eq("user_id", str(user_id))
                 res = q.order("created_at", desc=True).limit(lim).execute()
                 if res.data is not None:
-                    return res.data
+                    return [_project_order(o, columns) for o in res.data]
             except Exception as e:
                 logger.warning(f"Error listing orders in Supabase: {e}")
         rows = _read_local_json(DatabaseService._orders_file(), [])
         if user_id is not None:
             rows = [o for o in rows if str(o.get("user_id")) == str(user_id)]
         rows = sorted(rows, key=lambda o: str(o.get("created_at") or ""), reverse=True)
-        return rows[:lim]
+        return [_project_order(o, columns) for o in rows[:lim]]
 
     @staticmethod
     def get_order(order_id: str) -> dict[str, Any] | None:

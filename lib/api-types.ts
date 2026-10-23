@@ -12,7 +12,7 @@ export interface LoginResponse {
 
 /** Status kuota dari backend (`GET /api/python/user/me#daily_quota`). */
 export interface DailyQuota {
-  mode: "daily" | "legacy";
+  mode: "daily" | "legacy" | "unlimited" | "expired";
   plan_id?: string | null;
   plan_label?: string | null;
   daily_limit?: number | null;
@@ -48,6 +48,23 @@ export interface TrialInfo {
 
 /* ---- users ---- */
 
+export interface AdminUserQuota {
+  mode: "daily" | "legacy" | "unlimited" | "expired";
+  plan_id?: string | null;
+  plan_label?: string | null;
+  /** "plan" (paket paid) | "manual" (grant admin) | "default" (kuota default) | "unlimited" */
+  plan_source?: "plan" | "manual" | "default" | "unlimited" | null;
+  /** true = langganan/mendapat kuota khusus; false = tidak berlangganan (kuota default). */
+  subscribed?: boolean | null;
+  daily_limit?: number | null;
+  used_today?: number | null;
+  remaining?: number | null;
+  quota_day?: string | null;
+  next_reset_wib?: string | null;
+  plan_expires_at?: string | null;
+  plan_days_left?: number | null;
+}
+
 export interface AdminUser {
   id: string;
   username: string;
@@ -57,10 +74,31 @@ export interface AdminUser {
   max_prompts: number;
   prompts_used?: number;
   is_active?: boolean;
+  unlimited?: boolean;
+  /** Status kuota harian dari backend (sumber kebenaran, bukan max_prompts). */
+  quota?: AdminUserQuota | null;
+  plan_label?: string | null;
+  plan_source?: AdminUserQuota["plan_source"];
+  subscribed?: boolean | null;
+  plan_expires_at?: string | null;
+  plan_days_left?: number | null;
+  daily_limit?: number | null;
+  daily_used?: number | null;
+  daily_remaining?: number | null;
+  quota_mode?: AdminUserQuota["mode"] | null;
+  quota_day?: string | null;
+  quota_reset?: string | null;
+  /** Grant kuota manual admin (null = tidak ada). */
+  manual_daily_limit?: number | null;
+  manual_plan_label?: string | null;
+  manual_expires_at?: string | null;
   provider?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
+
+/** Ringkasan paket pricing untuk dropdown grant manual (lihat PricingPlan). */
+export type PricingPlanSummary = Pick<PricingPlan, "id" | "label" | "prompts" | "days">;
 
 /* ---- knowledge base ---- */
 
@@ -192,6 +230,7 @@ export interface PricingPlan {
 }
 
 export interface PricingData {
+  default_daily_prompts?: number;
   plans: PricingPlan[];
   payment_qris: string;
   payment_instructions: string;

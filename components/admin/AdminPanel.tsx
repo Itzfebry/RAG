@@ -196,6 +196,15 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     openJsonModalWithPrefill,
   } = boot;
 
+  // Katalog model dimuat saat tab Models dibuka; bootstrap tidak lagi menarik
+  // katalog live dari provider (HTTP eksternal = sumber utama lambat).
+  const modelsCatalogRequested = useRef(false);
+  useEffect(() => {
+    if (activeTab !== "models" || modelsCatalogRequested.current) return;
+    modelsCatalogRequested.current = true;
+    refreshAvailableModels();
+  }, [activeTab, refreshAvailableModels]);
+
   const {
     users,
     usersLoading,
@@ -210,10 +219,14 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
     setEditingUserId,
     userForm,
     setUserForm,
+    grantForm,
+    setGrantForm,
     handleSyncLocalUsers,
     handleCreateOrUpdateUser,
     handleDeleteUser,
     handleResetUsage,
+    handleGrantQuota,
+    handleClearQuota,
     handleSaveSettings,
   } = usersApi;
 
@@ -566,6 +579,7 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               syncingUsers={syncingUsers}
               appSettings={appSettings}
               setAppSettings={setAppSettings}
+              plans={pricingData.plans}
               onSaveSettings={handleSaveSettings}
               onSyncLocalUsers={handleSyncLocalUsers}
               userModalOpen={userModalOpen}
@@ -576,9 +590,13 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               setEditingUserId={setEditingUserId}
               userForm={userForm}
               setUserForm={setUserForm}
+              grantForm={grantForm}
+              setGrantForm={setGrantForm}
               onSubmitUser={handleCreateOrUpdateUser}
               onDeleteUser={handleDeleteUser}
               onResetUsage={handleResetUsage}
+              onGrantQuota={handleGrantQuota}
+              onClearQuota={handleClearQuota}
             />
           )}
 

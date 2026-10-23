@@ -45,4 +45,5 @@ The system is designed with a modular architecture where the AI model, knowledge
 - [Architecture](docs/ARCHITECTURE.md) — system design & directory structure
 - [Deployment](docs/DEPLOY.md) — Vercel + Supabase setup, environment variables
 - [Security](docs/SECURITY.md) — auth, cookies, hardening notes
+- [Quota model](docs/QUOTA.md) — prioritas kuota, endpoint, migrasi wajib
 - [Supabase schema](docs/supabase_schema.sql) — database reference (run migrations from `migrations/`)

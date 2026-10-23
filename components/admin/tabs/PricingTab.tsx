@@ -476,6 +476,29 @@ export function PricingTab({
             </p>
           </div>
           <div className="space-y-2">
+            <Label className={tLabel}>Kuota harian default (tanpa paket)</Label>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={String(pricing.default_daily_prompts ?? 20)}
+              onChange={(e) =>
+                onChange({
+                  ...pricing,
+                  default_daily_prompts: Math.max(1, Math.floor(Number(e.target.value) || 1)),
+                })
+              }
+              placeholder="20"
+              className={inputCls}
+            />
+            <p className="text-[12.5px] leading-relaxed text-zinc-500">
+              Batas prompt/hari (reset 00:00 WIB) untuk user yang belum punya paket paid. Minimal 1
+              — angka 0 tidak lagi berarti unlimited; untuk akses tanpa batas gunakan tombol{" "}
+              <span className="text-zinc-300">Unlimited</span> di tab Users. Paket paid tetap
+              memakai batas paketnya sendiri.
+            </p>
+          </div>
+          <div className="space-y-2">
             <Label className={tLabel}>Instruksi pembayaran</Label>
             <Textarea
               rows={3}

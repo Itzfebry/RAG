@@ -259,7 +259,17 @@ class UsersMixin:
                 patch2["updated_at"] = datetime.now().isoformat()
                 res = supabase_client.table("app_users").update(patch2).eq("id", user_id).execute()
                 if res.data and len(res.data) > 0:
+                    DatabaseService._mirror_user_local(res.data[0])
                     return res.data[0]
+                # Update sempat gagal (mis. kolom belum ada) atau 0 rows cocok —
+                # baca ulang row terkini supaya caller tidak menerima None saat
+                # update Supabase partly-succeed atau user hanya ada di Sb.
+                try:
+                    fetch = supabase_client.table("app_users").select("*").eq("id", user_id).execute()
+                    if fetch.data and len(fetch.data) > 0:
+                        return fetch.data[0]
+                except Exception as e:
+                    logger.warning(f"Error re-fetching user after update: {e}")
             except Exception as e:
                 logger.warning(f"Error updating user in Supabase: {e}")
         users = _read_local_json(DatabaseService._users_file(), [])
@@ -272,6 +282,17 @@ class UsersMixin:
                 users[i] = merged
                 _write_local_json(DatabaseService._users_file(), users)
                 return merged
+        # Terakhir: user mungkin hanya ada di Supabase (kolom baru menggagalkan
+        # update) sedangkan mirror lokal tidak ada — kembalikan row terkini
+        # supaya API tidak 500 dengan NoneType.get.
+        if supabase_client:
+            try:
+                fetch = supabase_client.table("app_users").select("*").eq("id", user_id).execute()
+                if fetch.data and len(fetch.data) > 0:
+                    DatabaseService._mirror_user_local(fetch.data[0])
+                    return fetch.data[0]
+            except Exception as e:
+                logger.warning(f"Error fetching user as last resort: {e}")
         return None
 
     @staticmethod
@@ -351,11 +372,16 @@ class UsersMixin:
 
     @staticmethod
     def is_prompt_quota_exhausted(user: dict[str, Any]) -> bool:
-        max_p = int(user.get("max_prompts", 0) or 0)
-        if max_p <= 0:
-            return False  # 0 = unlimited
-        used = int(user.get("prompts_used", 0) or 0)
-        return used >= max_p
+        """DEPRECATED — superseded by QuotaMixin.is_prompt_quota_exhausted.
+
+        Defini ini dulu menang di MRO (UsersMixin sebelum QuotaMixin) sehingga
+        gating kuota harian tidak pernah jalan untuk user dengan legacy
+        `max_prompts = 0` (praktis semua user). Jangan hidupkan kembali di sini:
+        delegasikan eksplisit ke implementasi kuota harian.
+        """
+        from backend.database.quota_repo import QuotaMixin
+
+        return QuotaMixin.is_prompt_quota_exhausted(user)
 
     # ── User profile (display name override, tujuan, gaya respons) ──
     # Tabel Supabase user_profiles; fallback JSON lokal jika DB tidak bisa diakses.

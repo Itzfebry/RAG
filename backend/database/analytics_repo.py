@@ -1,6 +1,11 @@
 import contextlib
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
+
+# Semua kunci hari analytics memakai WIB (Asia/Jakarta) - konsisten dengan
+# periode kuota harian di quota_repo.py, jadi dashboard tidak melompat tanggal.
+WIB = ZoneInfo("Asia/Jakarta")
 
 
 class UsageMixin:
@@ -75,7 +80,7 @@ class UsageMixin:
             c = max(0, int(completion_tokens or 0))
             if p == 0 and c == 0:
                 return
-            day = datetime.now().date().isoformat()
+            day = datetime.now(WIB).date().isoformat()
             mname = (str(model) or "").strip() or None
             if supabase_client:
                 try:
@@ -159,7 +164,7 @@ class UsageMixin:
         data = DatabaseService._load_token_data()
         daily: dict[str, Any] = data.get("daily") or {}
         by_user: dict[str, Any] = data.get("by_user") or {}
-        today = datetime.now().date()
+        today = datetime.now(WIB).date()
         daily_out: list[dict[str, Any]] = []
         for i in range(days - 1, -1, -1):
             d = (today - timedelta(days=i)).isoformat()
@@ -229,7 +234,7 @@ class UsageMixin:
         from backend.database.db import DatabaseService, _read_local_json, _write_local_json, supabase_client
 
         try:
-            day = datetime.now().date().isoformat()
+            day = datetime.now(WIB).date().isoformat()
             events = _read_local_json(DatabaseService._events_file(), {})
             events[day] = int(events.get(day, 0) or 0) + 1
             # keep last 365 days for week/month/year views
@@ -252,7 +257,7 @@ class UsageMixin:
                     "sum_ms": int(cur.get("sum_ms", 0)) + int(latency_ms),
                 }
                 # buang sample > 60 hari (key = "YYYY-MM-DD::model")
-                _cutoff = (datetime.now().date() - __import__("datetime").timedelta(days=60)).isoformat()
+                _cutoff = (datetime.now(WIB).date() - __import__("datetime").timedelta(days=60)).isoformat()
                 for _k in [k for k in lats if k.split("::", 1)[0] < _cutoff]:
                     lats.pop(_k, None)
                 _write_local_json(DatabaseService._latency_file(), lats)
@@ -287,7 +292,7 @@ class UsageMixin:
                 pass
         if not events:
             events = _read_local_json(DatabaseService._events_file(), {})
-        today = datetime.now().date()
+        today = datetime.now(WIB).date()
         out: list[dict[str, Any]] = []
         for i in range(days - 1, -1, -1):
             d = (today - __import__("datetime").timedelta(days=i)).isoformat()
@@ -436,7 +441,7 @@ class UsageMixin:
                         "model": parts[1] if len(parts) > 1 else k,
                     }
         # aggregate per day: avg latency across models, and per-model avg
-        today = datetime.now().date()
+        today = datetime.now(WIB).date()
         days_list = [(today - __import__("datetime").timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
         by_day: dict[str, list[dict[str, Any]]] = {d: [] for d in days_list}
         for v in lats.values():
