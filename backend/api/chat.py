@@ -340,7 +340,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
         # paralel dari IP yang sama tidak bisa semua lolos gate. Refund bila
         # provider gagal/tidak menjawab.
         if not DatabaseService.try_consume_trial_prompt(ip, limit):
-            raise HTTPException(status_code=403, detail="Gagal terhubung ke backend")
+            raise HTTPException(status_code=403, detail="Trial habis - login untuk melanjutkan chat")
         reservation = {"mode": "trial"}
 
     budget_stats = DatabaseService.get_token_stats(1)

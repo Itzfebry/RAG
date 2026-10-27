@@ -141,7 +141,7 @@ export default function ChatPage() {
   // Modal penawaran kuota untuk pesan habis/trial/login; pesan lain tetap toast.
   const openQuotaOffer = useCallback((msg: string) => {
     if (msg.includes("Trial")) setQuotaOffer("trial");
-    else if (msg.includes("Batas prompt habis")) setQuotaOffer("quota");
+    else if (msg.includes("Batas prompt")) setQuotaOffer("quota");
     else if (msg.includes("Login diperlukan")) setQuotaOffer("login");
     else setQuotaAlert(msg);
   }, []);
@@ -527,7 +527,7 @@ export default function ChatPage() {
             .catch(() => {});
           throw new Error(msg);
         }
-        if (res.status === 403 && msg.includes("Batas prompt habis")) {
+        if (res.status === 403 && msg.includes("Batas prompt")) {
           openQuotaOffer(msg);
           throw new Error(msg);
         }
@@ -634,16 +634,16 @@ export default function ChatPage() {
         return;
       }
       const m = (e instanceof Error ? e.message : "") || "Gagal terhubung ke backend.";
-      if (
-        m.includes("Batas prompt habis") ||
-        m.includes("Trial habis") ||
-        m.includes("Login diperlukan")
-      )
-        openQuotaOffer(m);
+      const quotaMsg =
+        m.includes("Batas prompt") || m.includes("Trial habis") || m.includes("Login diperlukan");
+      if (quotaMsg) openQuotaOffer(m);
       else setError(m);
       // F17: placeholder terakhir jangan langsung dibuang kalau sudah berisi
       // jawaban parsial - sisakan isinya dengan suffix error; kalau masih
       // kosong, tampilkan pesan error italic sebagai penggantinya.
+      // Kasus kuota: tampilkan pesan kuota asli di chat (mis. "Trial habis ..."),
+      // bukan teks generik "Gagal terhubung ke backend."
+      const placeholder = quotaMsg ? m : "Gagal terhubung ke backend.";
       setMessages((prev) => {
         const u = [...prev];
         const last = u[u.length - 1];
@@ -655,7 +655,7 @@ export default function ChatPage() {
             };
             return u;
           }
-          u[u.length - 1] = { ...last, content: `_(Gagal terhubung ke backend.)_` };
+          u[u.length - 1] = { ...last, content: `_(${placeholder})_` };
           return u;
         }
         return prev.slice(0, -1);
