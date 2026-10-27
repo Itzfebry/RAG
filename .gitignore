@@ -13,6 +13,13 @@ env/
 venv/
 /.claude
 
+# Test / lint caches & coverage artifacts
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
 # Build cache TypeScript
 *.tsbuildinfo
 

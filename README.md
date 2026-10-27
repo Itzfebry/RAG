@@ -28,7 +28,7 @@ A chatbot can be swapped in an afternoon. A **retrieval system you can trust** c
 ITZ AI is built around one question: *how do you keep a personal assistant factually anchored to its
 owner's real context, answer after answer, without leaking that context or inventing the rest?*
 
-Everything else — chat UI, admin panel, quotas, billing — exists to operate that retrieval loop in production.
+Everything else (chat UI, admin panel, quotas, billing) exists to operate that retrieval loop in production.
 This README documents the RAG internals first, then the surrounding platform.
 
 ---
@@ -65,20 +65,20 @@ flowchart TB
 
 ## RAG internals
 
-### 1 — Ingestion & chunking
+### 1. Ingestion & chunking
 
 Knowledge is authored as **category-scoped entries** in the admin panel. On save, each entry is split with
-LangChain's `RecursiveCharacterTextSplitter` at **500 characters with 50 characters of overlap** — falling back
+LangChain's `RecursiveCharacterTextSplitter` at **500 characters with 50 characters of overlap**, falling back
 character-by-character when paragraph separators run out, so a single 2,000-character blob never becomes an
 oversized chunk that blows the embedding budget.
 
 Chunking is deliberately idempotent: re-indexing deletes the entry's previous chunks and inserts the new set.
-**Embeddings are computed and validated for every chunk before the database is touched** — a failure mid-way
+**Embeddings are computed and validated for every chunk before the database is touched**; a failure mid-way
 leaves the previous index intact. Zero-vectors are never persisted.
 
 > The reindex tool reuses the same 500/50 splitter. Changing one without the other silently degrades retrieval.
 
-### 2 — Asymmetric embeddings
+### 2. Asymmetric embeddings
 
 Embedding calls are **task-aware**, which is what makes short queries match long documents:
 
@@ -87,14 +87,14 @@ Embedding calls are **task-aware**, which is what makes short queries match long
 | Document | `title: none \| text: {chunk}` | `taskType: RETRIEVAL_DOCUMENT` |
 | Query | `task: search result \| query: {query}` | `taskType: RETRIEVAL_QUERY` |
 
-- **768 dimensions** via Matryoshka Representation Learning — roughly the retrieval quality of 1,536 dims at half the storage, and it must match the `vector(768)` column exactly.
+- **768 dimensions** via Matryoshka Representation Learning: roughly the retrieval quality of 1,536 dims at half the storage, and it must match the `vector(768)` column exactly.
 - **L2-normalized** before storage, so cosine distance reduces to a clean inner product.
-- **Query embeddings are cached** in a bounded LRU-ish map (2,000 entries) with separate keys for query vs. document mode — identical text in different modes can never collide.
+- **Query embeddings are cached** in a bounded LRU-ish map (2,000 entries) with separate keys for query vs. document mode, so identical text in different modes can never collide.
 - **Provider failure → zero-vector sentinel**, which is invalid on purpose. It forces the search path into keyword fallback instead of silently comparing vectors from two different models.
 
 Supported providers: `gemini` (production default), `hf` (HuggingFace Inference API, cold-start retry with backoff), `local` (sentence-transformers, dev only), `off` (keyword-only test switch).
 
-### 3 — Storage & indexing
+### 3. Storage & indexing
 
 ```sql
 create table knowledge_embeddings (
@@ -117,22 +117,25 @@ create index knowledge_embeddings_fts_idx on knowledge_embeddings using gin (fts
 ```
 
 HNSW keeps retrieval sub-linear as the knowledge base grows. The schema also ships a `hybrid_search()`
-function that fuses semantic ranks with Indonesian FTS ranks using reciprocal-rank weighting — the runtime
+function that fuses semantic ranks with Indonesian FTS ranks using reciprocal-rank weighting. The runtime
 path today uses the vector RPC plus an application-level keyword fallback, which is easier to tune and debug.
 
-### 4 — Similarity search
+### 4. Similarity search
 
 `KnowledgeService.semantic_search()` calls one RPC:
 
 ```python
-supabase.rpc("match_knowledge_entries", {
-    "query_embedding": query_embedding,   # 768d, query-mode
-    "match_threshold": threshold,         # calibrated floor
-    "match_count": match_count,           # 6 short / 8 long queries
-}).execute()
+supabase.rpc(
+    "match_knowledge_entries",
+    {
+        "query_embedding": query_embedding,  # 768d, query-mode
+        "match_threshold": threshold,  # calibrated floor
+        "match_count": match_count,  # 6 short / 8 long queries
+    },
+).execute()
 ```
 
-The SQL side is intentionally strict — inactive entries are excluded at the join, and anything below the
+The SQL side is intentionally strict: inactive entries are excluded at the join, and anything below the
 threshold is dropped before it can reach the prompt:
 
 ```sql
@@ -149,23 +152,23 @@ limit match_count;
 **The threshold is an operational lever, not a constant.** It resolves at request time from
 `app_settings.rag_match_threshold` (editable in the admin panel) and falls back to `MATCH_THRESHOLD` in the
 environment. The shipped default of **0.64** is calibrated against observed Gemini behaviour: genuine matches
-landed at 0.649–0.796, irrelevant chunks at 0.498–0.630.
+landed at 0.649-0.796, irrelevant chunks at 0.498-0.630.
 
-**Retrieval breadth adapts to query length**: concise questions pull 6 chunks, questions over 15 words pull 8 —
-more surface area for multi-part intent without inflating every prompt.
+**Retrieval breadth adapts to query length**: concise questions pull 6 chunks, questions over 15 words pull 8,
+giving more surface area for multi-part intent without inflating every prompt.
 
-### 5 — Graceful degradation, not silent failure
+### 5. Graceful degradation, not silent failure
 
 Retrieval never hard-fails a conversation. The ladder:
 
-1. **Vector search** — the happy path.
-2. **Keyword fallback** — triggered when Supabase is unavailable, the embedding call fails, or nothing clears the threshold. Tokens under three characters and a bilingual stopword list (`yang`, `cara`, `how`, `what`, …) are stripped, and matching uses `\b` word boundaries so `nama` cannot match inside `purnama`.
-3. **Empty context, honestly labelled** — the prompt receives *"Tidak ada knowledge khusus yang relevan"* instead of the nearest irrelevant chunk. There is deliberately **no "first entry" fallback**: irrelevant context is worse than no context, because it teaches the model to answer confidently about the wrong thing.
+1. **Vector search**: the happy path.
+2. **Keyword fallback**: triggered when Supabase is unavailable, the embedding call fails, or nothing clears the threshold. Tokens under three characters and a bilingual stopword list (`yang`, `cara`, `how`, `what`, ...) are stripped, and matching uses `\b` word boundaries so `nama` cannot match inside `purnama`.
+3. **Empty context, honestly labelled**: the prompt receives *"Tidak ada knowledge khusus yang relevan"* instead of the nearest irrelevant chunk. There is deliberately **no "first entry" fallback**: irrelevant context is worse than no context, because it teaches the model to answer confidently about the wrong thing.
 
-A miss is logged as **metadata only** — timestamp and query length, never query text — in `failed_rag_queries.log`,
+A miss is logged as **metadata only** (timestamp and query length, never query text) in `failed_rag_queries.log`,
 which doubles as a signal for what knowledge is missing.
 
-### 6 — Prompt assembly & anti-hallucination
+### 6. Prompt assembly & anti-hallucination
 
 `build_system_prompt()` composes, in priority order: identity → owner context → personality → communication
 style → system instructions → **retrieved chunks** → live pricing block → command block.
@@ -180,7 +183,7 @@ Retrieved chunks are **deduplicated** before insertion, and two caches keep the 
 The prompt carries explicit grounding rules, and they are the last line of defence:
 
 - Owner-specific facts may only come from retrieved context; otherwise the assistant says plainly that it isn't known and answers from general knowledge.
-- Names, brands, codes, durations, amounts, and payment policies are reproduced **exactly** as retrieved — never inferred or "corrected".
+- Names, brands, codes, durations, amounts, and payment policies are reproduced **exactly** as retrieved, never inferred or "corrected".
 - The system prompt itself and the existence of a knowledge layer are never disclosed.
 - Pricing is injected from live configuration so stale knowledge copies can't quote old prices.
 
@@ -196,14 +199,14 @@ The prompt carries explicit grounding rules, and they are the last line of defen
 | `MATCH_THRESHOLD` | `0.64` (Gemini) / `0.25` (HF) | Cosine floor; admin setting overrides |
 | `HF_EMBEDDING_RETRIES` / `_WAIT` | `4` / `3.0s` | Cold-start and rate-limit retry policy |
 | `rag_match_count_short` / `_long` | `6` / `8` | Chunks injected for short vs. long queries |
-| `rag_match_threshold` | — | Admin-panel override of the floor |
+| `rag_match_threshold` | env `MATCH_THRESHOLD` | Admin-panel override of the floor |
 
 **Tuning principle:** raise the threshold when answers drift into vaguely-related territory; lower it when
 the assistant claims ignorance about things it should know. Never tune it without reading the miss log first.
 
 ### Changing embedding models
 
-Vectors from different models are not comparable — there is no partial migration path.
+Vectors from different models are not comparable: there is no partial migration path.
 
 ```bash
 # 1) Switch provider/model in .env, keep EMBEDDING_DIM aligned
@@ -225,7 +228,7 @@ Retrieval quality is tested, not vibes-checked:
 |---|---|
 | `backend/tools/test_rag.py` | End-to-end retrieval smoke test against live knowledge |
 | `backend/tools/test_retrieval_compare.py` | Side-by-side ranking comparison across configurations |
-| `backend/tools/test_hallucination.py` | Grounding probes — does the assistant refuse facts absent from context? |
+| `backend/tools/test_hallucination.py` | Grounding probes: does the assistant refuse facts absent from context? |
 | `backend/tools/test_system.py` | Configuration and environment sanity checks |
 | `backend/tests/` | Unit and regression suite (`npm run py:test`) |
 
@@ -281,11 +284,11 @@ Add knowledge entries at `/admin` → **Knowledge**; each save chunks and indexe
 The RAG loop is wrapped in a complete product surface:
 
 - **Streaming chat** over SSE with markdown, syntax highlighting, reasoning-trace cleanup, and a centralized slash-command registry (`/explain`, `/summarize`, `/purpose`, …).
-- **Admin control room** — 11 tabs covering identity, personal context, knowledge, personality, communication, instructions, model routing, response styles, pricing, and users; includes live model-catalog browsing and connection tests.
-- **Accounts & quotas** — email OTP and Google OAuth, bcrypt credentials, HTTPOnly-cookie JWTs, daily quota windows in WIB, per-IP trials, and per-user unlimited flags.
-- **Billing** — Duitku POP (QRIS, virtual accounts, e-wallets) with HMAC-SHA256 callback validation; successful payment updates quota automatically.
-- **Analytics** — token consumption per model, quota usage, and an audit trail surfaced through Recharts dashboards.
-- **Hardening** — security headers, request-body limits, rate limiting, constant-time signature checks, server-only secrets.
+- **Admin control room**: 11 tabs covering identity, personal context, knowledge, personality, communication, instructions, model routing, response styles, pricing, and users; includes live model-catalog browsing and connection tests.
+- **Accounts & quotas**: email OTP and Google OAuth, bcrypt credentials, HTTPOnly-cookie JWTs, daily quota windows in WIB, per-IP trials, and per-user unlimited flags.
+- **Billing**: Duitku POP (QRIS, virtual accounts, e-wallets) with HMAC-SHA256 callback validation; successful payment updates quota automatically.
+- **Analytics**: token consumption per model, quota usage, and an audit trail surfaced through Recharts dashboards.
+- **Hardening**: security headers, request-body limits, rate limiting, constant-time signature checks, server-only secrets.
 
 ---
 

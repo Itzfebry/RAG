@@ -62,8 +62,8 @@ Known limitations:
   setelah supporting typescript-eslint tersedia (lihat komentar di config).
 - Dua aturan React baru diturunkan ke `warn` sampai Tahap 3 merefaktor
   targetnya: `react-hooks/set-state-in-effect`, `react-hooks/refs`
-  (~12 lokasi: `app/chat/page.tsx`, `components/ui/orbital-sphere.tsx`,
-  dll.). Promosikan kembali ke `error` setelah diperbaiki.
+  (~12 lokasi, termasuk `app/chat/page.tsx` dan beberapa komponen admin).
+  Promosikan kembali ke `error` setelah diperbaiki.
 
 ## Dependencies
 

@@ -437,31 +437,6 @@
   animation: caret-blink 0.9s step-end infinite;
 }
 
-/* Three.js backgrounds */
-.threeui-background {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-}
-
-.threeui-background canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.orbital-sphere canvas {
-  opacity: 0.85;
-  transition: opacity 0.3s ease;
-}
-
-.orbital-sphere:hover canvas {
-  opacity: 1;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .itz-logo,
   .itz-logo-sheen::after,
