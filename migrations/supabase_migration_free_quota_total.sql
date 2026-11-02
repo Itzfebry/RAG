@@ -12,6 +12,11 @@
 -- Jalankan di Supabase SQL Editor SETELAH `supabase_migration_daily_quota.sql`.
 -- ══════════════════════════════════════════════════════════════════════════
 
+-- Kolom kuota gratis TOTAL di pricing_config. Sebelumnya tidak ada di skema,
+-- sehingga simpan pengaturan dari panel admin gagal (fallback lokal saja).
+alter table public.pricing_config
+  add column if not exists default_daily_prompts int not null default 10;
+
 -- Konsumsi 1 prompt untuk kuota gratis kumulatif (kunci `free-total`).
 create or replace function public.consume_total_prompt(p_user_id text, p_limit int)
 returns boolean

@@ -98,3 +98,61 @@ def test_blocks_user_without_doc_access(make_client):
     res = c.post(URL, files={"file": ("catatan.txt", b"halo", "text/plain")})
     assert res.status_code == 403
     assert "dokumen" in res.json()["detail"].lower()
+
+
+def test_chat_passes_document_to_orchestrator(monkeypatch):
+    """Regresi: `document` dari client harus sampai ke stream_chat_response.
+
+    Bug lama: field dokumen tidak diteruskan, sehingga model menjawab tanpa
+    konteks file yang dilampirkan.
+    """
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from backend.api import chat as chat_api
+    from backend.api.main import app
+    from backend.database.db import DatabaseService
+
+    captured: dict = {}
+
+    async def fake_stream(*args, **kwargs):
+        captured["query"] = args[0] if args else kwargs.get("query")
+        captured["user_document"] = kwargs.get("user_document")
+        yield f"data: {json.dumps({'content': 'ok'})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    monkeypatch.setattr(chat_api.agent_orchestrator, "stream_chat_response", fake_stream)
+    monkeypatch.setattr(
+        chat_api,
+        "get_current_chat_user_optional",
+        lambda request: {"id": "u1", "display_name": "Budi"},
+    )
+    monkeypatch.setattr(DatabaseService, "can_use_document_feature", staticmethod(lambda user: True))
+    monkeypatch.setattr(
+        DatabaseService,
+        "get_user_by_id",
+        staticmethod(lambda uid: {"id": "u1", "display_name": "Budi"}),
+    )
+    monkeypatch.setattr(DatabaseService, "get_user_profile", staticmethod(lambda uid: {}))
+    monkeypatch.setattr(chat_api, "_active_daily_plan", lambda user: None)
+    monkeypatch.setattr(DatabaseService, "is_prompt_quota_exhausted", staticmethod(lambda user: False))
+    monkeypatch.setattr(DatabaseService, "get_token_stats", staticmethod(lambda days: {"budget": 0, "remaining": 0}))
+    monkeypatch.setattr(DatabaseService, "get_app_settings", staticmethod(lambda: {}))
+    monkeypatch.setattr(DatabaseService, "get_config_table", staticmethod(lambda table: {}))
+
+    c = TestClient(app)
+    res = c.post(
+        "/api/chat",
+        json={
+            "message": "ringkas dokumen ini",
+            "document": {"title": "catatan.txt", "content": "RAHASIA-123 isi dokumen"},
+        },
+    )
+
+    assert res.status_code == 200
+    assert captured["query"] == "ringkas dokumen ini"
+    assert captured["user_document"] == {
+        "title": "catatan.txt",
+        "content": "RAHASIA-123 isi dokumen",
+    }
