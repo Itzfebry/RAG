@@ -14,24 +14,34 @@ diambil, dan migrasi mana yang wajib dijalankan. Sumber kebenaran kode:
 3. **Order paid terbaru** — batas dibaca dari `pricing_config.plans` (field
    `prompts`), bukan snapshot saat pembelian. Order dengan `days` yang sudah
    lewat dianggap `expired` (sisa kuota 0).
-4. **Kuota default global** — `pricing_config.default_daily_prompts`.
+4. **Kuota gratis** — `pricing_config.default_daily_prompts`, dipakai user
+   tanpa paket paid. **Kumulatif/TOTAL, tanpa reset harian** (kunci
+   `user_daily_quota.quota_day = 'free-total'`). Default 10.
 
 Kolom legacy `max_prompts` / `prompts_used` **tidak lagi** dipakai untuk
-gating; nilainya hanya disimpan sebagai riwayat. Karena itu user tanpa paket
-paid dianggap tanpa batas bila kuota default global = 0.
+gating; nilainya hanya disimpan sebagai riwayat.
 
 ## Periode reset
 
-Reset berbasis **hari WIB (Asia/Jakarta)**, bukan scheduler. Kunci baris adalah
-`user_daily_quota.quota_day` sehingga pergantian hari hanya mengganti kunci;
-row hari sebelumnya tidak dihapus.
+- **Paket paid & grant manual**: reset harian berbasis **hari WIB**
+  (Asia/Jakarta), bukan scheduler. Kunci baris `user_daily_quota.quota_day`
+  = tanggal `YYYY-MM-DD`.
+- **Kuota gratis (non-subscriber)**: kumulatif seumur akun, kunci tetap
+  `free-total`, **tidak pernah reset**.
+
+## Akses fitur dokumen
+
+`doc_access` dihitung per user: `unlimited` / grant manual = boleh; paket paid
+hanya bila admin mencentang `doc_upload` pada paket tersebut. Kuota gratis
+(default) = tidak boleh. Dipakai gate `POST /user/documents/extract` dan
+lampiran di `/chat`.
 
 ## Endpoint terkait
 
 | Endpoint | Fungsi |
 |---|---|
 | `GET /user/me`, `GET /user/verify` | Status kuota untuk UI chat |
-| `GET /admin/users` | Daftar user + status kuota (bulk, 3 query) |
+| `GET /admin/users` | Daftar user + status kuota (bulk, 4 query) |
 | `POST /admin/users/{id}/quota` | Beri/ubah grant manual (`prompts`, `plan_id?`, `label?`, `days?`) |
 | `DELETE /admin/users/{id}/quota` | Hapus grant manual |
 | `PATCH /admin/users/{id}` | Termasuk flag `unlimited` |
@@ -50,6 +60,8 @@ Semua idempotent, aman dijalankan berulang:
 4. `migrations/supabase_migration_unlimited.sql` — kolom `app_users.unlimited`.
 5. `migrations/supabase_migration_manual_quota.sql` — kolom grant manual
    (`manual_daily_limit`, `manual_plan_label`, `manual_expires_at`).
+6. `migrations/supabase_migration_free_quota_total.sql` — RPC
+   `consume_total_prompt` / `refund_total_prompt` untuk kuota gratis kumulatif.
 
 Tanpa migrasi 4 & 5, update user yang menyentuh `unlimited` / kuota manual
 akan gagal di Supabase dan endpoint mengembalikan error yang menyebut nama

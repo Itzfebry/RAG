@@ -170,6 +170,30 @@ def test_public_pricing_filters_invalid_plans(db, monkeypatch):
     assert [p["id"] for p in out["plans"]] == ["ok"]
 
 
+def test_public_pricing_passes_doc_upload_flag(db, monkeypatch):
+    """Regresi: flag doc_upload harus ikut dikirim (dulu dibuang _public_pricing)."""
+    from backend.api import pricing as pricing_api
+
+    monkeypatch.setattr(
+        pricing_api.DatabaseService,
+        "get_pricing",
+        staticmethod(
+            lambda: {
+                "plans": [
+                    {"id": "p", "label": "Premium", "prompts": 50, "amount": 10000, "doc_upload": True},
+                    {"id": "u", "label": "Ultimate", "prompts": 100, "amount": 20000},
+                ],
+                "payment_qris": "",
+                "payment_instructions": "",
+                "contact": "",
+                "order_note": "",
+            }
+        ),
+    )
+    out = pricing_api._public_pricing()
+    assert {p["id"]: p["doc_upload"] for p in out["plans"]} == {"p": True, "u": False}
+
+
 def test_clean_plans_rejects_duplicates_and_bad_numbers():
     from fastapi import HTTPException
 

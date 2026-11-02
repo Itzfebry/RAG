@@ -12,9 +12,17 @@ export interface LoginResponse {
 
 /** Status kuota dari backend (`GET /api/python/user/me#daily_quota`). */
 export interface DailyQuota {
-  mode: "daily" | "legacy" | "unlimited" | "expired";
+  mode: "daily" | "total" | "legacy" | "unlimited" | "expired";
   plan_id?: string | null;
   plan_label?: string | null;
+  /** "plan" (paket paid) | "manual" (grant admin) | "default" | "unlimited" */
+  plan_source?: "plan" | "manual" | "default" | "unlimited" | null;
+  /** true = pelanggan paket (plan paid / grant manual). */
+  subscribed?: boolean | null;
+  /** "daily" = reset harian WIB; "total" = kumulatif tanpa reset (kuota gratis). */
+  period?: "daily" | "total" | null;
+  /** true = user boleh memakai fitur lampiran dokumen. */
+  doc_access?: boolean | null;
   daily_limit?: number | null;
   used_today?: number | null;
   remaining?: number | null;
@@ -46,16 +54,28 @@ export interface TrialInfo {
   allowed: boolean;
 }
 
+/* ---- dokumen command /doc (premium, sekali-pakai) ---- */
+
+/** Teks hasil ekstraksi file, dikirim bersama pesan chat (tidak disimpan server). */
+export interface ExtractedDocument {
+  title: string;
+  content: string;
+  char_count?: number;
+  truncated?: boolean;
+}
+
 /* ---- users ---- */
 
 export interface AdminUserQuota {
-  mode: "daily" | "legacy" | "unlimited" | "expired";
+  mode: "daily" | "total" | "legacy" | "unlimited" | "expired";
   plan_id?: string | null;
   plan_label?: string | null;
   /** "plan" (paket paid) | "manual" (grant admin) | "default" (kuota default) | "unlimited" */
   plan_source?: "plan" | "manual" | "default" | "unlimited" | null;
   /** true = langganan/mendapat kuota khusus; false = tidak berlangganan (kuota default). */
   subscribed?: boolean | null;
+  period?: "daily" | "total" | null;
+  doc_access?: boolean | null;
   daily_limit?: number | null;
   used_today?: number | null;
   remaining?: number | null;
@@ -227,6 +247,8 @@ export interface PricingPlan {
   amount: number;
   popular: boolean;
   original_amount?: number | string | null;
+  /** true = paket ini dapat fitur upload dokumen (command /doc). */
+  doc_upload?: boolean;
 }
 
 export interface PricingData {

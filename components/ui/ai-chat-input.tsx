@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, FileText, Loader2, Paperclip, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { activeCommandsFromInput, suggestCommands } from "@/lib/chat-commands";
 
@@ -12,6 +12,12 @@ interface Props {
   isLoading?: boolean;
   placeholder?: string;
   className?: string;
+  /** Lampiran file untuk command /doc. Bila diisi, tombol klip ditampilkan. */
+  onAttachFile?: (file: File) => void;
+  attachmentLabel?: string | null;
+  attachmentBusy?: boolean;
+  onClearAttachment?: () => void;
+  attachDisabled?: boolean;
 }
 
 export function AIChatInput({
@@ -21,8 +27,14 @@ export function AIChatInput({
   isLoading,
   placeholder = "Tanyakan apa saja kepada ITZ AI…",
   className,
+  onAttachFile,
+  attachmentLabel,
+  attachmentBusy,
+  onClearAttachment,
+  attachDisabled,
 }: Props) {
   const taRef = React.useRef<HTMLTextAreaElement>(null);
+  const fileRef = React.useRef<HTMLInputElement>(null);
   const suggestions = React.useMemo(() => suggestCommands(value), [value]);
   const [activeIdx, setActiveIdx] = React.useState(0);
   const activeCmds = React.useMemo(() => activeCommandsFromInput(value), [value]);
@@ -115,8 +127,62 @@ export function AIChatInput({
           ))}
         </div>
       )}
+      {attachmentLabel && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5">
+          {attachmentBusy ? (
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-zinc-400" />
+          ) : (
+            <FileText className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+          )}
+          <span
+            className="min-w-0 flex-1 truncate text-[12.5px] text-zinc-300"
+            title={attachmentLabel}
+          >
+            {attachmentLabel}
+          </span>
+          <span className="shrink-0 rounded-full border border-white/[0.08] px-1.5 py-0.5 text-[10.5px] text-zinc-500">
+            konteks
+          </span>
+          {onClearAttachment && !attachmentBusy && (
+            <button
+              type="button"
+              onClick={onClearAttachment}
+              aria-label="Hapus lampiran"
+              className="shrink-0 rounded-md p-0.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
       <div className="input-glow relative flex items-end gap-2.5 overflow-hidden rounded-[20px] border border-white/[0.08] bg-[#0e0e10]/98 px-4 py-3.5 shadow-[0_8px_32px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.02)] backdrop-blur-xl">
         <div className="pointer-events-none absolute inset-0 rounded-[20px] bg-gradient-to-b from-white/[0.03] via-transparent to-transparent" />
+
+        {onAttachFile && (
+          <>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={attachDisabled || attachmentBusy}
+              aria-label="Lampirkan file (PDF/TXT/MD)"
+              title="Lampirkan file (PDF/TXT/MD) sebagai konteks"
+              className="relative z-10 mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Paperclip className="h-[17px] w-[17px]" />
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) onAttachFile(f);
+              }}
+            />
+          </>
+        )}
 
         <textarea
           ref={taRef}

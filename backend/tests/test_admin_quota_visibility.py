@@ -37,17 +37,20 @@ def _user(db, username, **extra):
     return db.create_user(data)
 
 
-def test_no_paid_order_uses_global_default_daily_quota(db):
+def test_no_paid_order_uses_global_default_total_quota(db):
     db.update_pricing({"plans": [PLAN], "default_daily_prompts": 7})
     u = _user(db, "budi")
 
     st = db.status_map([u])[str(u["id"])]
 
-    assert st["mode"] == "daily"
+    # Non-subscriber: kuota gratis kumulatif, tanpa reset harian.
+    assert st["mode"] == "total"
+    assert st["period"] == "total"
     assert st["daily_limit"] == 7
-    assert st["plan_label"] == "Kuota Default"
+    assert st["plan_label"] == "Kuota Gratis"
     assert st["used_today"] == 0
     assert st["remaining"] == 7
+    assert st["next_reset_wib"] is None
 
 
 def test_paid_order_sets_daily_limit_from_plan(db):
@@ -67,8 +70,10 @@ def test_status_map_reflects_usage_and_remaining(db):
     db.update_pricing({"plans": [PLAN], "default_daily_prompts": 5})
     u = _user(db, "budi")
 
+    from backend.database.quota_repo import TOTAL_USAGE_KEY
+
     for _ in range(3):
-        assert db.try_consume_daily_prompt(str(u["id"]), 5) is True
+        assert db.try_consume_daily_prompt(str(u["id"]), 5, TOTAL_USAGE_KEY) is True
 
     st = db.status_map([u])[str(u["id"])]
 
@@ -110,11 +115,54 @@ def test_admin_list_users_payload_includes_quota(db, monkeypatch):
     rows = users_api.admin_list_users(admin="admin")
 
     by_name = {r["username"]: r for r in rows}
-    assert by_name["budi"]["quota"]["mode"] == "daily"
+    assert by_name["budi"]["quota"]["mode"] == "total"
     assert by_name["budi"]["quota"]["daily_limit"] == 12
     assert by_name["budi"]["quota"]["remaining"] == 12
-    assert by_name["budi"]["quota"]["plan_label"] == "Kuota Default"
+    assert by_name["budi"]["quota"]["plan_label"] == "Kuota Gratis"
     assert by_name["siti"]["quota"]["mode"] == "unlimited"
     assert by_name["siti"]["quota"]["daily_limit"] is None
     # password_hash tidak boleh bocor
     assert "password_hash" not in by_name["budi"]
+
+
+def test_free_quota_accumulates_without_daily_reset(db):
+    """Non-subscriber: pemakaian tersimpan di kunci `free-total`, bukan tanggal."""
+    db.update_pricing({"plans": [PLAN], "default_daily_prompts": 10})
+    u = _user(db, "budi")
+
+    from backend.database.quota_repo import TOTAL_USAGE_KEY
+
+    assert db.try_consume_daily_prompt(str(u["id"]), 10, TOTAL_USAGE_KEY) is True
+    assert db.get_daily_usage(str(u["id"]), TOTAL_USAGE_KEY) == 1
+    st = db.get_quota_status(db.get_user_by_id(str(u["id"])))
+    assert st["mode"] == "total"
+    assert st["used_today"] == 1
+    assert st["remaining"] == 9
+
+
+def test_doc_access_default_denied(db):
+    db.update_pricing({"plans": [PLAN], "default_daily_prompts": 10})
+    u = _user(db, "budi")
+    assert db.can_use_document_feature(u) is False
+    assert db.status_map([u])[str(u["id"])]["doc_access"] is False
+
+
+def test_doc_access_plan_requires_doc_upload_flag(db):
+    db.update_pricing({"plans": [PLAN], "default_daily_prompts": 10})
+    u = _user(db, "budi")
+    order = db.create_order(str(u["id"]), PLAN)
+    db.set_order_status_paid(str(order["id"]), confirmed_by="admin")
+    assert db.can_use_document_feature(db.get_user_by_id(str(u["id"]))) is False
+
+    db.update_pricing({"plans": [{**PLAN, "doc_upload": True}], "default_daily_prompts": 10})
+    assert db.can_use_document_feature(db.get_user_by_id(str(u["id"]))) is True
+
+
+def test_doc_access_manual_and_unlimited_allowed(db):
+    db.update_pricing({"plans": [PLAN], "default_daily_prompts": 10})
+    manual = _user(db, "siti")
+    db.update_user(str(manual["id"]), {"manual_daily_limit": 5, "manual_plan_label": "Manual"})
+    assert db.can_use_document_feature(db.get_user_by_id(str(manual["id"]))) is True
+
+    unlimited = _user(db, "joko", unlimited=True)
+    assert db.can_use_document_feature(unlimited) is True

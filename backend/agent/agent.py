@@ -283,12 +283,17 @@ class AgentOrchestrator:
         model_override: str | None = None,
         user_profile: dict[str, Any] | None = None,
         command_names: list[str] | None = None,
+        user_document: dict[str, Any] | None = None,
     ) -> AsyncGenerator[str, None]:
         """Orkestrasi utama: bangun prompt, resolve runtime config, stream per model (fallback chain)."""
         start = time.perf_counter()
         ttft_holder: list[int | None] = [None]
         system_prompt = build_system_prompt(
-            query, session_history, user_profile=user_profile, command_names=command_names
+            query,
+            session_history,
+            user_profile=user_profile,
+            command_names=command_names,
+            user_document=user_document,
         )
         openai_messages = _build_openai_messages(query, session_history, system_prompt)
 

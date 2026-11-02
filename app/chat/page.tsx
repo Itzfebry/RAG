@@ -14,7 +14,7 @@ import { AnimatePresence, m } from "framer-motion";
 const motion = m;
 import { AlertTriangle, Info, X } from "lucide-react";
 import { ApiError, fetchApi, tryFetch } from "@/lib/fetch-api";
-import type { Me, TrialInfo } from "@/lib/api-types";
+import type { Me, TrialInfo, ExtractedDocument } from "@/lib/api-types";
 
 export type { Me, TrialInfo };
 
@@ -124,6 +124,10 @@ export default function ChatPage() {
   const [profileMsg, setProfileMsg] = useState<string | null>(null);
   // Riwayat chat tersimpan (hanya user login). Trial/tamu tetap state lokal.
   const [historyOpen, setHistoryOpen] = useState(false);
+  // Lampiran file sekali-pakai untuk command /doc: teks diekstrak server lalu
+  // dikirim bersama pesan. Tidak disimpan permanen.
+  const [docAttachment, setDocAttachment] = useState<ExtractedDocument | null>(null);
+  const [docBusy, setDocBusy] = useState(false);
   // Tour instruksi akun baru: tampil sekali per akun (flag localStorage per username).
   const [tourOpen, setTourOpen] = useState(false);
   const [tourSteps, setTourSteps] = useState<TourStep[]>([]);
@@ -257,6 +261,7 @@ export default function ChatPage() {
 
   const doLogout = async () => {
     setConfirmLogout(false);
+    setDocAttachment(null);
     await fetchApi("/api/python/user/logout", { method: "POST" }).catch(() => {});
     window.location.href = "/login";
   };
@@ -287,6 +292,7 @@ export default function ChatPage() {
       }>(`/api/python/user/chats/${id}`);
       setMessages((j.messages || []).map((m) => ({ role: m.role, content: m.content })));
       setActiveChatId(id);
+      setDocAttachment(null);
       setError(null);
       setHistoryOpen(false);
     } catch (e) {
@@ -304,6 +310,7 @@ export default function ChatPage() {
       if (activeChatId === id) {
         setActiveChatId(null);
         setMessages([]);
+        setDocAttachment(null);
       }
       await loadChatList();
     } catch {
@@ -318,6 +325,7 @@ export default function ChatPage() {
     setError(null);
     setQuotaAlert(null);
     setHistoryOpen(false);
+    setDocAttachment(null);
   };
 
   // Selesai/Lewati tour: tandai permanen agar tidak pernah tampil lagi.
@@ -435,11 +443,57 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, isLoading, scrollToBottom]);
 
+  const handleAttachFile = async (file: File) => {
+    setError(null);
+    const name = file.name.toLowerCase();
+    if (!/\.(pdf|txt|md)$/.test(name)) {
+      setError("Format tidak didukung. Gunakan PDF, TXT, atau MD.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setError("File terlalu besar (maksimal 2 MB).");
+      return;
+    }
+    setDocBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/python/user/documents/extract", { method: "POST", body: fd });
+      if (!res.ok) {
+        let msg = `Gagal membaca file (${res.status})`;
+        try {
+          const j = await res.json();
+          msg = (j.detail || j.message || msg) as string;
+        } catch {}
+        if (res.status === 401) openQuotaOffer("Login diperlukan untuk memakai fitur dokumen");
+        else setError(msg);
+        return;
+      }
+      const j = (await res.json()) as { document?: ExtractedDocument };
+      const doc = j.document;
+      if (!doc?.content) {
+        setError("Tidak ada teks yang bisa dibaca dari file ini.");
+        return;
+      }
+      setDocAttachment({
+        title: doc.title || file.name,
+        content: doc.content,
+        char_count: doc.char_count,
+        truncated: doc.truncated,
+      });
+    } catch {
+      setError("Gagal mengunggah file. Coba lagi.");
+    } finally {
+      setDocBusy(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
     const userMessage = input.trim();
     setInput("");
-    await runChat(userMessage, messages);
+    await runChat(userMessage, messages, docAttachment);
+    setDocAttachment(null);
   };
 
   const handleRegenerate = async () => {
@@ -489,7 +543,11 @@ export default function ChatPage() {
     } catch {}
   };
 
-  const runChat = async (userMessage: string, base: Message[]) => {
+  const runChat = async (
+    userMessage: string,
+    base: Message[],
+    doc: ExtractedDocument | null = null,
+  ) => {
     setError(null);
     const next: Message[] = [...base, { role: "user", content: userMessage }];
     setMessages(next);
@@ -511,6 +569,7 @@ export default function ChatPage() {
         body: JSON.stringify({
           message: userMessage,
           history: next.slice(0, -1).slice(-MAX_HISTORY_MESSAGES),
+          document: doc ? { title: doc.title, content: doc.content } : undefined,
         }),
       });
       if (!res.ok) {
@@ -817,11 +876,12 @@ export default function ChatPage() {
                   </p>
                   {(() => {
                     const dq = userInfo?.daily_quota;
-                    if (!dq || dq.mode !== "daily") return null;
+                    if (!dq || (dq.mode !== "daily" && dq.mode !== "total")) return null;
+                    const isTotal = dq.mode === "total";
                     return (
                       <div className="mt-3 space-y-1.5 border-t border-white/[0.07] pt-3 text-[11.5px] leading-5 text-zinc-400">
                         <p className="text-[10.5px] font-medium uppercase tracking-wider text-zinc-500">
-                          Kuota harian
+                          {isTotal ? "Kuota gratis (total)" : "Kuota harian"}
                         </p>
                         {dq.plan_label && (
                           <p>
@@ -829,7 +889,7 @@ export default function ChatPage() {
                           </p>
                         )}
                         <p>
-                          Dipakai hari ini:{" "}
+                          {isTotal ? "Terpakai: " : "Dipakai hari ini: "}
                           <span className="tabular-nums text-zinc-200">
                             {dq.used_today ?? 0}
                             {typeof dq.daily_limit === "number" ? ` / ${dq.daily_limit}` : ""}
@@ -837,6 +897,9 @@ export default function ChatPage() {
                         </p>
                         {dq.next_reset_wib && (
                           <p className="text-zinc-500">Reset berikutnya: {dq.next_reset_wib}</p>
+                        )}
+                        {isTotal && (
+                          <p className="text-zinc-500">Kuota gratis tidak reset harian.</p>
                         )}
                       </div>
                     );
@@ -1387,6 +1450,11 @@ export default function ChatPage() {
                   onChange={setInput}
                   onSubmit={handleSend}
                   isLoading={isLoading}
+                  onAttachFile={userInfo?.daily_quota?.doc_access ? handleAttachFile : undefined}
+                  attachmentLabel={docAttachment?.title ?? (docBusy ? "Membaca file…" : null)}
+                  attachmentBusy={docBusy}
+                  onClearAttachment={() => setDocAttachment(null)}
+                  attachDisabled={isLoading}
                 />
               </div>
 
@@ -1447,6 +1515,11 @@ export default function ChatPage() {
                     onChange={setInput}
                     onSubmit={handleSend}
                     isLoading={isLoading}
+                    onAttachFile={userInfo?.daily_quota?.doc_access ? handleAttachFile : undefined}
+                    attachmentLabel={docAttachment?.title ?? (docBusy ? "Membaca file..." : null)}
+                    attachmentBusy={docBusy}
+                    onClearAttachment={() => setDocAttachment(null)}
+                    attachDisabled={isLoading}
                   />
                   <p
                     suppressHydrationWarning

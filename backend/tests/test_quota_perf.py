@@ -97,11 +97,11 @@ def test_status_map_uses_two_bulk_queries(db, monkeypatch):
 
     assert len(out) == 12
     names = [s[0] for s in client.selects]
-    # Orders + pemakaian harian = bulk; pricing_config dibaca sekali (bukan per user).
+    # Orders + DUA peta pemakaian (harian & kumulatif) = bulk; pricing sekali.
     assert names.count("orders") == 1
-    assert names.count("user_daily_quota") == 1
+    assert names.count("user_daily_quota") == 2
     assert names.count("pricing_config") <= 1
-    assert len(client.selects) <= 3, client.selects
+    assert len(client.selects) <= 4, client.selects
 
 
 def test_orders_query_excludes_heavy_proof_blob(db, monkeypatch):

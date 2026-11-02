@@ -25,6 +25,7 @@ import {
   Leaf,
   Rocket,
   Layers,
+  FileText,
 } from "lucide-react";
 import { ApiError, apiErrorMessage, fetchApi, tryFetch } from "@/lib/fetch-api";
 
@@ -37,6 +38,8 @@ export type Plan = {
   popular?: boolean;
   original_amount?: number | null;
   discount_percent?: number | null;
+  /** true = paket dapat fitur upload dokumen (command /doc). */
+  doc_upload?: boolean;
 };
 
 export type PricingData = {
@@ -224,6 +227,12 @@ export default function PricingPage() {
       });
     }
     feats.push({ icon: ShieldCheck, text: "Aktivasi otomatis, tanpa konfirmasi manual" });
+    if (p.doc_upload) {
+      feats.push({
+        icon: FileText,
+        text: "Upload dokumen: tanya AI pakai file (PDF/TXT/MD)",
+      });
+    }
     return feats;
   };
 

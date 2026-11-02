@@ -31,6 +31,21 @@ def _next_reset_iso() -> str:
     return nxt.strftime("%Y-%m-%d %H:%M WIB")
 
 
+# Kunci periode untuk kuota non-subscriber: kumulatif, TIDAK reset harian.
+TOTAL_USAGE_KEY = "free-total"
+
+
+def _period_key(plan: dict[str, Any] | None) -> str:
+    """Kunci penyimpanan pemakaian: kumulatif (total) atau harian WIB."""
+    if plan is not None and str(plan.get("period") or "") == "total":
+        return TOTAL_USAGE_KEY
+    return _wib_day()
+
+
+def _is_total_period(plan: dict[str, Any] | None) -> bool:
+    return plan is not None and str(plan.get("period") or "") == "total"
+
+
 class QuotaMixin:
     @staticmethod
     def _daily_quota_file() -> str:
@@ -77,18 +92,22 @@ class QuotaMixin:
                         "expires_at": expiry.isoformat() if expiry else None,
                         "days_left": days_left if expiry is not None else None,
                         "source": "plan",
+                        "period": "daily",
+                        "doc_upload": bool(plan.get("doc_upload")),
                     }
-        # Tanpa order paid: pakai kuota harian default global (admin panel).
+        # Tanpa order paid: pakai kuota gratis kumulatif (tanpa reset harian).
         limit_default = default_limit if default_limit is not None else DatabaseService._default_daily_limit()
         if limit_default > 0:
             return {
                 "plan_id": None,
-                "plan_label": "Kuota Default",
+                "plan_label": "Kuota Gratis",
                 "daily_limit": limit_default,
                 "expired": False,
                 "expires_at": None,
                 "days_left": None,
                 "source": "default",
+                "period": "total",
+                "doc_upload": False,
             }
         return None
 
@@ -124,6 +143,8 @@ class QuotaMixin:
             "expires_at": expires_raw,
             "days_left": days_left,
             "source": "manual",
+            "period": "daily",
+            "doc_upload": True,
         }
 
     @staticmethod
@@ -146,8 +167,8 @@ class QuotaMixin:
         Order paid terbaru yang menentukan; bila masa aktifnya (field `days`
         order) sudah lewat, plan kembali dengan `expired: True` - kuota dianggap
         habis (remaining 0) sampai user beli paket lagi. Order legacy tanpa
-        `days` tidak pernah expire. Return plan sintetis "Kuota Default" untuk
-        user tanpa paket paid bila kuota default global > 0; return None hanya
+        `days` tidak pernah expire. Return plan sintetis "Kuota Gratis" untuk
+        user tanpa paket paid bila kuota gratis global > 0; return None hanya
         bila default global 0 (unlimited).
         Batas selalu dibaca dari pricing_config saat ini - bukan snapshot.
         """
@@ -166,22 +187,23 @@ class QuotaMixin:
 
     @staticmethod
     def _default_daily_limit() -> int:
-        """Kuota harian default untuk user TANPA paket paid.
+        """Kuota gratis TOTAL untuk user TANPA paket paid (tanpa reset harian).
 
         Dibaca live dari `pricing_config.default_daily_prompts` (admin panel).
-        Selalu minimal 1 harian - nilai 0 TIDAK lagi berarti unlimited
-        (unlimited hanya via tombol Unlimited per user di panel admin).
-        Key tidak ada (konfigurasi lama) dianggap 20.
+        Nama key dipertahankan demi kompatibilitas konfigurasi lama, tetapi
+        sekarang bermakna total kumulatif. Selalu minimal 1 - nilai 0 TIDAK
+        berarti unlimited (unlimited hanya via tombol Unlimited per user).
+        Key tidak ada (konfigurasi lama) dianggap 10.
         """
         from backend.database.db import DatabaseService
 
         val = DatabaseService.get_pricing().get("default_daily_prompts")
         if val is None:
-            return 20
+            return 10
         try:
             return max(1, int(val))
         except (TypeError, ValueError):
-            return 20
+            return 10
 
     @staticmethod
     def _is_unlimited(user: dict[str, Any]) -> bool:
@@ -200,20 +222,30 @@ class QuotaMixin:
             "used_today": None,
             "remaining": None,
             "quota_day": _wib_day(),
-            "next_reset_wib": _next_reset_iso(),
+            "next_reset_wib": None,
+            "period": "total",
+            "doc_access": True,
         }
 
     @staticmethod
     def _status_from_plan(plan: dict[str, Any] | None, used: int) -> dict[str, Any]:
-        """Bentuk status kuota dari plan + pemakaian hari ini (tanpa I/O)."""
+        """Bentuk status kuota dari plan + pemakaian periode (tanpa I/O)."""
         if plan is None:
-            # Kuota harian-only: tanpa paket = tanpa batas (unlimited).
+            # Tanpa batas (unlimited per user).
             return QuotaMixin._unlimited_status()
         limit = int(plan["daily_limit"])
         source = str(plan.get("source") or "plan")
         # "langganan" = kuota berasal dari paket paid atau grant manual admin,
-        # bukan dari Kuota Default global.
+        # bukan dari Kuota Gratis.
         subscribed = source in ("plan", "manual")
+        total_period = str(plan.get("period") or "") == "total"
+        # Akses dokumen: grant manual & unlimited boleh; paket hanya bila
+        # admin mencentang fitur upload dokumen pada paket tersebut.
+        doc_access = False
+        if source == "manual":
+            doc_access = True
+        elif source == "plan":
+            doc_access = bool(plan.get("doc_upload"))
         if plan.get("expired"):
             # Masa aktif habis: kuota hari ini dianggap nol sampai beli paket lagi.
             return {
@@ -225,14 +257,16 @@ class QuotaMixin:
                 "daily_limit": limit,
                 "used_today": used,
                 "remaining": 0,
-                "quota_day": _wib_day(),
+                "quota_day": _period_key(plan),
                 "next_reset_wib": None,
+                "period": "total" if total_period else "daily",
+                "doc_access": False,
                 "plan_expires_at": plan.get("expires_at"),
                 "plan_days_left": 0,
             }
         remaining = max(0, limit - used)
         return {
-            "mode": "daily",
+            "mode": "total" if total_period else "daily",
             "plan_id": plan["plan_id"],
             "plan_label": plan["plan_label"],
             "plan_source": source,
@@ -240,11 +274,30 @@ class QuotaMixin:
             "daily_limit": limit,
             "used_today": used,
             "remaining": remaining,
-            "quota_day": _wib_day(),
-            "next_reset_wib": _next_reset_iso(),
+            "quota_day": _period_key(plan),
+            "next_reset_wib": None if total_period else _next_reset_iso(),
+            "period": "total" if total_period else "daily",
+            "doc_access": doc_access,
             "plan_expires_at": plan.get("expires_at"),
             "plan_days_left": plan.get("days_left"),
         }
+
+    @staticmethod
+    def can_use_document_feature(user: dict[str, Any]) -> bool:
+        """True bila user boleh memakai fitur lampiran dokumen.
+
+        Syarat: grant manual admin / unlimited, atau paket aktif yang
+        `doc_upload`-nya dicentang di panel harga.
+        """
+        from backend.database.db import DatabaseService
+
+        if QuotaMixin._is_unlimited(user):
+            return True
+        try:
+            status = DatabaseService.get_quota_status(user)
+        except Exception:
+            return False
+        return bool(status.get("doc_access"))
 
     @staticmethod
     def get_quota_status(user: dict[str, Any]) -> dict[str, Any]:
@@ -256,7 +309,7 @@ class QuotaMixin:
         if QuotaMixin._is_unlimited(user):
             return QuotaMixin._unlimited_status()
         plan = DatabaseService.resolve_daily_plan(uid)
-        used = DatabaseService.get_daily_usage(uid)
+        used = DatabaseService.get_daily_usage(uid, _period_key(plan))
         return QuotaMixin._status_from_plan(plan, used)
 
     @staticmethod
@@ -307,15 +360,18 @@ class QuotaMixin:
                     plans[str(p.get("id"))] = p
             raw_default = pricing.get("default_daily_prompts")
             if raw_default is None or str(raw_default).strip() == "":
-                default_limit = 20
+                default_limit = 10
             else:
                 try:
                     default_limit = max(1, int(raw_default))
                 except (TypeError, ValueError):
-                    default_limit = 20
+                    default_limit = 10
         except Exception:
             default_limit = None
-        usage = QuotaMixin.usage_map(day)
+        # Dua peta pemakaian: harian (WIB) dan kumulatif gratis. Dipilih per user
+        # sesuai periode paketnya. Masing-masing SATU query bulk.
+        usage_daily = QuotaMixin.usage_map(day)
+        usage_total = QuotaMixin.usage_map(TOTAL_USAGE_KEY)
         out: dict[str, dict[str, Any]] = {}
         for u in users:
             uid = str(u.get("id"))
@@ -327,15 +383,20 @@ class QuotaMixin:
                 plan = QuotaMixin._plan_from_user(u, orders, plans=plans, default_limit=default_limit)
             except Exception:
                 plan = None
+            usage = usage_total if _is_total_period(plan) else usage_daily
             out[uid] = QuotaMixin._status_from_plan(plan, usage.get(uid, 0))
         return out
 
     @staticmethod
-    def get_daily_usage(user_id: str) -> int:
-        """Jumlah prompt yang dipakai pada periode harian WIB yang berlaku."""
+    def get_daily_usage(user_id: str, usage_key: str | None = None) -> int:
+        """Jumlah prompt terpakai pada periode berjalan.
+
+        `usage_key` = kunci periode: tanggal WIB (harian) atau `TOTAL_USAGE_KEY`
+        (kumulatif tanpa reset). Default harian WIB.
+        """
         from backend.database.db import DatabaseService, _read_local_json, logger, supabase_client
 
-        uid, day = str(user_id), _wib_day()
+        uid, day = str(user_id), usage_key or _wib_day()
         if supabase_client:
             try:
                 res = (
@@ -356,10 +417,11 @@ class QuotaMixin:
 
     # ── Konsumsi & refund kuota harian ──
     @staticmethod
-    def try_consume_daily_prompt(user_id: str, daily_limit: int) -> bool:
-        """Kurangi kuota harian secara atomik.
+    def try_consume_daily_prompt(user_id: str, daily_limit: int, usage_key: str | None = None) -> bool:
+        """Kurangi kuota periode berjalan secara atomik.
 
-        Supabase: RPC `consume_daily_prompt` (single statement, aman paralel).
+        `usage_key`: tanggal WIB (harian) atau `TOTAL_USAGE_KEY` (kumulatif).
+        Supabase: RPC `consume_daily_prompt`/`consume_total_prompt`.
         Fallback JSON lokal: inkrement dengan `_counter_lock`.
         """
         from backend.database.db import (
@@ -371,12 +433,18 @@ class QuotaMixin:
             supabase_client,
         )
 
-        uid, day = str(user_id), _wib_day()
+        uid = str(user_id)
+        day = usage_key or _wib_day()
         if supabase_client:
             try:
-                res = supabase_client.rpc(
-                    "consume_daily_prompt", {"p_user_id": uid, "p_limit": int(daily_limit)}
-                ).execute()
+                if day == TOTAL_USAGE_KEY:
+                    res = supabase_client.rpc(
+                        "consume_total_prompt", {"p_user_id": uid, "p_limit": int(daily_limit)}
+                    ).execute()
+                else:
+                    res = supabase_client.rpc(
+                        "consume_daily_prompt", {"p_user_id": uid, "p_limit": int(daily_limit)}
+                    ).execute()
                 return bool(res.data) if res.data is not None else False
             except Exception as e:
                 logger.warning(f"Error consuming daily quota: {e}")
@@ -390,7 +458,7 @@ class QuotaMixin:
             return True
 
     @staticmethod
-    def refund_daily_prompt(user_id: str) -> None:
+    def refund_daily_prompt(user_id: str, usage_key: str | None = None) -> None:
         """Kembalikan 1 kuota pada periode berjalan (provider gagal/tidak jawab)."""
         from backend.database.db import (
             DatabaseService,
@@ -401,10 +469,14 @@ class QuotaMixin:
             supabase_client,
         )
 
-        uid, day = str(user_id), _wib_day()
+        uid = str(user_id)
+        day = usage_key or _wib_day()
         if supabase_client:
             try:
-                supabase_client.rpc("refund_daily_prompt", {"p_user_id": uid}).execute()
+                if day == TOTAL_USAGE_KEY:
+                    supabase_client.rpc("refund_total_prompt", {"p_user_id": uid}).execute()
+                else:
+                    supabase_client.rpc("refund_daily_prompt", {"p_user_id": uid}).execute()
                 return
             except Exception as e:
                 logger.warning(f"Error refunding daily quota: {e}")
@@ -418,7 +490,7 @@ class QuotaMixin:
     # ── Kompatibilitas: menggantikan is_prompt_quota_exhausted lama ──
     @staticmethod
     def is_prompt_quota_exhausted(user: dict[str, Any]) -> bool:
-        """Daily-only. User tanpa paket harian = tanpa batas (tidak pernah habis)."""
+        """User tanpa paket = kuota gratis kumulatif (bisa habis, tanpa reset)."""
         from backend.database.db import DatabaseService
 
         uid = str(user.get("id"))
@@ -431,7 +503,7 @@ class QuotaMixin:
         except Exception:
             return True  # db error → jangan open-gate diam-diam
         if plan is None:
-            return False  # unlimited — kuota kumulatif legacy tidak digunakan lagi
+            return False  # unlimited
         if plan.get("expired"):
             return True  # masa aktif paket habis
-        return DatabaseService.get_daily_usage(uid) >= int(plan["daily_limit"])
+        return DatabaseService.get_daily_usage(uid, _period_key(plan)) >= int(plan["daily_limit"])

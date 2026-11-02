@@ -787,50 +787,55 @@ def admin_stats(request: Request, admin: str = Depends(get_current_admin)):
     total_users = len(users)
     active_users = sum(1 for u in users if bool(u.get("is_active", True)))
     disabled_users = total_users - active_users
-    # Kuota harian-only: metrik prompt dihitung dari pemakaian HARI INI (WIB),
-    # bukan counter kumulatif legacy `prompts_used` yang sudah tidak dipakai.
-    from backend.database.quota_repo import _wib_day
+    # Kuota: subscriber memakai pemakaian HARI INI (WIB); non-subscriber memakai
+    # counter kumulatif `free-total` (tanpa reset). Kedua peta dibaca sekali.
+    from backend.database.quota_repo import TOTAL_USAGE_KEY, _is_total_period, _wib_day
 
     today = _wib_day()
     daily_usage: dict[str, int] = {}
+    total_usage: dict[str, int] = {}
     try:
         from backend.database.db import _read_local_json, supabase_client
 
+        local = _read_local_json("user_daily_quota.json", {})
         if supabase_client:
-            with contextlib.suppress(Exception):
-                rows = (
-                    supabase_client.table("user_daily_quota")
-                    .select("user_id,prompts_used")
-                    .eq("quota_day", today)
-                    .limit(10000)
-                    .execute()
-                    .data
-                    or []
-                )
-                for r in rows:
-                    daily_usage[str(r.get("user_id"))] = int(r.get("prompts_used") or 0)
-        if not daily_usage:
-            local = _read_local_json("user_daily_quota.json", {})
-            for uid, row in (local.get(today) or {}).items():
-                daily_usage[str(uid)] = int((row or {}).get("prompts_used") or 0)
+            for key, bucket in ((today, daily_usage), (TOTAL_USAGE_KEY, total_usage)):
+                with contextlib.suppress(Exception):
+                    rows = (
+                        supabase_client.table("user_daily_quota")
+                        .select("user_id,prompts_used")
+                        .eq("quota_day", key)
+                        .limit(10000)
+                        .execute()
+                        .data
+                        or []
+                    )
+                    for r in rows:
+                        bucket[str(r.get("user_id"))] = int(r.get("prompts_used") or 0)
+        for key, bucket in ((today, daily_usage), (TOTAL_USAGE_KEY, total_usage)):
+            if not bucket:
+                for uid, row in (local.get(key) or {}).items():
+                    bucket[str(uid)] = int((row or {}).get("prompts_used") or 0)
     except Exception:
         pass
-    total_prompts_used = sum(daily_usage.values())
-    # exhausted / unlimited: resolusi batas harian per user yang memakai kuota hari ini.
+    # exhausted / unlimited: resolusi batas per user. Pemakaian yang dipakai
+    # mengikuti periode paket (harian vs total kumulatif).
     daily_limits: dict[str, int] = {}
     exhausted = 0
     for u in users:
         uid = str(u.get("id"))
-        if uid not in daily_usage:
-            continue
         try:
             plan = DatabaseService.resolve_daily_plan(uid)
             limit = 0 if (not plan or plan.get("expired")) else int(plan.get("daily_limit") or 0)
         except Exception:
             limit = -1  # db error → jangan hitung sebagai exhausted/unlimited pasti
+        usage = total_usage.get(uid, 0) if _is_total_period(plan) else daily_usage.get(uid, 0)
         daily_limits[uid] = limit
-        if limit > 0 and daily_usage[uid] >= limit:
+        if limit > 0 and usage >= limit:
             exhausted += 1
+    # Metrik "hari ini" tetap hanya pemakaian harian; kuota kumulatif dipakai
+    # untuk menghitung exhausted, bukan menggelembungkan angka harian.
+    total_prompts_used = sum(daily_usage.values())
     # Unlimited hanya via flag per user (tombol admin), bukan nilai kuota 0.
     unlimited_users = sum(1 for u in users if bool(u.get("unlimited", False)))
     avg_prompts = round(total_prompts_used / total_users, 1) if total_users else 0

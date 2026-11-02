@@ -221,10 +221,26 @@ class ChatMessage(BaseModel):
         return v.strip()
 
 
+class DocumentPayload(BaseModel):
+    """Teks dokumen sekali-pakai untuk command `/doc` (tidak disimpan di server)."""
+
+    title: str = Field(default="Dokumen", max_length=200)
+    content: str = Field(min_length=1, max_length=120_000)
+
+    @field_validator("content")
+    @classmethod
+    def strip_content(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Dokumen kosong")
+        return v
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
     history: list[ChatMessage] | None = Field(default=None, max_length=50)
     model: str | None = Field(default=None, max_length=256)
+    document: DocumentPayload | None = Field(default=None)
 
     @field_validator("message")
     @classmethod
@@ -305,6 +321,14 @@ async def stream_chat(payload: ChatRequest, request: Request):
     if command_names:
         payload.message = clean_message
     user = get_current_chat_user_optional(request)
+    # Dokumen sekali-pakai untuk command /doc: gate premium + login.
+    user_document = None
+    if payload.document is not None:
+        if user is None:
+            raise HTTPException(status_code=401, detail="Login diperlukan untuk memakai fitur dokumen")
+        if not DatabaseService.can_use_document_feature(user):
+            raise HTTPException(status_code=403, detail="Fitur dokumen khusus pengguna paket premium")
+        user_document = payload.document.model_dump()
     # Reservasi kuota harian dilakukan di sini (SEBELUM memanggil model) secara
     # atomik, bukan setelah jawaban masuk — request paralel tidak bisa
     # melewati batas. Bila provider gagal/tidak menjawab, kuota di-refund.
@@ -322,11 +346,16 @@ async def stream_chat(payload: ChatRequest, request: Request):
                         status_code=403,
                         detail="Masa aktif paket habis - perpanjang di halaman pricing untuk melanjutkan chat",
                     )
-                if not DatabaseService.try_consume_daily_prompt(str(fresh["id"]), int(plan["daily_limit"])):
+                from backend.database.quota_repo import _period_key
+
+                usage_key = _period_key(plan)
+                if not DatabaseService.try_consume_daily_prompt(
+                    str(fresh["id"]), int(plan["daily_limit"]), usage_key
+                ):
                     raise HTTPException(
                         status_code=403, detail="Batas prompt harian habis - hubungi admin untuk menambah kuota"
                     )
-                reservation = {"mode": "daily"}
+                reservation = {"mode": "daily", "usage_key": usage_key}
             elif DatabaseService.is_prompt_quota_exhausted(fresh):
                 raise HTTPException(status_code=403, detail="Batas prompt habis - hubungi admin untuk menambah kuota")
     else:
@@ -372,7 +401,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
             if reservation is not None and reservation.get("mode") == "trial":
                 DatabaseService.refund_trial_prompt(ip)
             else:
-                DatabaseService.refund_daily_prompt(str(user.get("id")))
+                DatabaseService.refund_daily_prompt(str(user.get("id")), (reservation or {}).get("usage_key"))
 
     # Identifikasi model aktif untuk pencatatan token (input vs output tetap
     # dua metrik terpisah; model hanya identifikasi tambahan).
@@ -397,6 +426,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
                 model_override=payload.model,
                 user_profile=user_profile,
                 command_names=command_names or None,
+                user_document=user_document,
             ):
                 # dispatch berdasarkan top-level key event (bukan substring di
                 # dalam konten streaming - konten chat bisa mengandung "usage")

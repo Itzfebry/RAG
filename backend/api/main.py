@@ -11,6 +11,7 @@ try:
     from backend.api.auth import router as auth_router
     from backend.api.chat import router as chat_router
     from backend.api.chat import v1_router
+    from backend.api.documents import router as documents_router
     from backend.api.pricing import admin_router as admin_pricing_router
     from backend.api.pricing import payment_router
     from backend.api.pricing import router as pricing_router
@@ -27,6 +28,7 @@ except ImportError:
     from api.auth import router as auth_router  # type: ignore
     from api.chat import router as chat_router
     from api.chat import v1_router
+    from api.documents import router as documents_router
     from api.pricing import admin_router as admin_pricing_router
     from api.pricing import payment_router
     from api.pricing import router as pricing_router  # type: ignore
@@ -118,6 +120,7 @@ app.include_router(v1_router)
 app.include_router(v1_router, prefix="/api")  # alias: /api/v1/* so the OpenAI-compatible
 # endpoint stays reachable on Vercel, where only /api/* routes hit the Python function
 app.include_router(user_router)
+app.include_router(documents_router)
 app.include_router(admin_router)
 app.include_router(admin_users_router)
 app.include_router(pricing_router)

@@ -518,7 +518,7 @@ def user_me(request: Request, user: dict = Depends(get_current_user)):
     prompts_used = 0  # legacy cumulative counter no longer authoritative
     # Mode harian mengisi angka aktif agar UI menampilkan nilai berjalan.
     # Mode "expired": masa aktif paket habis -> remaining 0.
-    if daily_quota and daily_quota.get("mode") in ("daily", "expired", "unlimited"):
+    if daily_quota and daily_quota.get("mode") in ("daily", "total", "expired", "unlimited"):
         remaining = daily_quota.get("remaining")
         prompts_used = daily_quota.get("used_today") or 0
     return {

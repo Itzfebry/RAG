@@ -95,6 +95,9 @@ def _public_pricing() -> dict[str, Any]:
                 "popular": bool(p.get("popular")),
                 "original_amount": original if discounted else None,
                 "discount_percent": round((1 - amount / original) * 100) if discounted else None,
+                # Fitur upload dokumen: dibawa ke frontend agar kartu pricing bisa
+                # menampilkan keterangannya dan checkbox admin mencerminkan state.
+                "doc_upload": bool(p.get("doc_upload")),
             }
         )
     contact = str(cfg.get("contact") or "").strip()
@@ -408,6 +411,9 @@ def _clean_plans(plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "amount": amount,
                 "popular": bool(p.get("popular")),
                 "original_amount": original,
+                # Fitur upload dokumen (command /doc): opsional per paket,
+                # ditandai admin untuk paket premium/ultimate.
+                "doc_upload": bool(p.get("doc_upload")),
             }
         )
     return out

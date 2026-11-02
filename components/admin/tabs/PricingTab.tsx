@@ -219,6 +219,7 @@ export function PricingTab({
           amount: 30000,
           popular: false,
           original_amount: null,
+          doc_upload: false,
         },
       ],
     });
@@ -361,6 +362,18 @@ export function PricingTab({
                     Tandai populer
                   </label>
                 </div>
+                <div className="flex items-center gap-2 pb-1">
+                  <input
+                    type="checkbox"
+                    id={`doc-${idx}`}
+                    checked={!!p.doc_upload}
+                    onChange={(e) => updatePlan(idx, { doc_upload: e.target.checked })}
+                    className="h-4 w-4 accent-white"
+                  />
+                  <label htmlFor={`doc-${idx}`} className="text-[13.5px] text-zinc-300">
+                    Fitur upload dokumen
+                  </label>
+                </div>
                 <div className="text-[13px] tabular-nums text-zinc-500 pb-1">
                   {p.prompts > 0 ? `≈ ${rupiah(Math.round(p.amount / p.prompts))} / prompt` : "-"}
                 </div>
@@ -476,26 +489,26 @@ export function PricingTab({
             </p>
           </div>
           <div className="space-y-2">
-            <Label className={tLabel}>Kuota harian default (tanpa paket)</Label>
+            <Label className={tLabel}>Kuota gratis total (tanpa paket)</Label>
             <Input
               type="number"
               min={1}
               step={1}
-              value={String(pricing.default_daily_prompts ?? 20)}
+              value={String(pricing.default_daily_prompts ?? 10)}
               onChange={(e) =>
                 onChange({
                   ...pricing,
                   default_daily_prompts: Math.max(1, Math.floor(Number(e.target.value) || 1)),
                 })
               }
-              placeholder="20"
+              placeholder="10"
               className={inputCls}
             />
             <p className="text-[12.5px] leading-relaxed text-zinc-500">
-              Batas prompt/hari (reset 00:00 WIB) untuk user yang belum punya paket paid. Minimal 1
-              — angka 0 tidak lagi berarti unlimited; untuk akses tanpa batas gunakan tombol{" "}
+              Total prompt untuk user yang belum punya paket paid — kumulatif, TIDAK reset harian.
+              Minimal 1 — angka 0 tidak berarti unlimited; untuk akses tanpa batas gunakan tombol{" "}
               <span className="text-zinc-300">Unlimited</span> di tab Users. Paket paid tetap
-              memakai batas paketnya sendiri.
+              memakai batas paketnya sendiri (reset harian).
             </p>
           </div>
           <div className="space-y-2">

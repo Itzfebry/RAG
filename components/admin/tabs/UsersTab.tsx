@@ -340,6 +340,7 @@ export function UsersTab({
                     const dailyUsed = quota?.used_today ?? null;
                     const dailyRemaining = quota?.remaining ?? null;
                     const quotaExpired = quota?.mode === "expired";
+                    const isTotal = quota?.period === "total";
                     const hasDaily = !isUnlimited && !quotaExpired && dailyLimit != null;
                     const planSource = quota?.plan_source ?? null;
                     const planLabel = quota?.plan_label ?? (u.manual_plan_label || null);
@@ -508,8 +509,10 @@ export function UsersTab({
                             {isUnlimited
                               ? "tanpa batas harian"
                               : u.plan_label
-                                ? `paket: ${u.plan_label} · reset 00:00 WIB`
-                                : "paket tidak dikenal"}
+                                ? `paket: ${u.plan_label} · ${isTotal ? "total, tanpa reset" : "reset 00:00 WIB"}`
+                                : isTotal
+                                  ? "kuota gratis · total, tanpa reset"
+                                  : "paket tidak dikenal"}
                           </div>
                           {hasLegacyLimit && !hasDaily && (
                             <div className="mt-1 text-[12px] text-zinc-600">
