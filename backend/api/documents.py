@@ -20,10 +20,12 @@ try:
     from backend.api.users import get_current_user
     from backend.core.logging_config import get_logger
     from backend.database.db import DatabaseService
+    from backend.knowledge.document_context import build_chunks
     from backend.security.rate_limiter import enforce_rate_limit, get_client_ip
 except ImportError:
     from core.logging_config import get_logger  # type: ignore
     from database.db import DatabaseService  # type: ignore
+    from knowledge.document_context import build_chunks  # type: ignore
     from security.rate_limiter import enforce_rate_limit, get_client_ip  # type: ignore
 
     from api.users import get_current_user  # type: ignore
@@ -45,8 +47,8 @@ def _require_doc_access(user: dict[str, Any]) -> None:
         )
 
 
-def _extract_text(raw: bytes, suffix: str) -> tuple[str, int | None]:
-    """Ekstrak teks dari file upload. Return (teks, jumlah_halaman).
+def _extract_text(raw: bytes, suffix: str) -> tuple[str, int | None, list[dict]]:
+    """Ekstrak teks dari file upload. Return (teks, jumlah_halaman, chunks).
 
     Raise HTTPException bila file tidak terbaca. Dijalankan di worker thread
     (parsing PDF mahal) - jangan panggil langsung dari event loop.
@@ -67,20 +69,46 @@ def _extract_text(raw: bytes, suffix: str) -> tuple[str, int | None]:
                         detail="PDF terenkripsi - hapus kata sandi lalu unggah ulang",
                     ) from e
             pages = len(reader.pages)
-            content = "\n".join((page.extract_text() or "") for page in reader.pages)
+            page_texts = [(page.extract_text() or "").strip() for page in reader.pages]
+            content = "\n".join(page_texts).strip()
+            chunks: list[dict] = []
+            for i, page_text in enumerate(page_texts):
+                chunks.extend(build_chunks(page_text, page=i + 1))
         except HTTPException:
             raise
         except Exception as e:
             logger.warning(f"[documents] gagal membaca PDF: {e}")
             raise HTTPException(status_code=400, detail="PDF tidak bisa dibaca (mungkin terenkripsi/rusak)") from e
-        if not content.strip():
+        if not content:
             raise HTTPException(
                 status_code=400,
                 detail="PDF ini tidak memiliki teks yang bisa dibaca (kemungkinan hasil scan/gambar)",
             )
-        return content.strip(), pages
+        return content, pages, _trim_chunks(chunks, content)
 
-    return raw.decode("utf-8", errors="ignore").strip(), None
+    content = raw.decode("utf-8", errors="ignore").strip()
+    return content, None, build_chunks(content)
+
+
+def _trim_chunks(chunks: list[dict], content: str) -> list[dict]:
+    """Batasi total teks chunk agar tidak melebihi batas isi dokumen."""
+    out: list[dict] = []
+    used = 0
+    for chunk in chunks:
+        text = str(chunk.get("text") or "")
+        if not text:
+            continue
+        if used + len(text) > MAX_CONTENT_CHARS:
+            text = text[: max(0, MAX_CONTENT_CHARS - used)]
+        if not text:
+            break
+        out.append({**chunk, "text": text})
+        used += len(text)
+        if used >= MAX_CONTENT_CHARS:
+            break
+    if out:
+        return out
+    return build_chunks(content[:MAX_CONTENT_CHARS])
 
 
 @router.post("/user/documents/extract")
@@ -111,7 +139,7 @@ async def extract_document(
 
     # Parsing (PDF) berjalan di threadpool supaya event loop tetap melayani
     # request lain selama ekstraksi.
-    content, page_count = await run_in_threadpool(_extract_text, raw, suffix)
+    content, page_count, chunks = await run_in_threadpool(_extract_text, raw, suffix)
     if not content:
         raise HTTPException(status_code=400, detail="Tidak ada teks yang bisa dibaca dari file ini")
 
@@ -127,6 +155,7 @@ async def extract_document(
         file_type=suffix.lstrip("."),
         truncated=truncated,
         page_count=page_count,
+        chunks=chunks,
     )
     logger.info(
         "[documents] extracted doc_id=%s user=%s chars=%s truncated=%s pages=%s",

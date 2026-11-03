@@ -10,6 +10,7 @@ create table if not exists public.user_documents (
   truncated   boolean not null default false,
   page_count  integer,
   file_type   text not null default '',
+  chunks      jsonb not null default '[]'::jsonb,
   created_at  text not null
 );
 

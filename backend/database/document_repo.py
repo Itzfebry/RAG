@@ -53,6 +53,7 @@ class DocumentMixin:
             "truncated": bool(doc.get("truncated")),
             "page_count": doc.get("page_count"),
             "file_type": str(doc.get("file_type") or ""),
+            "chunk_count": len(doc.get("chunks") or []),
             "created_at": doc.get("created_at"),
         }
 
@@ -65,6 +66,7 @@ class DocumentMixin:
         file_type: str = "",
         truncated: bool = False,
         page_count: int | None = None,
+        chunks: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Simpan dokumen hasil ekstraksi. Return baris lengkap (termasuk isi)."""
         from backend.database.db import DatabaseService, _read_local_json, _write_local_json, logger, supabase_client
@@ -80,6 +82,7 @@ class DocumentMixin:
             "truncated": bool(truncated),
             "page_count": page_count,
             "file_type": str(file_type or "")[:32],
+            "chunks": list(chunks or []),
             "created_at": datetime.now().isoformat(),
         }
         if supabase_client:

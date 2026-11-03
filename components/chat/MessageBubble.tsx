@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
-import { Check, Copy, RotateCw } from "lucide-react";
+import { Check, Copy, FileText, RotateCw } from "lucide-react";
 import { TripleDotSpinner } from "@/components/ui/triple-dot-spinner";
 import { m } from "framer-motion";
 
@@ -16,12 +16,21 @@ const loadMarkdown = () =>
     default: React.ComponentType<{ children: string }>;
   }>;
 
+interface SourceRef {
+  id?: string;
+  title?: string;
+  page?: number | null;
+  excerpt?: string;
+  chunk_index?: number | null;
+}
+
 interface Props {
   role: "user" | "assistant";
   content: unknown;
   isStreaming?: boolean;
   durationMs?: number;
   onRegenerate?: () => void;
+  sources?: SourceRef[];
 }
 
 function fmtSec(ms: number) {
@@ -35,6 +44,7 @@ export const MessageBubble: React.FC<Props> = ({
   isStreaming = false,
   durationMs,
   onRegenerate,
+  sources,
 }) => {
   const [copied, setCopied] = useState(false);
   const [Markdown, setMarkdown] = useState<React.ComponentType<{ children: string }> | null>(null);
@@ -146,6 +156,24 @@ export const MessageBubble: React.FC<Props> = ({
         </div>
         {isStreaming && !!cleaned && typeof durationMs === "number" && (
           <div className="mt-2.5 text-[11px] tracking-wide text-zinc-500">{fmtSec(durationMs)}</div>
+        )}
+        {!!cleaned && !isStreaming && sources && sources.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] tracking-wide text-zinc-500">Sumber:</span>
+            {sources.map((s, i) => (
+              <span
+                key={`${s.id ?? s.title ?? "src"}-${s.chunk_index ?? i}`}
+                title={s.excerpt || s.title || ""}
+                className="inline-flex max-w-[240px] items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[11px] text-zinc-400"
+              >
+                <FileText className="h-3 w-3 shrink-0" />
+                <span className="truncate">
+                  {s.title || "Dokumen"}
+                  {s.page ? ` · hal. ${s.page}` : ""}
+                </span>
+              </span>
+            ))}
+          </div>
         )}
         {!!cleaned && !isStreaming && (
           <motion.div

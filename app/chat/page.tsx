@@ -18,13 +18,33 @@ import type { Me, TrialInfo, ExtractedDocument } from "@/lib/api-types";
 
 export type { Me, TrialInfo };
 
+interface SourceRef {
+  id?: string;
+  title?: string;
+  page?: number | null;
+  excerpt?: string;
+  chunk_index?: number | null;
+}
+
 interface Message {
   role: "user" | "assistant";
   content: string;
   durationMs?: number;
+  sources?: SourceRef[];
+}
+
+function docAttachmentMetaText(doc: ExtractedDocument): string {
+  return [
+    doc.char_count ? `${doc.char_count.toLocaleString("id-ID")} karakter` : null,
+    doc.page_count ? `${doc.page_count} halaman` : null,
+    doc.truncated ? "dipotong ke batas maksimum" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 const MAX_HISTORY_MESSAGES = 20;
+const MAX_ATTACHMENTS = 5;
 
 const SUGGESTION_POOL = [
   "Ringkas knowledge base saya",
@@ -126,7 +146,7 @@ export default function ChatPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   // Lampiran file sekali-pakai untuk command /doc: teks diekstrak server lalu
   // dikirim bersama pesan. Tidak disimpan permanen.
-  const [docAttachment, setDocAttachment] = useState<ExtractedDocument | null>(null);
+  const [docAttachments, setDocAttachments] = useState<ExtractedDocument[]>([]);
   const [docBusy, setDocBusy] = useState(false);
   // Tour instruksi akun baru: tampil sekali per akun (flag localStorage per username).
   const [tourOpen, setTourOpen] = useState(false);
@@ -259,23 +279,12 @@ export default function ChatPage() {
   }, [isLoading]);
   const elapsedMs = isLoading && startedAtRef.current ? nowTick - startedAtRef.current : 0;
 
-  const docAttachmentMeta = docAttachment
-    ? [
-        docAttachment.char_count
-          ? `${docAttachment.char_count.toLocaleString("id-ID")} karakter`
-          : null,
-        docAttachment.page_count ? `${docAttachment.page_count} halaman` : null,
-        docAttachment.truncated ? "dipotong ke batas maksimum" : null,
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : docBusy
-      ? "Mengekstrak teks..."
-      : null;
+  const removeDocAttachment = (docId: string) =>
+    setDocAttachments((prev) => prev.filter((d) => d.id !== docId));
 
   const doLogout = async () => {
     setConfirmLogout(false);
-    setDocAttachment(null);
+    setDocAttachments([]);
     await fetchApi("/api/python/user/logout", { method: "POST" }).catch(() => {});
     window.location.href = "/login";
   };
@@ -307,7 +316,7 @@ export default function ChatPage() {
       }>(`/api/python/user/chats/${id}`);
       setMessages((j.messages || []).map((m) => ({ role: m.role, content: m.content })));
       setActiveChatId(id);
-      setDocAttachment(j.documents?.[0] ?? null);
+      setDocAttachments(j.documents ?? []);
       setError(null);
       setHistoryOpen(false);
     } catch (e) {
@@ -325,7 +334,7 @@ export default function ChatPage() {
       if (activeChatId === id) {
         setActiveChatId(null);
         setMessages([]);
-        setDocAttachment(null);
+        setDocAttachments([]);
       }
       await loadChatList();
     } catch {
@@ -340,7 +349,7 @@ export default function ChatPage() {
     setError(null);
     setQuotaAlert(null);
     setHistoryOpen(false);
-    setDocAttachment(null);
+    setDocAttachments([]);
   };
 
   // Selesai/Lewati tour: tandai permanen agar tidak pernah tampil lagi.
@@ -469,6 +478,10 @@ export default function ChatPage() {
       setError("File terlalu besar (maksimal 2 MB).");
       return;
     }
+    if (docAttachments.length >= MAX_ATTACHMENTS) {
+      setError(`Maksimal ${MAX_ATTACHMENTS} dokumen per percakapan.`);
+      return;
+    }
     setDocBusy(true);
     try {
       const fd = new FormData();
@@ -490,7 +503,9 @@ export default function ChatPage() {
         setError("Tidak ada teks yang bisa dibaca dari file ini.");
         return;
       }
-      setDocAttachment(doc);
+      setDocAttachments((prev) =>
+        prev.some((d) => d.id === doc.id) || prev.length >= MAX_ATTACHMENTS ? prev : [...prev, doc],
+      );
     } catch {
       setError("Gagal mengunggah file. Coba lagi.");
     } finally {
@@ -503,7 +518,7 @@ export default function ChatPage() {
     const userMessage = input.trim();
     setInput("");
     // Lampiran tetap menempel sepanjang percakapan (bukan sekali pakai).
-    await runChat(userMessage, messages, docAttachment);
+    await runChat(userMessage, messages, docAttachments);
   };
 
   const handleRegenerate = async () => {
@@ -515,7 +530,7 @@ export default function ChatPage() {
         method: "POST",
       }).catch(() => {});
     }
-    await runChat(String(messages[idx].content), messages.slice(0, idx), docAttachment);
+    await runChat(String(messages[idx].content), messages.slice(0, idx), docAttachments);
   };
 
   const saveTurn = async (userMessage: string, answer: string, docIds: string[] = []) => {
@@ -554,11 +569,7 @@ export default function ChatPage() {
     } catch {}
   };
 
-  const runChat = async (
-    userMessage: string,
-    base: Message[],
-    doc: ExtractedDocument | null = null,
-  ) => {
+  const runChat = async (userMessage: string, base: Message[], docs: ExtractedDocument[] = []) => {
     setError(null);
     const next: Message[] = [...base, { role: "user", content: userMessage }];
     setMessages(next);
@@ -580,7 +591,7 @@ export default function ChatPage() {
         body: JSON.stringify({
           message: userMessage,
           history: next.slice(0, -1).slice(-MAX_HISTORY_MESSAGES),
-          document_ids: doc ? [doc.id] : undefined,
+          document_ids: docs.length ? docs.map((d) => d.id) : undefined,
         }),
       });
       if (!res.ok) {
@@ -625,6 +636,13 @@ export default function ChatPage() {
       const decoder = new TextDecoder();
       if (!reader) throw new Error("No reader");
       let acc = "";
+      const applySources = (src: SourceRef[]) =>
+        setMessages((prev) => {
+          const u = [...prev];
+          const last = u[u.length - 1];
+          if (last?.role === "assistant") u[u.length - 1] = { ...last, sources: src };
+          return u;
+        });
       // Line buffer: chunk TCP bisa memotong di tengah baris "data: ...",
       // jadi simpan sisa baris di buf dan hanya proses baris utuh.
       let buf = "";
@@ -640,6 +658,7 @@ export default function ChatPage() {
           if (s === "[DONE]") break;
           try {
             const p = JSON.parse(s);
+            if (Array.isArray(p.sources) && p.sources.length) applySources(p.sources);
             if (p.content) {
               acc += p.content;
               setMessages((prev) => {
@@ -662,6 +681,7 @@ export default function ChatPage() {
         if (s && s !== "[DONE]") {
           try {
             const p = JSON.parse(s);
+            if (Array.isArray(p.sources) && p.sources.length) applySources(p.sources);
             if (p.content) {
               acc += p.content;
               setMessages((prev) => {
@@ -688,7 +708,11 @@ export default function ChatPage() {
           .then(setTrialInfo)
           .catch(() => {});
       if (userInfo && acc.trim() && !isStatic) {
-        void saveTurn(userMessage, acc, doc ? [doc.id] : []);
+        void saveTurn(
+          userMessage,
+          acc,
+          docs.map((d) => d.id),
+        );
       }
       const dur = Date.now() - started;
       setMessages((prev) => {
@@ -1462,10 +1486,15 @@ export default function ChatPage() {
                   onSubmit={handleSend}
                   isLoading={isLoading}
                   onAttachFile={userInfo?.daily_quota?.doc_access ? handleAttachFile : undefined}
-                  attachmentLabel={docAttachment?.title ?? (docBusy ? "Membaca file…" : null)}
-                  attachmentMeta={docAttachmentMeta}
+                  attachments={docAttachments.map((d) => ({
+                    id: d.id,
+                    label: d.title,
+                    meta: docAttachmentMetaText(d),
+                  }))}
+                  attachmentLabel={docBusy ? "Membaca file…" : null}
+                  attachmentMeta={docBusy ? "Mengekstrak teks..." : null}
                   attachmentBusy={docBusy}
-                  onClearAttachment={() => setDocAttachment(null)}
+                  onRemoveAttachment={removeDocAttachment}
                   attachDisabled={isLoading}
                 />
               </div>
@@ -1493,6 +1522,7 @@ export default function ChatPage() {
                         content={m.content}
                         isStreaming={streaming}
                         durationMs={streaming && !m.durationMs ? elapsedMs : m.durationMs}
+                        sources={m.sources}
                         onRegenerate={
                           i === messages.length - 1 &&
                           m.role === "assistant" &&
@@ -1528,10 +1558,15 @@ export default function ChatPage() {
                     onSubmit={handleSend}
                     isLoading={isLoading}
                     onAttachFile={userInfo?.daily_quota?.doc_access ? handleAttachFile : undefined}
-                    attachmentLabel={docAttachment?.title ?? (docBusy ? "Membaca file..." : null)}
-                    attachmentMeta={docAttachmentMeta}
+                    attachments={docAttachments.map((d) => ({
+                      id: d.id,
+                      label: d.title,
+                      meta: docAttachmentMetaText(d),
+                    }))}
+                    onRemoveAttachment={removeDocAttachment}
+                    attachmentLabel={docBusy ? "Membaca file..." : null}
+                    attachmentMeta={docBusy ? "Mengekstrak teks..." : null}
                     attachmentBusy={docBusy}
-                    onClearAttachment={() => setDocAttachment(null)}
                     attachDisabled={isLoading}
                   />
                   <p

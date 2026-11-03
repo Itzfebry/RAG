@@ -5,6 +5,13 @@ import { ArrowUp, FileText, Loader2, Paperclip, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { activeCommandsFromInput, suggestCommands } from "@/lib/chat-commands";
 
+/** Lampiran aktif (multi-file). */
+export interface ChatAttachment {
+  id: string;
+  label: string;
+  meta?: string;
+}
+
 interface Props {
   value: string;
   onChange: (v: string) => void;
@@ -14,6 +21,8 @@ interface Props {
   className?: string;
   /** Lampiran file untuk command /doc. Bila diisi, tombol klip ditampilkan. */
   onAttachFile?: (file: File) => void;
+  attachments?: ChatAttachment[];
+  onRemoveAttachment?: (id: string) => void;
   attachmentLabel?: string | null;
   /** Ringkasan kecil di bawah nama file (ukuran, peringatan terpotong). */
   attachmentMeta?: string | null;
@@ -30,6 +39,8 @@ export function AIChatInput({
   placeholder = "Tanyakan apa saja kepada ITZ AI…",
   className,
   onAttachFile,
+  attachments,
+  onRemoveAttachment,
   attachmentLabel,
   attachmentMeta,
   attachmentBusy,
@@ -130,39 +141,69 @@ export function AIChatInput({
           ))}
         </div>
       )}
-      {attachmentLabel && (
-        <div className="mb-2 flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5">
-          {attachmentBusy ? (
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-zinc-400" />
-          ) : (
-            <FileText className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-          )}
-          <span
-            className="min-w-0 flex-1 truncate text-[12.5px] text-zinc-300"
-            title={attachmentLabel}
-          >
-            {attachmentLabel}
-          </span>
-          {attachmentMeta && (
-            <span
-              className="max-w-[45%] shrink-0 truncate text-[11px] text-zinc-500"
-              title={attachmentMeta}
+      {(attachments?.length || attachmentLabel) && (
+        <div className="mb-2 flex flex-col gap-1.5">
+          {attachments?.map((a) => (
+            <div
+              key={a.id}
+              className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5"
             >
-              {attachmentMeta}
-            </span>
-          )}
-          <span className="shrink-0 rounded-full border border-white/[0.08] px-1.5 py-0.5 text-[10.5px] text-zinc-500">
-            konteks
-          </span>
-          {onClearAttachment && !attachmentBusy && (
-            <button
-              type="button"
-              onClick={onClearAttachment}
-              aria-label="Hapus lampiran"
-              className="shrink-0 rounded-md p-0.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+              <FileText className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+              <span className="min-w-0 flex-1 truncate text-[12.5px] text-zinc-300" title={a.label}>
+                {a.label}
+              </span>
+              {a.meta && (
+                <span
+                  className="max-w-[45%] shrink-0 truncate text-[11px] text-zinc-500"
+                  title={a.meta}
+                >
+                  {a.meta}
+                </span>
+              )}
+              {onRemoveAttachment && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveAttachment(a.id)}
+                  aria-label={`Hapus lampiran ${a.label}`}
+                  className="shrink-0 rounded-md p-0.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          ))}
+          {attachmentLabel && (
+            <div className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5">
+              {attachmentBusy ? (
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-zinc-400" />
+              ) : (
+                <FileText className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+              )}
+              <span
+                className="min-w-0 flex-1 truncate text-[12.5px] text-zinc-300"
+                title={attachmentLabel}
+              >
+                {attachmentLabel}
+              </span>
+              {attachmentMeta && (
+                <span
+                  className="max-w-[45%] shrink-0 truncate text-[11px] text-zinc-500"
+                  title={attachmentMeta}
+                >
+                  {attachmentMeta}
+                </span>
+              )}
+              {onClearAttachment && !attachmentBusy && (
+                <button
+                  type="button"
+                  onClick={onClearAttachment}
+                  aria-label="Hapus lampiran"
+                  className="shrink-0 rounded-md p-0.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
