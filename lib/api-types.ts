@@ -54,14 +54,17 @@ export interface TrialInfo {
   allowed: boolean;
 }
 
-/* ---- dokumen command /doc (premium, sekali-pakai) ---- */
+/* ---- dokumen lampiran chat (premium, disimpan server-side) ---- */
 
-/** Teks hasil ekstraksi file, dikirim bersama pesan chat (tidak disimpan server). */
+/** Metadata dokumen tersimpan. Isi teks TIDAK dikirim ke client. */
 export interface ExtractedDocument {
+  id: string;
   title: string;
-  content: string;
   char_count?: number;
   truncated?: boolean;
+  page_count?: number | null;
+  file_type?: string;
+  created_at?: string;
 }
 
 /* ---- users ---- */

@@ -221,26 +221,28 @@ class ChatMessage(BaseModel):
         return v.strip()
 
 
-class DocumentPayload(BaseModel):
-    """Teks dokumen sekali-pakai untuk command `/doc` (tidak disimpan di server)."""
-
-    title: str = Field(default="Dokumen", max_length=200)
-    content: str = Field(min_length=1, max_length=120_000)
-
-    @field_validator("content")
-    @classmethod
-    def strip_content(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("Dokumen kosong")
-        return v
-
-
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
     history: list[ChatMessage] | None = Field(default=None, max_length=50)
     model: str | None = Field(default=None, max_length=256)
-    document: DocumentPayload | None = Field(default=None)
+    # Dokumen tersimpan (server-side). Client tidak pernah mengirim isi teks.
+    document_ids: list[str] | None = Field(default=None, max_length=10)
+
+    @field_validator("document_ids")
+    @classmethod
+    def check_document_ids(cls, v):  # type: ignore
+        if v is None:
+            return v
+        cleaned: list[str] = []
+        for item in v:
+            token = str(item).strip()
+            if not token or len(token) > 64:
+                raise ValueError("Invalid document ID")
+            if not re.match(r"^[a-zA-Z0-9-]+$", token):
+                raise ValueError("Invalid document ID")
+            if token not in cleaned:
+                cleaned.append(token)
+        return cleaned or None
 
     @field_validator("message")
     @classmethod
@@ -321,14 +323,22 @@ async def stream_chat(payload: ChatRequest, request: Request):
     if command_names:
         payload.message = clean_message
     user = get_current_chat_user_optional(request)
-    # Dokumen sekali-pakai untuk command /doc: gate premium + login.
-    user_document = None
-    if payload.document is not None:
+    # Dokumen tersimpan: gate premium + verifikasi kepemilikan per dokumen.
+    user_documents: list[dict] = []
+    if payload.document_ids:
         if user is None:
             raise HTTPException(status_code=401, detail="Login diperlukan untuk memakai fitur dokumen")
         if not DatabaseService.can_use_document_feature(user):
             raise HTTPException(status_code=403, detail="Fitur dokumen khusus pengguna paket premium")
-        user_document = payload.document.model_dump()
+        own_docs = DatabaseService.list_user_documents(str(user.get("id")), payload.document_ids)
+        found = {str(d.get("id")) for d in own_docs}
+        missing = [i for i in payload.document_ids if i not in found]
+        if missing:
+            raise HTTPException(
+                status_code=404,
+                detail="Dokumen tidak ditemukan atau sudah kedaluwarsa. Lampirkan ulang file.",
+            )
+        user_documents = own_docs
     # Reservasi kuota harian dilakukan di sini (SEBELUM memanggil model) secara
     # atomik, bukan setelah jawaban masuk — request paralel tidak bisa
     # melewati batas. Bila provider gagal/tidak menjawab, kuota di-refund.
@@ -426,7 +436,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
                 model_override=payload.model,
                 user_profile=user_profile,
                 command_names=command_names or None,
-                user_document=user_document,
+                user_documents=user_documents or None,
             ):
                 # dispatch berdasarkan top-level key event (bukan substring di
                 # dalam konten streaming - konten chat bisa mengandung "usage")

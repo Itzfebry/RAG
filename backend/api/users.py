@@ -695,6 +695,9 @@ class ChatMessageItem(BaseModel):
 
 class ChatMessagesAppend(BaseModel):
     messages: list[ChatMessageItem] = Field(min_length=1, max_length=2)
+    # Dokumen yang dipakai pada turn ini; diikat ke sesi agar tetap ada saat
+    # chat dibuka kembali.
+    document_ids: list[str] | None = Field(default=None, max_length=10)
 
 
 @router.get("/user/chats")
@@ -732,6 +735,7 @@ def user_get_chat(session_id: str, user: dict = Depends(get_current_user)):
         "id": s["id"],
         "title": s.get("title") or "Chat baru",
         "messages": [{"role": m["role"], "content": m["content"]} for m in msgs],
+        "documents": DatabaseService.session_documents(uid, session_id),
     }
 
 
@@ -743,6 +747,8 @@ def user_append_chat_messages(session_id: str, payload: ChatMessagesAppend, user
         raise HTTPException(status_code=404, detail="Chat tidak ditemukan")
     items = [{"role": m.role, "content": m.content} for m in payload.messages]
     DatabaseService.append_chat_messages(session_id, items)
+    if payload.document_ids:
+        DatabaseService.bind_documents_to_session(uid, session_id, payload.document_ids)
     if (s.get("title") or "Chat baru") == "Chat baru":
         first_user = next((m["content"] for m in items if m["role"] == "user"), "")
         if first_user:

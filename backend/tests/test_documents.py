@@ -1,4 +1,4 @@
-"""Test endpoint ekstraksi dokumen (fitur lampiran file premium, sekali-pakai).
+"""Test fitur lampiran dokumen (ekstraksi server-side + doc_id).
 
 Tanpa Supabase / provider LLM. Jalankan:
   python -m pytest backend/tests/test_documents.py -q
@@ -22,13 +22,17 @@ MAX_CHARS = 120_000
 
 
 @pytest.fixture
-def make_client(monkeypatch):
+def make_client(monkeypatch, tmp_path):
     """Factory TestClient dengan status langganan yang bisa diatur per test."""
     from fastapi.testclient import TestClient
 
     from backend.api.main import app
     from backend.api.users import get_current_user
+    from backend.database import db as db_module
     from backend.database.db import DatabaseService
+
+    # Isolasi penyimpanan lokal per test agar tidak menyentuh data/storage asli.
+    monkeypatch.setattr(db_module, "LOCAL_DATA_DIR", str(tmp_path))
 
     clients = []
 
@@ -47,22 +51,29 @@ def make_client(monkeypatch):
     app.dependency_overrides.pop(get_current_user, None)
 
 
-def test_extract_txt(make_client):
+def test_extract_txt_stores_content_server_side(make_client):
+    from backend.database.db import DatabaseService
+
     c = make_client()
     res = c.post(URL, files={"file": ("catatan.txt", b"halo dunia", "text/plain")})
     assert res.status_code == 200
     doc = res.json()["document"]
     assert doc["title"] == "catatan.txt"
-    assert doc["content"] == "halo dunia"
     assert doc["char_count"] == len("halo dunia")
     assert doc["truncated"] is False
+    assert doc["id"]
+    # Isi dokumen TIDAK dikirim ke client, tapi tersimpan di server.
+    assert "content" not in doc
+    stored = DatabaseService.get_user_document("u-test", doc["id"])
+    assert stored is not None
+    assert stored["content"] == "halo dunia"
 
 
 def test_extract_markdown(make_client):
     c = make_client()
     res = c.post(URL, files={"file": ("rahasia.md", b"# Judul\n\nisi", "text/markdown")})
     assert res.status_code == 200
-    assert res.json()["document"]["content"].startswith("# Judul")
+    assert res.json()["document"]["title"] == "rahasia.md"
 
 
 def test_rejects_unsupported_extension(make_client):
@@ -85,12 +96,15 @@ def test_rejects_oversized_file(make_client):
 
 
 def test_truncates_long_content(make_client):
+    from backend.database.db import DatabaseService
+
     c = make_client()
     res = c.post(URL, files={"file": ("panjang.txt", b"a" * (MAX_CHARS + 50), "text/plain")})
     assert res.status_code == 200
     doc = res.json()["document"]
     assert doc["truncated"] is True
-    assert len(doc["content"]) == MAX_CHARS
+    stored = DatabaseService.get_user_document("u-test", doc["id"])
+    assert len(stored["content"]) == MAX_CHARS
 
 
 def test_blocks_user_without_doc_access(make_client):
@@ -100,12 +114,8 @@ def test_blocks_user_without_doc_access(make_client):
     assert "dokumen" in res.json()["detail"].lower()
 
 
-def test_chat_passes_document_to_orchestrator(monkeypatch):
-    """Regresi: `document` dari client harus sampai ke stream_chat_response.
-
-    Bug lama: field dokumen tidak diteruskan, sehingga model menjawab tanpa
-    konteks file yang dilampirkan.
-    """
+def test_chat_loads_owned_document_into_orchestrator(monkeypatch):
+    """Regresi: `document_ids` harus dimuat dari storage dan diteruskan ke orchestrator."""
     import json
 
     from fastapi.testclient import TestClient
@@ -115,10 +125,17 @@ def test_chat_passes_document_to_orchestrator(monkeypatch):
     from backend.database.db import DatabaseService
 
     captured: dict = {}
+    stored = {
+        "id": "doc-123",
+        "title": "catatan.txt",
+        "content": "RAHASIA-123 isi dokumen",
+        "char_count": 21,
+        "truncated": False,
+    }
 
     async def fake_stream(*args, **kwargs):
         captured["query"] = args[0] if args else kwargs.get("query")
-        captured["user_document"] = kwargs.get("user_document")
+        captured["user_documents"] = kwargs.get("user_documents")
         yield f"data: {json.dumps({'content': 'ok'})}\n\n"
         yield "data: [DONE]\n\n"
 
@@ -129,6 +146,7 @@ def test_chat_passes_document_to_orchestrator(monkeypatch):
         lambda request: {"id": "u1", "display_name": "Budi"},
     )
     monkeypatch.setattr(DatabaseService, "can_use_document_feature", staticmethod(lambda user: True))
+    monkeypatch.setattr(DatabaseService, "list_user_documents", staticmethod(lambda uid, ids=None: [stored]))
     monkeypatch.setattr(
         DatabaseService,
         "get_user_by_id",
@@ -144,33 +162,54 @@ def test_chat_passes_document_to_orchestrator(monkeypatch):
     c = TestClient(app)
     res = c.post(
         "/api/chat",
-        json={
-            "message": "ringkas dokumen ini",
-            "document": {"title": "catatan.txt", "content": "RAHASIA-123 isi dokumen"},
-        },
+        json={"message": "ringkas dokumen ini", "document_ids": ["doc-123"]},
     )
 
     assert res.status_code == 200
     assert captured["query"] == "ringkas dokumen ini"
-    assert captured["user_document"] == {
-        "title": "catatan.txt",
-        "content": "RAHASIA-123 isi dokumen",
-    }
+    assert captured["user_documents"] == [stored]
+
+
+def test_chat_rejects_unowned_document(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from backend.api import chat as chat_api
+    from backend.api.main import app
+    from backend.database.db import DatabaseService
+
+    monkeypatch.setattr(
+        chat_api,
+        "get_current_chat_user_optional",
+        lambda request: {"id": "u1", "display_name": "Budi"},
+    )
+    monkeypatch.setattr(DatabaseService, "can_use_document_feature", staticmethod(lambda user: True))
+    monkeypatch.setattr(DatabaseService, "list_user_documents", staticmethod(lambda uid, ids=None: []))
+    monkeypatch.setattr(
+        DatabaseService,
+        "get_user_by_id",
+        staticmethod(lambda uid: {"id": "u1", "display_name": "Budi"}),
+    )
+    monkeypatch.setattr(DatabaseService, "get_user_profile", staticmethod(lambda uid: {}))
+    monkeypatch.setattr(chat_api, "_active_daily_plan", lambda user: None)
+    monkeypatch.setattr(DatabaseService, "is_prompt_quota_exhausted", staticmethod(lambda user: False))
+    monkeypatch.setattr(DatabaseService, "get_token_stats", staticmethod(lambda days: {"budget": 0, "remaining": 0}))
+    monkeypatch.setattr(DatabaseService, "get_app_settings", staticmethod(lambda: {}))
+    monkeypatch.setattr(DatabaseService, "get_config_table", staticmethod(lambda table: {}))
+
+    c = TestClient(app)
+    res = c.post("/api/chat", json={"message": "ringkas", "document_ids": ["doc-missing"]})
+    assert res.status_code == 404
 
 
 def test_openai_messages_embed_document_before_query():
-    """Isi dokumen harus muncul di pesan user terakhir, tepat sebelum pertanyaan.
-
-    Model kecil sering mengabaikan dokumen yang hanya ada di system prompt, jadi
-    isi dokumen ditempel ke pesan user agar benar-benar dipakai.
-    """
+    """Isi dokumen harus muncul di pesan user terakhir, tepat sebelum pertanyaan."""
     from backend.agent.agent import _build_openai_messages
 
     msgs = _build_openai_messages(
         "jelaskan",
         [],
         "SYSTEM",
-        user_document={"title": "cv.pdf", "content": "SKILL-PYTHON-RAG"},
+        document_context="[Dokumen: cv.pdf]\nSKILL-PYTHON-RAG\n[Akhir dokumen: cv.pdf]",
     )
     assert msgs[0] == {"role": "system", "content": "SYSTEM"}
     last = msgs[-1]

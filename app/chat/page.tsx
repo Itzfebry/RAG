@@ -259,6 +259,20 @@ export default function ChatPage() {
   }, [isLoading]);
   const elapsedMs = isLoading && startedAtRef.current ? nowTick - startedAtRef.current : 0;
 
+  const docAttachmentMeta = docAttachment
+    ? [
+        docAttachment.char_count
+          ? `${docAttachment.char_count.toLocaleString("id-ID")} karakter`
+          : null,
+        docAttachment.page_count ? `${docAttachment.page_count} halaman` : null,
+        docAttachment.truncated ? "dipotong ke batas maksimum" : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : docBusy
+      ? "Mengekstrak teks..."
+      : null;
+
   const doLogout = async () => {
     setConfirmLogout(false);
     setDocAttachment(null);
@@ -289,10 +303,11 @@ export default function ChatPage() {
     try {
       const j = await fetchApi<{
         messages?: { role: "user" | "assistant"; content: string }[];
+        documents?: ExtractedDocument[];
       }>(`/api/python/user/chats/${id}`);
       setMessages((j.messages || []).map((m) => ({ role: m.role, content: m.content })));
       setActiveChatId(id);
-      setDocAttachment(null);
+      setDocAttachment(j.documents?.[0] ?? null);
       setError(null);
       setHistoryOpen(false);
     } catch (e) {
@@ -471,16 +486,11 @@ export default function ChatPage() {
       }
       const j = (await res.json()) as { document?: ExtractedDocument };
       const doc = j.document;
-      if (!doc?.content) {
+      if (!doc?.id) {
         setError("Tidak ada teks yang bisa dibaca dari file ini.");
         return;
       }
-      setDocAttachment({
-        title: doc.title || file.name,
-        content: doc.content,
-        char_count: doc.char_count,
-        truncated: doc.truncated,
-      });
+      setDocAttachment(doc);
     } catch {
       setError("Gagal mengunggah file. Coba lagi.");
     } finally {
@@ -492,8 +502,8 @@ export default function ChatPage() {
     if (!input.trim() || isLoading) return;
     const userMessage = input.trim();
     setInput("");
+    // Lampiran tetap menempel sepanjang percakapan (bukan sekali pakai).
     await runChat(userMessage, messages, docAttachment);
-    setDocAttachment(null);
   };
 
   const handleRegenerate = async () => {
@@ -505,10 +515,10 @@ export default function ChatPage() {
         method: "POST",
       }).catch(() => {});
     }
-    await runChat(String(messages[idx].content), messages.slice(0, idx));
+    await runChat(String(messages[idx].content), messages.slice(0, idx), docAttachment);
   };
 
-  const saveTurn = async (userMessage: string, answer: string) => {
+  const saveTurn = async (userMessage: string, answer: string, docIds: string[] = []) => {
     try {
       let id = activeChatId;
       if (!id) {
@@ -537,6 +547,7 @@ export default function ChatPage() {
             { role: "user", content: userMessage },
             { role: "assistant", content: answer },
           ],
+          ...(docIds.length ? { document_ids: docIds } : {}),
         },
       });
       await loadChatList();
@@ -569,7 +580,7 @@ export default function ChatPage() {
         body: JSON.stringify({
           message: userMessage,
           history: next.slice(0, -1).slice(-MAX_HISTORY_MESSAGES),
-          document: doc ? { title: doc.title, content: doc.content } : undefined,
+          document_ids: doc ? [doc.id] : undefined,
         }),
       });
       if (!res.ok) {
@@ -677,7 +688,7 @@ export default function ChatPage() {
           .then(setTrialInfo)
           .catch(() => {});
       if (userInfo && acc.trim() && !isStatic) {
-        void saveTurn(userMessage, acc);
+        void saveTurn(userMessage, acc, doc ? [doc.id] : []);
       }
       const dur = Date.now() - started;
       setMessages((prev) => {
@@ -1452,6 +1463,7 @@ export default function ChatPage() {
                   isLoading={isLoading}
                   onAttachFile={userInfo?.daily_quota?.doc_access ? handleAttachFile : undefined}
                   attachmentLabel={docAttachment?.title ?? (docBusy ? "Membaca file…" : null)}
+                  attachmentMeta={docAttachmentMeta}
                   attachmentBusy={docBusy}
                   onClearAttachment={() => setDocAttachment(null)}
                   attachDisabled={isLoading}
@@ -1517,6 +1529,7 @@ export default function ChatPage() {
                     isLoading={isLoading}
                     onAttachFile={userInfo?.daily_quota?.doc_access ? handleAttachFile : undefined}
                     attachmentLabel={docAttachment?.title ?? (docBusy ? "Membaca file..." : null)}
+                    attachmentMeta={docAttachmentMeta}
                     attachmentBusy={docBusy}
                     onClearAttachment={() => setDocAttachment(null)}
                     attachDisabled={isLoading}

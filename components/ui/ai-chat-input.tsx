@@ -15,6 +15,8 @@ interface Props {
   /** Lampiran file untuk command /doc. Bila diisi, tombol klip ditampilkan. */
   onAttachFile?: (file: File) => void;
   attachmentLabel?: string | null;
+  /** Ringkasan kecil di bawah nama file (ukuran, peringatan terpotong). */
+  attachmentMeta?: string | null;
   attachmentBusy?: boolean;
   onClearAttachment?: () => void;
   attachDisabled?: boolean;
@@ -29,6 +31,7 @@ export function AIChatInput({
   className,
   onAttachFile,
   attachmentLabel,
+  attachmentMeta,
   attachmentBusy,
   onClearAttachment,
   attachDisabled,
@@ -140,6 +143,14 @@ export function AIChatInput({
           >
             {attachmentLabel}
           </span>
+          {attachmentMeta && (
+            <span
+              className="max-w-[45%] shrink-0 truncate text-[11px] text-zinc-500"
+              title={attachmentMeta}
+            >
+              {attachmentMeta}
+            </span>
+          )}
           <span className="shrink-0 rounded-full border border-white/[0.08] px-1.5 py-0.5 text-[10.5px] text-zinc-500">
             konteks
           </span>
