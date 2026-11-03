@@ -691,6 +691,8 @@ class ChatSessionCreate(BaseModel):
 class ChatMessageItem(BaseModel):
     role: str = Field(pattern=r"^(user|assistant)$")
     content: str = Field(min_length=1, max_length=20000)
+    # Dokumen yang menempel pada pesan ini (chip lampiran per pesan).
+    document_ids: list[str] | None = Field(default=None, max_length=10)
 
 
 class ChatMessagesAppend(BaseModel):
@@ -731,10 +733,25 @@ def user_get_chat(session_id: str, user: dict = Depends(get_current_user)):
     if s is None:
         raise HTTPException(status_code=404, detail="Chat tidak ditemukan")
     msgs = DatabaseService.list_chat_messages(session_id)
+    # Kumpulkan semua doc id dari seluruh pesan, lalu resolve sekali.
+    all_ids: list[str] = []
+    for m in msgs:
+        for i in m.get("document_ids") or []:
+            if str(i).strip() and str(i) not in all_ids:
+                all_ids.append(str(i))
+    by_id = {str(d.get("id")): d for d in DatabaseService.list_user_documents(uid, all_ids)}
+
+    def _msg_docs(m: dict) -> list[dict]:
+        return [
+            DatabaseService.public_document_metadata(by_id[str(i)])
+            for i in (m.get("document_ids") or [])
+            if str(i) in by_id
+        ]
+
     return {
         "id": s["id"],
         "title": s.get("title") or "Chat baru",
-        "messages": [{"role": m["role"], "content": m["content"]} for m in msgs],
+        "messages": [{"role": m["role"], "content": m["content"], "documents": _msg_docs(m)} for m in msgs],
         "documents": DatabaseService.session_documents(uid, session_id),
     }
 
@@ -745,10 +762,16 @@ def user_append_chat_messages(session_id: str, payload: ChatMessagesAppend, user
     s = DatabaseService.get_chat_session(uid, session_id)
     if s is None:
         raise HTTPException(status_code=404, detail="Chat tidak ditemukan")
-    items = [{"role": m.role, "content": m.content} for m in payload.messages]
+    items = [
+        {"role": m.role, "content": m.content, "document_ids": list(m.document_ids or [])} for m in payload.messages
+    ]
     DatabaseService.append_chat_messages(session_id, items)
-    if payload.document_ids:
-        DatabaseService.bind_documents_to_session(uid, session_id, payload.document_ids)
+    # Tetap ikat ke sesi (fallback metadata sesi + kompatibilitas).
+    session_doc_ids = [x for m in payload.messages for x in (m.document_ids or [])]
+    if not session_doc_ids and payload.document_ids:
+        session_doc_ids = list(payload.document_ids)
+    if session_doc_ids:
+        DatabaseService.bind_documents_to_session(uid, session_id, session_doc_ids)
     if (s.get("title") or "Chat baru") == "Chat baru":
         first_user = next((m["content"] for m in items if m["role"] == "user"), "")
         if first_user:

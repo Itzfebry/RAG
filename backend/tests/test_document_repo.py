@@ -84,3 +84,22 @@ def test_bind_ignores_documents_not_owned_by_user(db):
     session = db.create_chat_session(uid, "Chat")
     foreign = _save(db, user_id="someone-else")
     assert db.bind_documents_to_session(uid, session["id"], [foreign["id"]]) == []
+
+
+def test_append_chat_messages_persists_document_ids(db):
+    user = db.create_user({"username": "budi", "password_hash": "x", "max_prompts": 0, "prompts_used": 0})
+    uid = str(user["id"])
+    session = db.create_chat_session(uid, "Chat")
+    doc = _save(db, user_id=uid)
+
+    db.append_chat_messages(
+        session["id"],
+        [
+            {"role": "user", "content": "jelaskan", "document_ids": [doc["id"]]},
+            {"role": "assistant", "content": "oke", "document_ids": []},
+        ],
+    )
+    msgs = db.list_chat_messages(session["id"])
+    assert [m["role"] for m in msgs] == ["user", "assistant"]
+    assert msgs[0]["document_ids"] == [doc["id"]]
+    assert msgs[1]["document_ids"] == []

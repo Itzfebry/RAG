@@ -50,6 +50,14 @@ project/
    for citation chips.
 4. Chat history binds `document_ids` to the session so reopening a chat restores
    its attachments; documents and bindings expire after `DOC_RETENTION_DAYS`.
-5. `migrations/supabase_migration_documents.sql` must be run manually in the
-   Supabase SQL Editor for server-side persistence (otherwise the local JSON
-   fallback is used).
+5. Each saved message also carries its own `document_ids`, so the user-message
+   file chip is restored per message when a chat is reopened (see
+   `supabase_migration_chat_message_documents.sql`).
+6. After the answer stream, a best-effort non-streaming model call produces 3
+   suggested follow-up questions, emitted as a `suggestions` SSE event held
+   before `[DONE]`. Suggestions are shown only on the latest assistant message
+   and are not persisted.
+7. `migrations/supabase_migration_documents.sql` and
+   `migrations/supabase_migration_chat_message_documents.sql` must be run
+   manually in the Supabase SQL Editor for server-side persistence (otherwise
+   the local JSON fallback is used).

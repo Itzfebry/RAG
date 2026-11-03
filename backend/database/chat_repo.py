@@ -141,7 +141,7 @@ class ChatMixin:
         return row
 
     @staticmethod
-    def append_chat_messages(session_id: str, items: list[dict[str, str]]) -> None:
+    def append_chat_messages(session_id: str, items: list[dict[str, Any]]) -> None:
         from backend.database.db import DatabaseService, _read_local_json, _write_local_json, logger, supabase_client
 
         now = datetime.now().isoformat()
@@ -151,17 +151,24 @@ class ChatMixin:
                 "session_id": session_id,
                 "role": i["role"],
                 "content": i["content"],
+                # Dokumen yang menempel pada pesan ini (untuk chip lampiran saat
+                # chat dibuka ulang). Kolom baru; migrasi terpisah.
+                "document_ids": [str(x) for x in (i.get("document_ids") or []) if str(x).strip()],
                 "created_at": now,
             }
             for i in items
         ]
         if supabase_client:
-            try:
-                supabase_client.table("chat_messages").insert(rows).execute()
-                supabase_client.table("chat_sessions").update({"updated_at": now}).eq("id", session_id).execute()
-                return
-            except Exception as e:
-                logger.warning(f"Error saving messages in Supabase: {e}")
+            # Coba simpan lengkap (dengan document_ids). Bila kolom belum ada
+            # (migrasi belum dijalankan), ulangi tanpa kolom itu supaya isi pesan
+            # tetap tersimpan di Supabase.
+            for attempt_rows in (rows, [{k: v for k, v in r.items() if k != "document_ids"} for r in rows]):
+                try:
+                    supabase_client.table("chat_messages").insert(attempt_rows).execute()
+                    supabase_client.table("chat_sessions").update({"updated_at": now}).eq("id", session_id).execute()
+                    return
+                except Exception as e:
+                    logger.warning(f"Error saving messages in Supabase: {e}")
         msgs = _read_local_json(DatabaseService._chat_msgs_file(), [])
         msgs.extend(rows)
         _write_local_json(DatabaseService._chat_msgs_file(), msgs)

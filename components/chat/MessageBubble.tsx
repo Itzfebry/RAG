@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
-import { Check, Copy, FileText, RotateCw } from "lucide-react";
+import { Check, Copy, FileText, RotateCw, Sparkles } from "lucide-react";
 import { TripleDotSpinner } from "@/components/ui/triple-dot-spinner";
 import { m } from "framer-motion";
 
@@ -24,6 +24,13 @@ interface SourceRef {
   chunk_index?: number | null;
 }
 
+interface AttachmentRef {
+  id?: string;
+  title?: string;
+  page_count?: number | null;
+  char_count?: number;
+}
+
 interface Props {
   role: "user" | "assistant";
   content: unknown;
@@ -31,6 +38,11 @@ interface Props {
   durationMs?: number;
   onRegenerate?: () => void;
   sources?: SourceRef[];
+  /** Lampiran dokumen pada pesan user (chip di atas bubble). */
+  attachments?: AttachmentRef[];
+  /** Saran pertanyaan lanjutan dari model. */
+  suggestions?: string[];
+  onSuggestionClick?: (text: string) => void;
 }
 
 function fmtSec(ms: number) {
@@ -45,6 +57,9 @@ export const MessageBubble: React.FC<Props> = ({
   durationMs,
   onRegenerate,
   sources,
+  attachments,
+  suggestions,
+  onSuggestionClick,
 }) => {
   const [copied, setCopied] = useState(false);
   const [Markdown, setMarkdown] = useState<React.ComponentType<{ children: string }> | null>(null);
@@ -81,11 +96,30 @@ export const MessageBubble: React.FC<Props> = ({
   if (role === "user") {
     return (
       <motion.div
-        className="flex justify-end"
+        className="flex flex-col items-end gap-1.5"
         initial={{ opacity: 0, y: 12, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
       >
+        {attachments && attachments.length > 0 && (
+          <div className="flex max-w-[76%] flex-wrap justify-end gap-1.5">
+            {attachments.map((a, i) => (
+              <div
+                key={`${a.id ?? a.title ?? "att"}-${i}`}
+                className="flex max-w-[240px] items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5"
+                title={a.title || ""}
+              >
+                <FileText className="h-3.5 w-3.5 shrink-0 text-red-400" />
+                <div className="min-w-0">
+                  <div className="truncate text-[12px] text-zinc-200">{a.title || "Dokumen"}</div>
+                  <div className="truncate text-[10.5px] text-zinc-500">
+                    {a.page_count ? `PDF · ${a.page_count} hal.` : "Dokumen"}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="max-w-[76%] rounded-[18px] bg-gradient-to-br from-white/[0.11] to-white/[0.07] px-4 py-3 shadow-lg ring-1 ring-white/[0.10] backdrop-blur-sm">
           <p className="whitespace-pre-wrap break-words text-[14.5px] leading-[1.68] tracking-[-0.012em] text-zinc-50">
             {raw}
@@ -173,6 +207,25 @@ export const MessageBubble: React.FC<Props> = ({
                 </span>
               </span>
             ))}
+          </div>
+        )}
+        {!!cleaned && !isStreaming && suggestions && suggestions.length > 0 && (
+          <div className="mt-3 flex flex-col gap-1.5">
+            <span className="inline-flex items-center gap-1.5 text-[11px] tracking-wide text-zinc-500">
+              <Sparkles className="h-3 w-3" /> Lanjutkan dengan
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {suggestions.map((q, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => onSuggestionClick?.(q)}
+                  className="rounded-full border border-white/[0.09] bg-white/[0.03] px-3 py-1.5 text-left text-[12px] text-zinc-300 transition-colors hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {!!cleaned && !isStreaming && (

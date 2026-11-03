@@ -21,6 +21,23 @@ _THINK_PROCESS_RE = re.compile(r"Here's a thinking process:.*?(?=\n\n|\Z)", re.D
 
 _TAIL_HOLD = 24
 _CLOSING_RE = re.compile(r"(?:^|\n)[ \t]*(?:Done|Selesai)\.?[ \t]*$", re.IGNORECASE)
+_SUGGESTION_PREFIX_RE = re.compile(r"^\s*(?:(?:\d+[.)]|[-*\u2022])\s*)+")
+
+
+def _parse_suggestions(text: str) -> list[str]:
+    """Ambil maks 3 pertanyaan lanjutan dari output model (best-effort)."""
+    out: list[str] = []
+    for line in str(text or "").splitlines():
+        s = _SUGGESTION_PREFIX_RE.sub("", line).strip().strip('"').strip("'").strip()
+        if not s or len(s) > 160:
+            continue
+        if s.lower().startswith(("saran", "pertanyaan lanjutan", "berikut")):
+            continue
+        if s not in out:
+            out.append(s)
+        if len(out) >= 3:
+            break
+    return out
 
 
 def _clean_chunk(text: str) -> str:
@@ -361,6 +378,8 @@ class AgentOrchestrator:
 
         success = False
         last_error = None
+        answer_parts: list[str] = []
+        pending_done: str | None = None
 
         for current_model in runtime["models_to_try"]:
             partial = False  # konten sudah terkirim ke client sebelum exception?
@@ -380,9 +399,15 @@ class AgentOrchestrator:
                         ttft_holder,
                     )
                 async for event in stream:
+                    # Tahan event [DONE] agar saran bisa diemit sebelum penutup.
+                    if event == "data: [DONE]\n\n":
+                        pending_done = event
+                        continue
                     try:
-                        if "content" in json.loads(event.removeprefix("data: ")):
+                        _obj = json.loads(event.removeprefix("data: "))
+                        if "content" in _obj:
                             partial = True
+                            answer_parts.append(str(_obj.get("content") or ""))
                     except (ValueError, TypeError):
                         pass
                     yield event
@@ -410,6 +435,66 @@ class AgentOrchestrator:
                 yield event
             yield _emit({"timing": {"ttft_ms": total_ms, "total_ms": total_ms}})
             yield "data: [DONE]\n\n"
+            return
+
+        # Saran pertanyaan lanjutan (best-effort) - diemit sebelum [DONE].
+        suggestions = await self._generate_suggestions(query, "".join(answer_parts), runtime)
+        if suggestions:
+            yield _emit({"suggestions": suggestions})
+        if pending_done:
+            yield pending_done
+
+    async def _generate_suggestions(self, query: str, answer: str, runtime: dict[str, Any]) -> list[str]:
+        """Buat 3 pertanyaan lanjutan dari model (non-streaming, best-effort)."""
+        if not self.client or not answer.strip():
+            return []
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Kamu membantu pengguna memilih pertanyaan lanjutan. Berdasarkan jawaban asisten "
+                    "terakhir, hasilkan tepat 3 pertanyaan lanjutan singkat (maks 12 kata, Bahasa "
+                    "Indonesia) yang paling relevan dan berguna. Balas HANYA 3 baris pertanyaan, "
+                    "tanpa nomor, tanpa tanda kutip, tanpa penjelasan."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Pertanyaan pengguna: {query[:500]}\n\n"
+                    f"Jawaban asisten:\n{answer[:2500]}\n\n"
+                    "Berikan 3 pertanyaan lanjutan."
+                ),
+            },
+        ]
+        try:
+            if self.client_type == "langchain_nvidia":
+                resp = await asyncio.to_thread(self.client.invoke, messages)
+                text = getattr(resp, "content", None) or str(resp)
+            else:
+                # Model reasoning (mis. gpt-oss) membuang token ke reasoning dulu;
+                # beri ruang cukup + effort rendah agar konten benar-benar terisi.
+                def _call(extra: dict | None = None) -> Any:
+                    kw: dict[str, Any] = {
+                        "model": runtime["models_to_try"][0],
+                        "messages": messages,
+                        "temperature": 0.6,
+                        "max_tokens": 600,
+                        "stream": False,
+                    }
+                    if extra:
+                        kw["extra_body"] = extra
+                    return self.client.chat.completions.create(**kw)
+
+                try:
+                    resp = await asyncio.to_thread(_call, {"reasoning_effort": "low"})
+                except Exception:
+                    resp = await asyncio.to_thread(_call, None)
+                text = (resp.choices[0].message.content if resp.choices else "") or ""
+        except Exception as e:
+            logger.info(f"[suggestions] dilewati: {e}")
+            return []
+        return _parse_suggestions(text)
 
     def _resolve_runtime_config(self, model_override: str | None) -> dict[str, Any]:
         """Config runtime dari DB (cached) + override per-request; rebuild client bila berubah."""

@@ -31,6 +31,10 @@ interface Message {
   content: string;
   durationMs?: number;
   sources?: SourceRef[];
+  /** Lampiran dokumen yang menempel pada pesan user ini. */
+  attachments?: ExtractedDocument[];
+  /** Saran pertanyaan lanjutan dari model (pesan asisten). */
+  suggestions?: string[];
 }
 
 function docAttachmentMetaText(doc: ExtractedDocument): string {
@@ -311,10 +315,20 @@ export default function ChatPage() {
     if (isLoading) return;
     try {
       const j = await fetchApi<{
-        messages?: { role: "user" | "assistant"; content: string }[];
+        messages?: {
+          role: "user" | "assistant";
+          content: string;
+          documents?: ExtractedDocument[];
+        }[];
         documents?: ExtractedDocument[];
       }>(`/api/python/user/chats/${id}`);
-      setMessages((j.messages || []).map((m) => ({ role: m.role, content: m.content })));
+      setMessages(
+        (j.messages || []).map((m) => ({
+          role: m.role,
+          content: m.content,
+          attachments: m.documents?.length ? m.documents : undefined,
+        })),
+      );
       setActiveChatId(id);
       setDocAttachments(j.documents ?? []);
       setError(null);
@@ -533,7 +547,12 @@ export default function ChatPage() {
     await runChat(String(messages[idx].content), messages.slice(0, idx), docAttachments);
   };
 
-  const saveTurn = async (userMessage: string, answer: string, docIds: string[] = []) => {
+  const handleSuggestionClick = (text: string) => {
+    if (isLoading || !text.trim()) return;
+    void runChat(text.trim(), messages, docAttachments);
+  };
+
+  const saveTurn = async (userMessage: string, answer: string, docs: ExtractedDocument[] = []) => {
     try {
       let id = activeChatId;
       if (!id) {
@@ -556,10 +575,11 @@ export default function ChatPage() {
           return;
         }
       }
+      const docIds = docs.map((d) => d.id);
       await fetchApi(`/api/python/user/chats/${id}/messages`, {
         json: {
           messages: [
-            { role: "user", content: userMessage },
+            { role: "user", content: userMessage, document_ids: docIds },
             { role: "assistant", content: answer },
           ],
           ...(docIds.length ? { document_ids: docIds } : {}),
@@ -571,7 +591,10 @@ export default function ChatPage() {
 
   const runChat = async (userMessage: string, base: Message[], docs: ExtractedDocument[] = []) => {
     setError(null);
-    const next: Message[] = [...base, { role: "user", content: userMessage }];
+    const next: Message[] = [
+      ...base,
+      { role: "user", content: userMessage, attachments: docs.length ? docs : undefined },
+    ];
     setMessages(next);
     const started = Date.now();
     startedAtRef.current = started;
@@ -643,6 +666,13 @@ export default function ChatPage() {
           if (last?.role === "assistant") u[u.length - 1] = { ...last, sources: src };
           return u;
         });
+      const applySuggestions = (items: string[]) =>
+        setMessages((prev) => {
+          const u = [...prev];
+          const last = u[u.length - 1];
+          if (last?.role === "assistant") u[u.length - 1] = { ...last, suggestions: items };
+          return u;
+        });
       // Line buffer: chunk TCP bisa memotong di tengah baris "data: ...",
       // jadi simpan sisa baris di buf dan hanya proses baris utuh.
       let buf = "";
@@ -659,6 +689,8 @@ export default function ChatPage() {
           try {
             const p = JSON.parse(s);
             if (Array.isArray(p.sources) && p.sources.length) applySources(p.sources);
+            if (Array.isArray(p.suggestions) && p.suggestions.length)
+              applySuggestions(p.suggestions);
             if (p.content) {
               acc += p.content;
               setMessages((prev) => {
@@ -682,6 +714,8 @@ export default function ChatPage() {
           try {
             const p = JSON.parse(s);
             if (Array.isArray(p.sources) && p.sources.length) applySources(p.sources);
+            if (Array.isArray(p.suggestions) && p.suggestions.length)
+              applySuggestions(p.suggestions);
             if (p.content) {
               acc += p.content;
               setMessages((prev) => {
@@ -708,11 +742,7 @@ export default function ChatPage() {
           .then(setTrialInfo)
           .catch(() => {});
       if (userInfo && acc.trim() && !isStatic) {
-        void saveTurn(
-          userMessage,
-          acc,
-          docs.map((d) => d.id),
-        );
+        void saveTurn(userMessage, acc, docs);
       }
       const dur = Date.now() - started;
       setMessages((prev) => {
@@ -1523,6 +1553,16 @@ export default function ChatPage() {
                         isStreaming={streaming}
                         durationMs={streaming && !m.durationMs ? elapsedMs : m.durationMs}
                         sources={m.sources}
+                        attachments={m.attachments}
+                        suggestions={
+                          i === messages.length - 1 &&
+                          m.role === "assistant" &&
+                          !isLoading &&
+                          !error
+                            ? m.suggestions
+                            : undefined
+                        }
+                        onSuggestionClick={handleSuggestionClick}
                         onRegenerate={
                           i === messages.length - 1 &&
                           m.role === "assistant" &&

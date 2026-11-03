@@ -314,3 +314,21 @@ def test_pdf_scanned_without_ocr_gives_clear_error(monkeypatch):
         docs._extract_text(b"%PDF-1.4\n", ".pdf")
     assert exc.value.status_code == 400
     assert "scan" in exc.value.detail.lower()
+
+
+# ── P3: saran pertanyaan lanjutan ──
+
+
+def test_parse_suggestions_strips_numbering_and_caps_three():
+    from backend.agent.agent import _parse_suggestions
+
+    text = "Berikut pertanyaan lanjutan:\n1. Apa itu RAG?\n2. - Bagaimana cara upload?\n3. Kapan reset kuota?\n4. Pertanyaan keempat diabaikan"
+    out = _parse_suggestions(text)
+    assert out == ["Apa itu RAG?", "Bagaimana cara upload?", "Kapan reset kuota?"]
+
+
+def test_parse_suggestions_handles_empty():
+    from backend.agent.agent import _parse_suggestions
+
+    assert _parse_suggestions("") == []
+    assert _parse_suggestions("   \n  ") == []
