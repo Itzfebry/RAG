@@ -36,3 +36,20 @@ project/
 ├── data/                 # Local fallback storage (gitignored)
 └── requirements.txt      # Python dependencies
 ```
+
+## 4. Document Attachment Flow (`/doc`)
+
+1. `POST /api/user/documents/extract` (login + `doc_upload`) validates magic
+   bytes, extracts text off the event loop, splits it into chunks, and stores
+   the document server-side (`user_documents`, with local JSON fallback).
+   Response contains metadata + `doc_id` only - never the text.
+2. Client attaches up to 5 `doc_id`s and sends `document_ids` with `/api/chat`.
+3. Backend verifies ownership, retrieves only the top-k relevant chunks per
+   document (lexical scoring), wraps them as untrusted data, and injects them
+   into the final user turn. A `sources` SSE event carries title/page/excerpt
+   for citation chips.
+4. Chat history binds `document_ids` to the session so reopening a chat restores
+   its attachments; documents and bindings expire after `DOC_RETENTION_DAYS`.
+5. `migrations/supabase_migration_documents.sql` must be run manually in the
+   Supabase SQL Editor for server-side persistence (otherwise the local JSON
+   fallback is used).

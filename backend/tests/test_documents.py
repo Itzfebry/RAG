@@ -224,3 +224,93 @@ def test_openai_messages_without_document_is_plain_query():
 
     msgs = _build_openai_messages("jelaskan", [], "SYSTEM")
     assert msgs[-1] == {"role": "user", "content": "jelaskan"}
+
+
+# ── P2: validasi magic-byte, batas halaman PDF, OCR fallback ──
+
+
+def test_rejects_pdf_that_is_not_really_pdf(make_client):
+    c = make_client()
+    res = c.post(URL, files={"file": ("palsu.pdf", b"MZ\x90\x00 not a pdf", "application/pdf")})
+    assert res.status_code == 400
+    assert "PDF" in res.json()["detail"]
+
+
+def test_rejects_binary_disguised_as_text(make_client):
+    c = make_client()
+    res = c.post(URL, files={"file": ("data.txt", b"hello\x00world\x00", "text/plain")})
+    assert res.status_code == 400
+    assert "biner" in res.json()["detail"].lower()
+
+
+def test_rejects_pdf_content_with_text_extension(make_client):
+    c = make_client()
+    res = c.post(URL, files={"file": ("catatan.txt", b"%PDF-1.4 fake", "text/plain")})
+    assert res.status_code == 400
+    assert "tidak cocok" in res.json()["detail"]
+
+
+def _fake_pypdf(monkeypatch, reader):
+    import types
+
+    monkeypatch.setitem(sys.modules, "pypdf", types.SimpleNamespace(PdfReader=lambda _buf: reader))
+
+
+def test_pdf_page_limit_rejected(monkeypatch):
+    from fastapi import HTTPException
+
+    from backend.api import documents as docs
+
+    pages = [object()] * (docs.PDF_MAX_PAGES + 1)
+    reader = type("R", (), {"is_encrypted": False, "pages": pages})()
+    _fake_pypdf(monkeypatch, reader)
+
+    with pytest.raises(HTTPException) as exc:
+        docs._extract_text(b"%PDF-1.4\n", ".pdf")
+    assert exc.value.status_code == 413
+    assert "halaman" in exc.value.detail.lower()
+
+
+def test_pdf_encrypted_rejected(monkeypatch):
+    from fastapi import HTTPException
+
+    from backend.api import documents as docs
+
+    reader = type("R", (), {"is_encrypted": True, "pages": [], "decrypt": lambda self, pw: 0})()
+    _fake_pypdf(monkeypatch, reader)
+
+    with pytest.raises(HTTPException) as exc:
+        docs._extract_text(b"%PDF-1.4\n", ".pdf")
+    assert exc.value.status_code == 400
+    assert "terenkripsi" in exc.value.detail.lower()
+
+
+def test_pdf_scanned_uses_ocr_fallback(monkeypatch):
+    from backend.api import documents as docs
+
+    page = type("P", (), {"extract_text": lambda self: ""})()
+    reader = type("R", (), {"is_encrypted": False, "pages": [page]})()
+    _fake_pypdf(monkeypatch, reader)
+    monkeypatch.setattr(docs, "_ocr_pdf", lambda raw: "ISI HASIL OCR")
+
+    content, pages, chunks, ocr_used = docs._extract_text(b"%PDF-1.4\n", ".pdf")
+    assert content == "ISI HASIL OCR"
+    assert pages == 1
+    assert ocr_used is True
+    assert chunks
+
+
+def test_pdf_scanned_without_ocr_gives_clear_error(monkeypatch):
+    from fastapi import HTTPException
+
+    from backend.api import documents as docs
+
+    page = type("P", (), {"extract_text": lambda self: ""})()
+    reader = type("R", (), {"is_encrypted": False, "pages": [page]})()
+    _fake_pypdf(monkeypatch, reader)
+    monkeypatch.setattr(docs, "_ocr_pdf", lambda raw: "")
+
+    with pytest.raises(HTTPException) as exc:
+        docs._extract_text(b"%PDF-1.4\n", ".pdf")
+    assert exc.value.status_code == 400
+    assert "scan" in exc.value.detail.lower()

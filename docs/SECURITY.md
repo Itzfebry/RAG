@@ -21,3 +21,13 @@
 ## 5. Error Handling
 - API error messages never leak internal paths, keys, or stack traces to user.
 - Chat API stream ends with `data: [DONE]`; internal exceptions wrapped as JSON `{"error": "..."}`.
+
+## 6. Document Attachments (`/doc`)
+
+- **Server-side storage only.** Extraction returns metadata + `doc_id`; the file text never leaves the server. `/api/chat` accepts only `document_ids`, verifies ownership per document, and rejects missing/foreign IDs with `404`.
+- **Access gate.** Uploads require login plus `doc_upload` on the active plan (or admin manual grant / unlimited). Chat with documents enforces the same gate.
+- **Magic-byte validation.** `.pdf` must start with `%PDF-`; `.txt`/`.md` must not contain NUL bytes or PDF magic. Extension alone is never trusted.
+- **PDF limits.** Encrypted/password-protected PDFs are rejected with a clear message; page count is capped by `PDF_MAX_PAGES` (default 50). Scanned PDFs use best-effort OCR (`DOC_OCR_ENABLED`, `DOC_OCR_MAX_PAGES`); if OCR is unavailable the request fails gracefully with guidance instead of a 500.
+- **Prompt-injection defense.** Extracted text is treated as untrusted data: chat-template tokens (`<|im_start|>`, `[INST]`, `<<SYS>>`) and role labels (`System:`…) are neutralised, the context is wrapped in explicit document delimiters, and the model is instructed to ignore instructions inside the document and never reveal the system prompt.
+- **Retention & limits.** Documents expire after `DOC_RETENTION_DAYS` (7) and are capped at `DOC_MAX_PER_USER` (30) per user, `DOC_MAX_CHARS` (120k) each; chat context per turn is capped by `DOC_CONTEXT_MAX_CHARS` and `DOC_TOP_K`.
+- **Observability.** Extraction logs `doc_id`, owner, type, size, chars, chunk count, pages, OCR usage and duration; chat logs attached doc count/size and selected context chars. Logs never include document text.

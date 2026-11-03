@@ -339,6 +339,12 @@ async def stream_chat(payload: ChatRequest, request: Request):
                 detail="Dokumen tidak ditemukan atau sudah kedaluwarsa. Lampirkan ulang file.",
             )
         user_documents = own_docs
+        logger.info(
+            "[chat] documents attached user=%s count=%s bytes=%s",
+            user.get("id"),
+            len(own_docs),
+            sum(len(str(d.get("content") or "")) for d in own_docs),
+        )
     # Reservasi kuota harian dilakukan di sini (SEBELUM memanggil model) secara
     # atomik, bukan setelah jawaban masuk — request paralel tidak bisa
     # melewati batas. Bila provider gagal/tidak menjawab, kuota di-refund.
@@ -359,9 +365,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
                 from backend.database.quota_repo import _period_key
 
                 usage_key = _period_key(plan)
-                if not DatabaseService.try_consume_daily_prompt(
-                    str(fresh["id"]), int(plan["daily_limit"]), usage_key
-                ):
+                if not DatabaseService.try_consume_daily_prompt(str(fresh["id"]), int(plan["daily_limit"]), usage_key):
                     raise HTTPException(
                         status_code=403, detail="Batas prompt harian habis - hubungi admin untuk menambah kuota"
                     )

@@ -57,6 +57,26 @@ _STOPWORDS = {
 
 _WORD_RE = re.compile(r"[a-zA-Z0-9\u00C0-\u024F]+")
 
+# Token chat-template / penanda peran yang sering dipakai untuk prompt injection.
+# Dibuang dari isi dokumen agar tidak bisa memalsukan pesan system/assistant.
+_INJECTION_TOKEN_RE = re.compile(r"<\|[^|>\n]{0,40}\|>|\[/?INST\]|<<?/?SYS>>|<</?SYS>>", re.IGNORECASE)
+_ROLE_LINE_RE = re.compile(r"^[ \t]*(system|assistant|user|developer|tool)[ \t]*:", re.IGNORECASE | re.MULTILINE)
+
+
+def sanitize_untrusted(text: str) -> str:
+    """Netralkan penanda prompt-injection di dalam teks dokumen pengguna.
+
+    Dokumen diperlakukan sebagai data. Token chat-template (`<|im_start|>` dll.)
+    dan label peran di awal baris (`System:`) dinetralkan supaya tidak bisa
+    mengubah instruksi sistem.
+    """
+    clean = str(text or "")
+    if not clean:
+        return ""
+    clean = _INJECTION_TOKEN_RE.sub("[token dihapus]", clean)
+    clean = _ROLE_LINE_RE.sub(lambda m: f"[peran {m.group(1).lower()}]:", clean)
+    return clean
+
 
 def build_chunks(text: str, page: int | None = None) -> list[dict[str, Any]]:
     """Pecah teks menjadi chunk yang saling tumpang tindih tipis."""
@@ -176,14 +196,14 @@ def build_document_context(
         selected = _select_chunks(chunks, query, title, k)
         used = 0
         for chunk in selected:
-            text = str(chunk.get("text") or "").strip()
-            if not text or used >= per_doc_budget:
+            raw_text = str(chunk.get("text") or "").strip()
+            if not raw_text or used >= per_doc_budget:
                 continue
-            piece = text[: per_doc_budget - used]
+            piece = sanitize_untrusted(raw_text[: per_doc_budget - used])
             used += len(piece)
             page = chunk.get("page")
             label = f"{title}, hal. {page}" if page else title
-            parts.append(f"[Sumber: {label} | chunk {chunk.get('index', 0)}]\n{piece}")
+            parts.append(f"[Sumber: {label} | chunk {chunk.get('index', 0)}]\n{piece}\n[Akhir sumber: {label}]")
             sources.append(
                 {
                     "id": str(doc.get("id")),
