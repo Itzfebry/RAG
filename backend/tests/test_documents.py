@@ -156,3 +156,32 @@ def test_chat_passes_document_to_orchestrator(monkeypatch):
         "title": "catatan.txt",
         "content": "RAHASIA-123 isi dokumen",
     }
+
+
+def test_openai_messages_embed_document_before_query():
+    """Isi dokumen harus muncul di pesan user terakhir, tepat sebelum pertanyaan.
+
+    Model kecil sering mengabaikan dokumen yang hanya ada di system prompt, jadi
+    isi dokumen ditempel ke pesan user agar benar-benar dipakai.
+    """
+    from backend.agent.agent import _build_openai_messages
+
+    msgs = _build_openai_messages(
+        "jelaskan",
+        [],
+        "SYSTEM",
+        user_document={"title": "cv.pdf", "content": "SKILL-PYTHON-RAG"},
+    )
+    assert msgs[0] == {"role": "system", "content": "SYSTEM"}
+    last = msgs[-1]
+    assert last["role"] == "user"
+    assert "SKILL-PYTHON-RAG" in last["content"]
+    assert "cv.pdf" in last["content"]
+    assert "jelaskan" in last["content"]
+
+
+def test_openai_messages_without_document_is_plain_query():
+    from backend.agent.agent import _build_openai_messages
+
+    msgs = _build_openai_messages("jelaskan", [], "SYSTEM")
+    assert msgs[-1] == {"role": "user", "content": "jelaskan"}

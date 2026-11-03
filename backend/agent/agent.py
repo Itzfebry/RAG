@@ -148,9 +148,17 @@ def _merge_models(primary: str, fallback_raw: Any) -> list[str]:
 
 
 def _build_openai_messages(
-    query: str, session_history: list[dict[str, str]], system_prompt: str
+    query: str,
+    session_history: list[dict[str, str]],
+    system_prompt: str,
+    user_document: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
-    """Susun daftar pesan OpenAI: system + 10 history terakhir + query."""
+    """Susun daftar pesan OpenAI: system + 10 history terakhir + query.
+
+    Bila ada `user_document`, isi dokumen ditempel di pesan user terakhir tepat
+    sebelum pertanyaan supaya model fokus ke dokumen (bukan hanya di system
+    prompt yang panjang dan mudah terabaikan).
+    """
     messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
     for msg in session_history[-10:]:
         role = msg.get("role", "user")
@@ -164,7 +172,23 @@ def _build_openai_messages(
         else:
             messages.append({"role": "user", "content": str(content)})
 
-    messages.append({"role": "user", "content": query})
+    final_query = query
+    if user_document:
+        doc_title = str(user_document.get("title") or "Dokumen").strip()
+        doc_content = str(user_document.get("content") or "").strip()
+        if doc_content:
+            final_query = (
+                f"[Dokumen terlampir pengguna: {doc_title}]\n"
+                f"{doc_content}\n"
+                "[Akhir dokumen]\n\n"
+                "Pengguna melampirkan dokumen di atas pada pesan ini. Jawab permintaan "
+                "pengguna dengan menjadikan isi dokumen tersebut sebagai sumber utama. "
+                "Jangan balik bertanya 'mau jelaskan yang mana' — bila permintaan singkat "
+                "seperti 'jelaskan', langsung jelaskan isi dokumen ini.\n\n"
+                f"Permintaan pengguna: {query}"
+            )
+
+    messages.append({"role": "user", "content": final_query})
     return messages
 
 
@@ -295,7 +319,7 @@ class AgentOrchestrator:
             command_names=command_names,
             user_document=user_document,
         )
-        openai_messages = _build_openai_messages(query, session_history, system_prompt)
+        openai_messages = _build_openai_messages(query, session_history, system_prompt, user_document=user_document)
 
         # Check client availability based on provider
         if not self.client:
