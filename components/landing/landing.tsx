@@ -280,6 +280,14 @@ export default function Landing() {
         ease: "none",
         scrollTrigger: { trigger: ".js-hero-bg", start: "top top", end: "bottom top", scrub: true },
       });
+      // Denyut peredupan: latar meredup & menyala perlahan (satu napas 7 detik).
+      gsap.to(".js-hero-dim", {
+        opacity: 0.85,
+        duration: 7,
+        repeat: -1,
+        yoyo: true,
+        ease: "sine.inOut",
+      });
       // Napas cahaya lambat, tanpa mengganggu keterbacaan.
       gsap.to(".js-hero-bg img:first-child", {
         scale: 1.12,
@@ -508,6 +516,10 @@ export default function Landing() {
           <div className="absolute inset-0 bg-[radial-gradient(70%_50%_at_50%_20%,rgba(5,6,10,0.55),rgba(5,6,10,0.9)_55%,#05060a)]" />
           <div className="absolute inset-x-0 top-0 h-52 bg-[linear-gradient(180deg,rgba(5,6,10,0.95),rgba(5,6,10,0.45)_55%,transparent)]" />
           <div className="absolute inset-x-0 bottom-0 h-52 bg-[linear-gradient(180deg,transparent,#05060a)]" />
+          <div
+            aria-hidden
+            className="js-hero-dim absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_30%,rgba(5,6,10,0.15),rgba(5,6,10,0.72)_72%,#05060a)] opacity-25"
+          />
         </div>
 
         <div className={`${HEADLINE} relative text-center`}>
