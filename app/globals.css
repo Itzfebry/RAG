@@ -10,6 +10,9 @@
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains-mono);
   --font-heading: var(--font-sans);
+  /* Landing page mengikuti tipografi referensi: Geist + Source Serif 4 (aksen miring). */
+  --font-display: var(--font-geist);
+  --font-serif: var(--font-source-serif);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -518,5 +521,54 @@
   .itz-float,
   .itz-cta-pulse {
     animation: none !important;
+  }
+}
+
+/* landing: butiran halus (antik-banding) + fokus keyboard + aurora pelangi */
+.grain {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='120' height='120' filter='url(%23n)'/></svg>");
+  mix-blend-mode: overlay;
+  opacity: 0.04;
+}
+
+.aurora {
+  background: conic-gradient(
+    from 0deg,
+    #ff2d95,
+    #ff8a00,
+    #ffe600,
+    #22ff88,
+    #00d4ff,
+    #8b5cf6,
+    #ff2d95
+  );
+  animation: itz-hue 18s linear infinite;
+  filter: blur(70px) saturate(150%);
+}
+
+@keyframes itz-hue {
+  0% {
+    transform: rotate(0deg);
+    filter: blur(70px) saturate(150%) hue-rotate(0deg);
+  }
+  50% {
+    transform: rotate(180deg);
+    filter: blur(70px) saturate(160%) hue-rotate(45deg);
+  }
+  100% {
+    transform: rotate(360deg);
+    filter: blur(70px) saturate(150%) hue-rotate(0deg);
+  }
+}
+
+:where(a, button, summary, [tabindex]):focus-visible {
+  outline: 2px solid rgba(196, 181, 253, 0.9);
+  outline-offset: 3px;
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora {
+    animation: none;
   }
 }

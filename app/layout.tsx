@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Geist, Inter, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import MotionProvider from "@/components/motion-provider";
@@ -7,6 +7,21 @@ import MotionProvider from "@/components/motion-provider";
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
+  display: "swap",
+});
+
+// Dipakai landing page (mengikuti tipografi referensi MONO AI).
+const geist = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist",
+  display: "swap",
+});
+
+const sourceSerif = Source_Serif_4({
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
+  variable: "--font-source-serif",
   display: "swap",
 });
 
@@ -32,7 +47,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="id" className={cn("h-full dark", inter.variable, jetbrainsMono.variable)}>
+    <html
+      lang="id"
+      className={cn(
+        "h-full dark",
+        inter.variable,
+        jetbrainsMono.variable,
+        geist.variable,
+        sourceSerif.variable,
+      )}
+    >
       <body className="font-sans bg-background text-foreground antialiased h-full">
         <MotionProvider>{children}</MotionProvider>
       </body>

@@ -29,5 +29,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "backend"]
+  "exclude": ["node_modules", "backend", "itz-ai-iridescent-loader"]
 }
