@@ -531,79 +531,189 @@
   opacity: 0.04;
 }
 
-/* landing: satu aksen, garis rambut sebagai pemisah, tanpa gradien/glow.
-   Token di-scope ke halaman ini supaya permukaan aplikasi tetap pakai paletnya sendiri. */
-.itz-page {
-  --itz-bg: #0a0a0b;
-  --itz-ink: #f5f5f6;
-  --itz-ink-2: #a4a4aa;
-  --itz-ink-3: #8d8d94; /* meta 12–13px; lolos 4.5:1 di atas --itz-bg */
-  --itz-accent: #d6a15c;
-  --itz-accent-ink: #14100a;
-  --itz-rule: rgba(255, 255, 255, 0.1);
-  --itz-surface: #0f0f11;
-  background: var(--itz-bg);
-  color: var(--itz-ink);
+.aurora {
+  background: conic-gradient(
+    from 0deg,
+    #ff2d95,
+    #ff8a00,
+    #ffe600,
+    #22ff88,
+    #00d4ff,
+    #8b5cf6,
+    #ff2d95
+  );
+  animation: itz-hue 18s linear infinite;
+  filter: blur(70px) saturate(150%);
 }
 
-.itz-display {
-  font-family: var(--font-display);
-  font-weight: 500;
-  line-height: 0.98;
-  letter-spacing: -0.035em;
-}
-
-.itz-serif {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: -0.012em;
-}
-
-/* Satu momen gerak untuk seluruh halaman: masuknya kepala halaman.
-   Tanpa prefers-reduced-motion tidak ada animasi sama sekali. */
-@media (prefers-reduced-motion: no-preference) {
-  .itz-enter {
-    animation: itz-enter 0.66s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+@keyframes itz-hue {
+  0% {
+    transform: rotate(0deg);
+    filter: blur(70px) saturate(150%) hue-rotate(0deg);
   }
-  .itz-enter-2 {
-    animation-delay: 0.06s;
+  50% {
+    transform: rotate(180deg);
+    filter: blur(70px) saturate(160%) hue-rotate(45deg);
   }
-  .itz-enter-3 {
-    animation-delay: 0.12s;
-  }
-  .itz-enter-4 {
-    animation-delay: 0.18s;
-  }
-  .itz-progress {
-    animation: itz-progress linear both;
-    animation-timeline: scroll(root block);
-    transform-origin: left;
-  }
-}
-
-@keyframes itz-enter {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes itz-progress {
-  from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(1);
+  100% {
+    transform: rotate(360deg);
+    filter: blur(70px) saturate(150%) hue-rotate(0deg);
   }
 }
 
 :where(a, button, summary, [tabindex]):focus-visible {
-  outline: 2px solid var(--itz-accent);
+  outline: 2px solid rgba(196, 181, 253, 0.9);
   outline-offset: 3px;
-  border-radius: 2px;
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora {
+    animation: none;
+  }
+}
+
+/* ===== Landing: sistem token (obsidian · kaca · spektral) ===== */
+@property --sheen {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+:root {
+  --obsidian-0: #05060a;
+  --obsidian-1: #0a0c12;
+  --obsidian-2: #10131a;
+  --obsidian-3: #171a22;
+  --spectral-cyan: #22d3ee;
+  --spectral-blue: #3b82f6;
+  --spectral-violet: #8b5cf6;
+  --spectral-magenta: #e879f9;
+  --spectral-pink: #fb7185;
+  --spectral-amber: #f59e0b;
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-hi: rgba(255, 255, 255, 0.26);
+  --blur-sm: 12px;
+  --blur-md: 26px;
+  --blur-lg: 48px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-1: 0.35s;
+}
+
+/* Latar obsidian berlapis + cahaya spektral terkendali (statis, bukan animasi) */
+.obsidian-field {
+  background:
+    radial-gradient(72% 56% at 78% -8%, rgba(139, 92, 246, 0.17), transparent 62%),
+    radial-gradient(46% 44% at 10% 6%, rgba(34, 211, 238, 0.07), transparent 64%),
+    radial-gradient(56% 42% at 92% 62%, rgba(232, 121, 249, 0.06), transparent 68%),
+    radial-gradient(90% 60% at 50% 112%, rgba(5, 6, 10, 0.95), rgba(5, 6, 10, 0)),
+    linear-gradient(180deg, var(--obsidian-0), #07080d 45%, var(--obsidian-1));
+}
+
+/* Varian kaca */
+.g-frosted {
+  position: relative;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  backdrop-filter: blur(var(--blur-md)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--blur-md)) saturate(140%);
+  border: 1px solid var(--glass-border);
+}
+.g-dark {
+  position: relative;
+  background: linear-gradient(160deg, rgba(10, 12, 18, 0.9), rgba(6, 7, 11, 0.78));
+  backdrop-filter: blur(var(--blur-lg)) saturate(130%);
+  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(130%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.g-crystal {
+  position: relative;
+  background: rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(var(--blur-sm)) saturate(170%);
+  -webkit-backdrop-filter: blur(var(--blur-sm)) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.g-float {
+  box-shadow:
+    inset 0 1px 0 var(--glass-hi),
+    0 40px 90px -40px rgba(0, 0, 0, 0.95);
+}
+/* Kaca iridescent: isi gelap, tepi cahaya spektral */
+.g-irid {
+  position: relative;
+  border: 1.5px solid transparent;
+  box-shadow: 0 0 46px -20px rgba(139, 92, 246, 0.5);
+  background:
+    linear-gradient(160deg, rgba(12, 14, 20, 0.92), rgba(7, 8, 12, 0.84)) padding-box,
+    conic-gradient(
+        from var(--sheen),
+        var(--spectral-cyan),
+        var(--spectral-violet),
+        var(--spectral-magenta),
+        var(--spectral-amber),
+        var(--spectral-cyan)
+      )
+      border-box;
+}
+.g-irid--live {
+  animation: itz-sheen 22s linear infinite;
+}
+@keyframes itz-sheen {
+  to {
+    --sheen: 360deg;
+  }
+}
+
+/* Pantulan mengikuti pointer (desktop) */
+.g-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    340px circle at var(--mx, 50%) var(--my, 0%),
+    rgba(255, 255, 255, 0.1),
+    transparent 62%
+  );
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease-out);
+}
+.g-sheen:hover::after {
+  opacity: 1;
+}
+
+.hairline {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+}
+.spectral-line {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--spectral-cyan),
+    var(--spectral-violet),
+    var(--spectral-magenta),
+    transparent
+  );
+}
+.band-mask {
+  mask-image: linear-gradient(180deg, transparent, black 12%, black 88%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .g-irid--live {
+    animation: none;
+  }
+  .g-sheen::after {
+    transition: none;
+  }
+}
+/* Perangkat lemah: kurangi biaya blur */
+@media (max-width: 640px) {
+  .g-dark,
+  .g-frosted {
+    backdrop-filter: blur(14px) saturate(120%);
+    -webkit-backdrop-filter: blur(14px) saturate(120%);
+  }
 }
