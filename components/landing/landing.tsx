@@ -248,6 +248,7 @@ export default function Landing() {
       );
 
       // 2 · Judul: kata muncul dari blur (efek tanda tangan referensi).
+      gsap.from(".js-badge", { opacity: 0, y: -8, duration: 0.6, ease: "power2.out" });
       gsap.from(".js-w", {
         opacity: 0,
         filter: "blur(10px)",
@@ -448,8 +449,8 @@ export default function Landing() {
     >
       {/* Cahaya ambient */}
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-black">
-        <div className="aurora absolute left-[-20%] top-[-24%] h-[36rem] w-[36rem] opacity-[0.07]" />
-        <div className="aurora absolute bottom-[-28%] right-[-18%] h-[34rem] w-[34rem] opacity-[0.05]" />
+        <div className="aurora absolute left-[-20%] top-[-24%] h-[36rem] w-[36rem] opacity-[0.1]" />
+        <div className="aurora absolute bottom-[-28%] right-[-18%] h-[34rem] w-[34rem] opacity-[0.08]" />
       </div>
 
       {/* Nav */}
@@ -478,7 +479,7 @@ export default function Landing() {
       {/* Hero */}
       <section className="relative px-5 pb-16 pt-[calc(env(safe-area-inset-top,0px)+8rem)] md:px-8 md:pb-20 md:pt-36">
         <div className={`${SHELL} max-w-[900px] text-center`}>
-          <span className="js-w inline-flex items-center gap-2 rounded-full bg-white/[0.08] px-4 py-1.5 text-[12px] text-white/80">
+          <span className="js-badge inline-flex items-center gap-2 rounded-full bg-white/[0.08] px-4 py-1.5 text-[12px] text-white/80">
             <Sparkles className="size-3.5" strokeWidth={1.7} />
             Terbuka untuk proyek AI baru
           </span>
