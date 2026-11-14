@@ -1,50 +1,40 @@
-"use client";
-
-import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 import {
   ArrowRight,
-  Boxes,
   Database,
-  Gauge,
   MessagesSquare,
   Network,
   Plus,
-  Sparkles,
   Workflow,
-  Wrench,
 } from "lucide-react";
 
-// Art hero: medan alir 3D (pengganti video pita di referensi). three.js dimuat
-// terpisah supaya tidak masuk bundle awal.
-const FlowVisual = dynamic(() => import("@/components/landing/flow-visual"), {
-  ssr: false,
-  loading: () => (
-    <div className="h-full w-full bg-[radial-gradient(ellipse_at_center,rgba(139,92,246,0.35),rgba(0,212,255,0.18)_46%,transparent_72%)]" />
-  ),
-});
+/**
+ * Landing page — editorial, satu aksen, garis rambut sebagai pemisah.
+ *
+ * Komponen server: tidak ada GSAP/three.js di halaman ini. Satu-satunya gerak
+ * adalah keyframe masuk di kepala halaman dan aturan kemajuan gulir (CSS),
+ * keduanya di dalam `prefers-reduced-motion: no-preference`.
+ */
 
 const CONTACT = "mailto:ayormahaki@gmail.com?subject=Discovery%20proyek%20AI";
 
-// Tipografi & permukaan mengikuti referensi: Geist, aksen Source Serif 4 italic,
-// pil radius penuh, kartu radius 16px, permukaan putih 15%/4%.
-const SHELL = "mx-auto w-full max-w-[1200px] px-5 md:px-8";
-const CARD = "rounded-2xl border border-white/[0.08] bg-white/[0.04]";
-const SOFT = "rounded-2xl border border-white/[0.06] bg-black/30";
-const PILL =
-  "inline-flex h-10 items-center rounded-full bg-[#fafafa] px-5 text-[13px] font-medium text-black transition-transform hover:scale-[1.03]";
+const SHELL = "mx-auto w-full max-w-[1240px] px-5 md:px-8";
+const RULE = "border-[color:var(--itz-rule)]";
+const EYEBROW =
+  "font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--itz-ink-3)]";
+const H2 = "itz-display text-[clamp(1.55rem,2.7vw,2.2rem)] leading-[1.06] tracking-[-0.02em] text-[var(--itz-ink)]";
+// Judul bagian unggulan: satu tingkat di atas judul bagian biasa, supaya
+// hierarki tidak rata setelah hero.
+const H2_LEAD =
+  "itz-display text-[clamp(1.9rem,3.6vw,3rem)] leading-[1.04] tracking-[-0.026em] text-[var(--itz-ink)]";
+const H3 = "text-[1.0625rem] font-medium leading-[1.3] tracking-[-0.01em] text-[var(--itz-ink)] md:text-[1.125rem]";
+const BODY = "text-[15px] leading-[1.62] text-[var(--itz-ink-2)]";
+const LINK =
+  "text-[var(--itz-ink-2)] transition-colors hover:text-[var(--itz-ink)]";
+const CTA =
+  "inline-flex h-11 items-center gap-2 rounded-[2px] bg-[var(--itz-accent)] px-5 text-[13.5px] font-medium text-[var(--itz-accent-ink)] transition-opacity hover:opacity-90";
 const GHOST =
-  "inline-flex h-10 items-center rounded-full bg-white/[0.15] px-5 text-[13px] font-medium text-white/90 backdrop-blur-xl transition-colors hover:bg-white/[0.22]";
-const NAVLINK = "text-[15px] text-white/80 transition-colors hover:text-white";
-const ACCENT = "font-serif italic font-normal";
-const H1 =
-  "text-balance text-[clamp(2.4rem,5.4vw,4rem)] font-medium leading-[1.2] tracking-[-0.04em] text-[#fafafa]";
-const H2 =
-  "text-[clamp(1.75rem,3.4vw,2.5rem)] font-medium leading-[1.2] tracking-[-0.03em] text-[#fafafa]";
-const BODY = "text-[15px] leading-[1.65] text-white/60";
+  "inline-flex h-11 items-center gap-1.5 text-[13.5px] text-[var(--itz-ink-2)] transition-colors hover:text-[var(--itz-ink)]";
 
 const NAV = [
   { href: "#inti", label: "Prinsip" },
@@ -63,6 +53,13 @@ const STACK = [
   "OpenAI-compatible LLM",
   "Cloudflare",
   "Vercel",
+];
+
+// Tiga baris bukti di rel kanan hero — kutipan dari isi halaman ini sendiri.
+const PROOF = [
+  "Retrieval dulu, model belakangan.",
+  "Jawaban datang dengan sumbernya.",
+  "Halusinasi bukan fitur, itu bug.",
 ];
 
 const PILLARS = [
@@ -113,14 +110,6 @@ const INTEGRATIONS = [
   "Google Sheets",
   "Object Storage",
   "Slack",
-];
-
-// Kartu gradien seperti bagian "Next-gen AI features" di referensi.
-const GRADIENTS = [
-  "linear-gradient(140deg,#7c3aed,#e879f9 55%,#f472b6)",
-  "linear-gradient(140deg,#5b7c0f,#eab308 60%,#fde68a)",
-  "linear-gradient(140deg,#0f766e,#4ade80 60%,#a3e635)",
-  "linear-gradient(140deg,#1d4ed8,#06b6d4 60%,#f472b6)",
 ];
 
 const SERVICES = [
@@ -190,636 +179,422 @@ const FAQ = [
   },
 ];
 
-/** Kata per kata: reveal ala referensi (blur + naik, bukan terpotong topeng). */
-function Words({ text, className }: { text: string; className?: string }) {
-  const words = text.split(" ");
-  return (
-    <>
-      {words.map((word, i) => (
-        <span key={`${word}-${i}`} className={`js-w inline-block ${className ?? ""}`}>
-          {word}
-          {i < words.length - 1 ? "\u00A0" : null}
-        </span>
-      ))}
-    </>
-  );
+function Mark() {
+  return <span aria-hidden className="mr-2 inline-block size-1.5 rounded-[1px] bg-[var(--itz-accent)] align-middle" />;
 }
 
 export default function Landing() {
-  const root = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    const el = root.current;
-    if (!el) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-    gsap.registerPlugin(ScrollTrigger);
-
-    const ctx = gsap.context(() => {
-      // 1 · Nav kaca saat digulir + garis kemajuan.
-      const nav = el.querySelector(".js-nav");
-      ScrollTrigger.create({
-        start: 24,
-        end: "max",
-        onEnter: () => {
-          if (nav instanceof HTMLElement) {
-            nav.style.background = "rgba(0,0,0,0.6)";
-            nav.style.backdropFilter = "blur(18px) saturate(150%)";
-            nav.style.borderColor = "rgba(255,255,255,0.08)";
-          }
-        },
-        onLeaveBack: () => {
-          if (nav instanceof HTMLElement) {
-            nav.style.background = "transparent";
-            nav.style.backdropFilter = "none";
-            nav.style.borderColor = "transparent";
-          }
-        },
-      });
-      gsap.fromTo(
-        ".js-progress",
-        { scaleX: 0 },
-        {
-          scaleX: 1,
-          ease: "none",
-          transformOrigin: "left",
-          scrollTrigger: { start: 0, end: "max", scrub: 0.25 },
-        },
-      );
-
-      // 2 · Judul: kata muncul dari blur (efek tanda tangan referensi).
-      gsap.from(".js-badge", { opacity: 0, y: -8, duration: 0.6, ease: "power2.out" });
-      gsap.from(".js-w", {
-        opacity: 0,
-        filter: "blur(10px)",
-        y: 14,
-        stagger: 0.045,
-        duration: 0.8,
-        ease: "power3.out",
-      });
-
-      // 3 · Semua judul bagian memakai reveal yang sama saat masuk viewport.
-      el.querySelectorAll<HTMLElement>(".js-block").forEach((block) => {
-        const words = block.querySelectorAll(".js-w");
-        if (words.length)
-          gsap.from(words, {
-            opacity: 0,
-            filter: "blur(10px)",
-            y: 14,
-            stagger: 0.04,
-            duration: 0.7,
-            ease: "power3.out",
-            scrollTrigger: { trigger: block, start: "top 86%" },
-          });
-      });
-
-      // 4 · Panel art hero: naik + parallax kursor (halus).
-      const art = el.querySelector<HTMLElement>(".js-art");
-      if (art) {
-        gsap.from(art, {
-          opacity: 0,
-          scale: 0.94,
-          y: 40,
-          duration: 1.1,
-          ease: "power3.out",
-          delay: 0.5,
-        });
-        const toX = gsap.quickTo(art, "x", { duration: 1, ease: "power3" });
-        const toY = gsap.quickTo(art, "y", { duration: 1, ease: "power3" });
-        window.addEventListener("pointermove", (event) => {
-          const point = event as PointerEvent;
-          if (point.pointerType === "touch") return;
-          toX((point.clientX / window.innerWidth - 0.5) * 26);
-          toY((point.clientY / window.innerHeight - 0.5) * 18);
-        });
-        gsap.to(art, {
-          yPercent: 8,
-          ease: "none",
-          scrollTrigger: { trigger: art, start: "top bottom", end: "bottom top", scrub: true },
-        });
-      }
-
-      // 5 · Tiga pilar: masuk bergantian.
-      gsap.from(".js-pillar", {
-        y: 34,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.12,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ".js-pillars", start: "top 85%" },
-      });
-
-      // 6 · Mock chat: gelembung masuk satu per satu dari bawah.
-      gsap.from(".js-bubble", {
-        y: 24,
-        opacity: 0,
-        duration: 0.6,
-        stagger: 0.18,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ".js-chat", start: "top 82%" },
-      });
-
-      // 7 · Grid kemampuan: tersingkap dari kiri (clip-path).
-      gsap.from(".js-cap", {
-        clipPath: "inset(0 100% 0 0)",
-        opacity: 0,
-        duration: 0.85,
-        stagger: 0.12,
-        ease: "power2.out",
-        scrollTrigger: { trigger: ".js-cap-grid", start: "top 84%" },
-      });
-
-      // 8 · Chip integrasi: muncul memantul.
-      gsap.from(".js-chip", {
-        scale: 0.8,
-        opacity: 0,
-        duration: 0.45,
-        stagger: 0.05,
-        ease: "back.out(2)",
-        scrollTrigger: { trigger: ".js-chips", start: "top 88%" },
-      });
-
-      // 9 · Kartu gradien: masuk berurutan + miring saat disentuh kursor.
-      gsap.from(".js-grad", {
-        y: 40,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ".js-grads", start: "top 85%" },
-      });
-      el.querySelectorAll<HTMLElement>(".js-grad").forEach((card) => {
-        card.addEventListener("pointermove", (event) => {
-          const point = event as PointerEvent;
-          if (point.pointerType === "touch") return;
-          const box = card.getBoundingClientRect();
-          const rx = (0.5 - (point.clientY - box.top) / box.height) * 5;
-          const ry = ((point.clientX - box.left) / box.width - 0.5) * 7;
-          card.style.transform = `perspective(1000px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg)`;
-        });
-        card.addEventListener("pointerleave", () => {
-          card.style.transform = "";
-        });
-      });
-
-      // 10 · Proyek: parallax halus berlawanan arah.
-      el.querySelectorAll<HTMLElement>(".js-project").forEach((card, i) => {
-        const dir = i % 2 === 0 ? 1 : -1;
-        gsap.fromTo(
-          card,
-          { y: 34 * dir, opacity: 0.45 },
-          {
-            y: -34 * dir,
-            opacity: 1,
-            ease: "none",
-            scrollTrigger: { trigger: card, start: "top bottom", end: "bottom top", scrub: true },
-          },
-        );
-      });
-
-      // 11 · FAQ: baris masuk + isi dibuka dengan tween tinggi.
-      gsap.from(".js-faq", {
-        y: 18,
-        opacity: 0,
-        duration: 0.5,
-        stagger: 0.06,
-        ease: "power2.out",
-        scrollTrigger: { trigger: "#faq", start: "top 85%" },
-      });
-      el.querySelectorAll<HTMLDetailsElement>("details").forEach((item) => {
-        const body = item.querySelector(".js-faq-body");
-        if (!body) return;
-        item.addEventListener("toggle", () => {
-          if (!item.open) return;
-          gsap.fromTo(
-            body,
-            { height: 0, opacity: 0 },
-            { height: "auto", opacity: 1, duration: 0.36, ease: "power2.out" },
-          );
-        });
-      });
-
-      // 12 · Penutup: cahaya berdenyut + tombol magnetik.
-      gsap.to(".js-glow", {
-        scale: 1.2,
-        opacity: 0.55,
-        duration: 5,
-        repeat: -1,
-        yoyo: true,
-        ease: "sine.inOut",
-      });
-      el.querySelectorAll<HTMLElement>(".js-magnet").forEach((magnet) => {
-        const toX = gsap.quickTo(magnet, "x", { duration: 0.45, ease: "power3" });
-        const toY = gsap.quickTo(magnet, "y", { duration: 0.45, ease: "power3" });
-        magnet.addEventListener("pointermove", (event) => {
-          const point = event as PointerEvent;
-          const box = magnet.getBoundingClientRect();
-          toX((point.clientX - (box.left + box.width / 2)) * 0.3);
-          toY((point.clientY - (box.top + box.height / 2)) * 0.4);
-        });
-        magnet.addEventListener("pointerleave", () => {
-          toX(0);
-          toY(0);
-        });
-      });
-
-      // 13 · Footer.
-      gsap.from(".js-foot", {
-        y: 20,
-        opacity: 0,
-        duration: 0.6,
-        stagger: 0.07,
-        ease: "power2.out",
-        scrollTrigger: { trigger: "footer", start: "top 92%" },
-      });
-    }, el);
-
-    return () => {
-      ctx.revert();
-      ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
-    };
-  }, []);
-
   return (
-    <main
-      ref={root}
-      id="main"
-      className="relative isolate min-h-full overflow-x-hidden bg-black font-display text-[#fafafa]"
-      style={{ fontFeatureSettings: '"cv01", "ss03"' }}
-    >
-      {/* Cahaya ambient */}
-      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-black">
-        <div className="aurora absolute left-[-20%] top-[-24%] h-[36rem] w-[36rem] opacity-[0.1]" />
-        <div className="aurora absolute bottom-[-28%] right-[-18%] h-[34rem] w-[34rem] opacity-[0.08]" />
-      </div>
-
-      {/* Nav */}
-      <header className="js-nav fixed inset-x-0 top-0 z-50 border-b border-transparent">
-        <div className="js-progress absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 bg-[linear-gradient(90deg,#8b5cf6,#06b6d4,#f472b6)]" />
+    <div className="itz-page min-h-full font-sans antialiased">
+      {/* Nav: permukaan padat + garis rambut, tanpa kaca, tanpa bilah gradien. */}
+      <header
+        className={`fixed inset-x-0 top-0 z-50 border-b bg-[var(--itz-bg)] ${RULE}`}
+      >
         <nav className={`${SHELL} flex h-[68px] items-center justify-between gap-6`}>
-          <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold">
-            <Sparkles className="size-4" strokeWidth={1.7} />
+          <Link
+            href="/"
+            className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--itz-ink)]"
+          >
+            <Mark />
             ITZ AI
           </Link>
           <div className="hidden items-center gap-8 lg:flex">
             {NAV.map((item) => (
-              <a key={item.href} href={item.href} className={NAVLINK}>
+              <a key={item.href} href={item.href} className={`text-[13.5px] ${LINK}`}>
                 {item.label}
               </a>
             ))}
           </div>
-          <div className="flex items-center gap-4">
-            <a href={CONTACT} className={PILL}>
-              Konsultasi
-            </a>
-          </div>
+          <a href={CONTACT} className={CTA}>
+            Konsultasi
+          </a>
         </nav>
+        <div
+          aria-hidden
+          className="itz-progress absolute inset-x-0 bottom-0 h-px scale-x-0 bg-[var(--itz-accent)]"
+        />
       </header>
 
-      {/* Hero */}
-      <section className="relative px-5 pb-16 pt-[calc(env(safe-area-inset-top,0px)+8rem)] md:px-8 md:pb-20 md:pt-36">
-        <div className={`${SHELL} max-w-[900px] text-center`}>
-          <span className="js-badge inline-flex items-center gap-2 rounded-full bg-white/[0.08] px-4 py-1.5 text-[12px] text-white/80">
-            <Sparkles className="size-3.5" strokeWidth={1.7} />
-            Terbuka untuk proyek AI baru
-          </span>
-          <h1 className={`${H1} mt-7`}>
-            <Words text="Lapisan AI yang membuat kerja rumit jadi" />{" "}
-            <span className={ACCENT}>
-              <Words text="sederhana." />
-            </span>
-          </h1>
-          <p className="js-w mx-auto mt-6 max-w-[44ch] text-[16px] leading-[1.6] text-white/60 md:text-[17px]">
-            Sistem AI yang menempel ke sistem yang sudah kamu pakai — dari chatbot yang paham data
-            bisnis, otomasi alur kerja, sampai orchestrator multi-agen.
-          </p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <a href={CONTACT} className={PILL}>
-              Mulai discovery
-              <ArrowRight className="ml-2 size-4" strokeWidth={1.7} />
-            </a>
-            <a href="#proyek" className={GHOST}>
-              Lihat proyek
-            </a>
-          </div>
-        </div>
-
-        {/* Panel art: medan alir 3D */}
-        <div className={`${SHELL} mt-14 md:mt-20`}>
-          <div className="js-art relative aspect-[2/1] w-full overflow-hidden rounded-[20px] border border-white/[0.08] bg-black">
-            <FlowVisual className="absolute inset-0 h-full w-full" />
-            <span className="absolute left-5 top-4 font-mono text-[11px] uppercase tracking-[0.12em] text-white/60">
-              FIG 0.1
-            </span>
-            <span className="absolute right-5 top-4 font-mono text-[11px] uppercase tracking-[0.12em] text-white/60">
-              Orchestrator
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {/* Stack */}
-      <section className="border-y border-white/[0.06] py-10">
-        <div className={SHELL}>
-          <p className="text-center text-[13px] text-white/60">Dibangun dengan stack produksi</p>
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[14px] text-white/60">
-            {STACK.map((item) => (
-              <span key={item}>{item}</span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Inti */}
-      <section id="inti" className={`${SHELL} scroll-mt-24 py-20 md:py-28`}>
-        <h2 className={`js-block ${H2} text-center`}>
-          <Words text="Inti dari sistem AI yang" />{" "}
-          <span className={ACCENT}>
-            <Words text="bisa dipercaya." />
-          </span>
-        </h2>
-        <div className="js-pillars mt-14 grid gap-5 md:grid-cols-3">
-          {PILLARS.map((item) => (
-            <div key={item.title} className={`${CARD} js-pillar p-6`}>
-              <h3 className="text-[17px] font-medium">{item.title}</h3>
-              <p className={`${BODY} mt-3`}>{item.body}</p>
-              <a
-                href={CONTACT}
-                className="mt-6 inline-flex items-center gap-1.5 text-[13px] text-white/80 transition-colors hover:text-white"
+      <main id="main" className="pt-[68px]">
+        {/* Hero: judul di kolom kiri, rel bukti di kolom kanan. */}
+        <section className={`${SHELL} pb-14 pt-16 md:pb-20 md:pt-24`}>
+          <div className="grid grid-cols-12 gap-x-6 gap-y-10">
+            <div className="col-span-12 md:col-span-7">
+              <p className={`itz-enter ${EYEBROW}`}>Jasa sistem &amp; integrasi AI</p>
+              <h1
+                className="itz-display itz-enter itz-enter-2 mt-6 text-[clamp(2.6rem,6vw,5rem)] text-balance text-[var(--itz-ink)]"
               >
-                Mulai discovery
-                <ArrowRight className="size-3.5" strokeWidth={1.7} />
-              </a>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Fitur chat */}
-      <section className="py-20 md:py-28">
-        <div className={`${SHELL} grid items-center gap-12 lg:grid-cols-2 lg:gap-16`}>
-          <div className="js-block">
-            <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/60">
-              AI chat
-            </p>
-            <h2 className={`${H2} mt-4`}>
-              <Words text="Percakapan yang menjawab dari" />{" "}
-              <span className={ACCENT}>
-                <Words text="datamu." />
-              </span>
-            </h2>
-            <p className={`${BODY} mt-5 max-w-[46ch]`}>
-              Setiap jawaban disusun dari hasil pencarian semantik di pengetahuanmu sendiri, dengan
-              sumber yang bisa diperiksa. Kalau tidak ada di sumber, ia bilang tidak ada.
-            </p>
-          </div>
-
-          {/* Mock antarmuka: ilustrasi pola, bukan data nyata */}
-          <div className={`${SOFT} js-chat p-4 md:p-6`}>
-            <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-              <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/60">
-                Sesi chat
-              </span>
-              <span className="flex gap-1.5">
-                <span className="size-2 rounded-full bg-white/20" />
-                <span className="size-2 rounded-full bg-white/20" />
-                <span className="size-2 rounded-full bg-white/20" />
-              </span>
-            </div>
-            <div className="mt-5 space-y-4">
-              <div className="js-bubble ml-auto max-w-[85%] rounded-2xl bg-white/[0.14] px-4 py-3 text-[14px] text-white/90">
-                Berapa omzet tiga bulan terakhir dan kategori mana yang turun?
-              </div>
-              <div className="js-bubble max-w-[90%] rounded-2xl border border-white/[0.08] bg-black/40 px-4 py-3 text-[14px] leading-[1.6] text-white/80">
-                Omzet naik 12%, tapi kategori sembako turun 6% karena dua pembelian besar tidak
-                tercatat di periode ini.
-                <span className="mt-3 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-white/[0.08] px-2.5 py-1 font-mono text-[11px] text-white/60">
-                    sumber: laporan_q3.xlsx
-                  </span>
-                  <span className="rounded-full bg-white/[0.08] px-2.5 py-1 font-mono text-[11px] text-white/60">
-                    pgvector · cosine
-                  </span>
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Kemampuan */}
-      <section id="kemampuan" className={`${SHELL} scroll-mt-24 pb-20 md:pb-28`}>
-        <h2 className={`js-block ${H2} max-w-[24ch]`}>
-          <Words text="Kemampuan yang dibutuhkan, dari yang paling" />{" "}
-          <span className={ACCENT}>
-            <Words text="sederhana." />
-          </span>
-        </h2>
-        <div className="js-cap-grid mt-12 grid gap-5 sm:grid-cols-2">
-          {CAPABILITIES.map(({ icon: Icon, title, body }) => (
-            <article key={title} className={`${CARD} js-cap p-6`}>
-              <Icon className="size-5 text-white/70" strokeWidth={1.6} />
-              <h3 className="mt-5 text-[17px] font-medium">{title}</h3>
-              <p className={`${BODY} mt-2.5`}>{body}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* Integrasi */}
-      <section className="border-y border-white/[0.06] py-20 md:py-28">
-        <div className={`${SHELL} text-center`}>
-          <h2 className={`js-block ${H2} mx-auto max-w-[26ch]`}>
-            <Words text="Menempel ke sistem yang" />{" "}
-            <span className={ACCENT}>
-              <Words text="sudah jalan." />
-            </span>
-          </h2>
-          <p className={`${BODY} mx-auto mt-5 max-w-[50ch]`}>
-            Tidak perlu membongkar yang lama. AI masuk lewat jalur yang sudah ada.
-          </p>
-          <div className="js-chips mt-10 flex flex-wrap items-center justify-center gap-3">
-            {INTEGRATIONS.map((item) => (
-              <span
-                key={item}
-                className="js-chip rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-2 text-[13px] text-white/70"
-              >
-                {item}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Layanan: kartu gradien */}
-      <section id="layanan" className={`${SHELL} scroll-mt-24 py-20 md:py-28`}>
-        <div className="flex flex-wrap items-end justify-between gap-6">
-          <h2 className={`js-block ${H2} max-w-[22ch]`}>
-            <Words text="Layanan yang bisa" />{" "}
-            <span className={ACCENT}>
-              <Words text="kamu ambil." />
-            </span>
-          </h2>
-          <p className={`${BODY} max-w-[38ch]`}>
-            Semua dimulai dari masalah, bukan dari daftar teknologi.
-          </p>
-        </div>
-        <div className="js-grads -mx-5 mt-12 flex snap-x snap-mandatory gap-5 overflow-x-auto px-5 pb-4 md:-mx-8 md:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {SERVICES.map((service, i) => (
-            <article
-              key={service.title}
-              className="js-grad relative flex min-h-[15rem] w-[19rem] shrink-0 snap-start flex-col justify-between overflow-hidden rounded-2xl p-6 transition-transform duration-300 ease-out [transform-style:preserve-3d]"
-              style={{ backgroundImage: GRADIENTS[i % GRADIENTS.length] }}
-            >
-              <span className="flex size-7 items-center justify-center rounded-full bg-black/25 text-[15px] text-white/90">
-                +
-              </span>
-              <span>
-                <h3 className="text-[17px] font-medium text-white">{service.title}</h3>
-                <p className="mt-2 text-[13.5px] leading-[1.6] text-white/85">{service.body}</p>
-              </span>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* Proyek */}
-      <section id="proyek" className={`${SHELL} scroll-mt-24 pb-20 md:pb-28`}>
-        <h2 className={`js-block ${H2}`}>
-          <Words text="Sistem yang sudah jalan," />{" "}
-          <span className={ACCENT}>
-            <Words text="lengkap dengan operasionalnya." />
-          </span>
-        </h2>
-        <div className="mt-12 space-y-5">
-          {PROJECTS.map((project) => (
-            <article key={project.name} className={`${CARD} js-project p-6 md:p-8`}>
-              <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/60">
-                {project.tag}
+                Lapisan AI yang membuat kerja rumit jadi{" "}
+                <span className="itz-serif">sederhana.</span>
+              </h1>
+              <p className={`itz-enter itz-enter-3 mt-7 max-w-[52ch] text-[16.5px] leading-[1.6] text-[var(--itz-ink-2)]`}>
+                Sistem AI yang menempel ke sistem yang sudah kamu pakai — dari chatbot yang paham
+                data bisnis, otomasi alur kerja, sampai orchestrator multi-agen.
               </p>
-              <h3 className="mt-3 text-[22px] font-medium tracking-[-0.01em]">{project.name}</h3>
-              <p className={`${BODY} mt-3 max-w-[70ch] text-[15px]`}>{project.body}</p>
-              <p className="mt-5 border-t border-white/[0.06] pt-4 font-mono text-[12px] text-white/50">
-                {project.stack}
-              </p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section id="faq" className={`${SHELL} scroll-mt-24 pb-20 md:pb-28`}>
-        <h2 className={`js-block ${H2} text-center`}>
-          <Words text="Kami punya" />{" "}
-          <span className={ACCENT}>
-            <Words text="jawabannya." />
-          </span>
-        </h2>
-        <div className="mx-auto mt-12 max-w-[820px]">
-          {FAQ.map(({ q, a }) => (
-            <details key={q} className="js-faq group border-b border-white/[0.08]">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-5 text-[16px] marker:hidden [&::-webkit-details-marker]:hidden">
-                <span className="text-white/90 transition-colors group-hover:text-white">{q}</span>
-                <Plus
-                  className="size-4 shrink-0 text-white/50 transition-transform duration-300 group-open:rotate-45"
-                  strokeWidth={1.7}
-                />
-              </summary>
-              <p className="js-faq-body pb-5 text-[15px] leading-[1.65] text-white/60">{a}</p>
-            </details>
-          ))}
-        </div>
-      </section>
-
-      {/* Penutup */}
-      <section className={`${SHELL} pb-24 md:pb-32`}>
-        <div
-          className={`${SOFT} relative overflow-hidden px-6 py-16 text-center md:px-16 md:py-24`}
-        >
-          <div
-            aria-hidden
-            className="js-glow aurora pointer-events-none absolute left-1/2 top-1/2 h-[26rem] w-[26rem] -translate-x-1/2 -translate-y-1/2 opacity-30"
-          />
-          <h2 className={`js-block ${H2} relative mx-auto max-w-[22ch]`}>
-            <Words text="Siap mengotomasi yang" />{" "}
-            <span className={ACCENT}>
-              <Words text="berulang?" />
-            </span>
-          </h2>
-          <p className={`${BODY} relative mx-auto mt-5 max-w-[50ch] text-[16px]`}>
-            Ceritakan alurnya. Saya bantu petakan mana yang bisa dibantu AI, mana yang lebih baik
-            dibiarkan sederhana.
-          </p>
-          <div className="relative mt-9 flex flex-wrap items-center justify-center gap-3">
-            <span className="js-magnet inline-flex">
-              <a href={CONTACT} className={PILL}>
-                Mulai discovery
-                <ArrowRight className="ml-2 size-4" strokeWidth={1.7} />
-              </a>
-            </span>
-            <Link href="/chat" className={GHOST}>
-              Coba demo
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-white/[0.06]">
-        <div className={`${SHELL} grid gap-10 py-14 md:grid-cols-[1.8fr_1fr_1fr_1fr]`}>
-          <div className="js-foot">
-            <div className="flex items-center gap-2 text-[15px] font-semibold">
-              <Sparkles className="size-4" strokeWidth={1.7} />
-              ITZ AI
-            </div>
-            <p className="mt-4 max-w-[28ch] text-[13px] leading-[1.6] text-white/50">
-              AI yang menempel ke sistem dan masalah nyata — bukan demo yang berhenti di presentasi.
-            </p>
-          </div>
-          <div className="js-foot">
-            <p className="text-[13px] text-white/60">Layanan</p>
-            <ul className="mt-4 space-y-2.5 text-[13px]">
-              {SERVICES.slice(0, 3).map((service) => (
-                <li key={service.title}>
-                  <a href="#layanan" className="text-white/70 transition-colors hover:text-white">
-                    {service.title}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="js-foot">
-            <p className="text-[13px] text-white/60">Proyek</p>
-            <ul className="mt-4 space-y-2.5 text-[13px]">
-              {PROJECTS.map((project) => (
-                <li key={project.name}>
-                  <a href="#proyek" className="text-white/70 transition-colors hover:text-white">
-                    {project.name}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="js-foot">
-            <p className="text-[13px] text-white/60">Kontak</p>
-            <ul className="mt-4 space-y-2.5 text-[13px]">
-              <li>
-                <a href={CONTACT} className="text-white/70 transition-colors hover:text-white">
-                  Email
+              <div className="itz-enter itz-enter-4 mt-9 flex flex-wrap items-center gap-x-7 gap-y-3">
+                <a href={CONTACT} className={CTA}>
+                  Mulai discovery
+                  <ArrowRight className="size-4" strokeWidth={1.6} aria-hidden />
                 </a>
-              </li>
-              <li>
-                <Link href="/chat" className="text-white/70 transition-colors hover:text-white">
-                  Demo chat
-                </Link>
-              </li>
+                <a href="#proyek" className={GHOST}>
+                  Lihat proyek
+                </a>
+              </div>
+            </div>
+
+            <ul className="col-span-12 md:col-span-4 md:col-start-9">
+              {PROOF.map((line) => (
+                <li
+                  key={line}
+                  className={`border-t py-4 text-[14px] leading-[1.5] text-[var(--itz-ink-2)] last:border-b ${RULE}`}
+                >
+                  {line}
+                </li>
+              ))}
             </ul>
           </div>
-        </div>
-        <div className="border-t border-white/[0.06] py-6">
-          <p className={`${SHELL} text-[12px] text-white/40`}>© 2026 ITZ AI</p>
-        </div>
-      </footer>
-    </main>
+        </section>
+
+        {/* Stack: pita penuh, label kiri, item rata kiri dengan garis rambut. */}
+        <section aria-labelledby="stack-h" className={`border-y ${RULE}`}>
+          <div className={`${SHELL} grid grid-cols-12 gap-x-6 gap-y-4 py-7`}>
+            <h2 id="stack-h" className={`col-span-12 md:col-span-2 ${EYEBROW}`}>
+              Stack produksi
+            </h2>
+            <ul className="col-span-12 grid grid-cols-2 gap-x-6 md:col-span-10 md:flex md:flex-wrap md:items-center md:divide-x md:divide-[color:var(--itz-rule)]">
+              {STACK.map((item) => (
+                <li
+                  key={item}
+                  className={`border-t py-2 font-mono text-[13px] leading-[1.4] text-[var(--itz-ink-2)] md:border-t-0 md:px-4 md:py-0 md:first:pl-0 md:last:pr-0 ${RULE}`}
+                >
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        {/* Inti */}
+        <section
+          aria-labelledby="inti-h"
+          id="inti"
+          className={`${SHELL} scroll-mt-24 py-16 md:py-24`}
+        >
+          <div className="grid grid-cols-12 gap-x-6 gap-y-6">
+            <h2 id="inti-h" className={`col-span-12 md:col-span-7 ${H2}`}>
+              Inti dari sistem AI yang <span className="itz-serif">bisa dipercaya.</span>
+            </h2>
+            <p className={`col-span-12 md:col-span-4 md:col-start-9 md:self-end ${BODY}`}>
+              Tiga hal ini yang menentukan apakah sebuah sistem AI layak dipakai sehari-hari.
+            </p>
+          </div>
+          <dl className={`mt-12 grid grid-cols-12 gap-x-0 gap-y-8 border-t ${RULE} pt-8 md:divide-x md:divide-[color:var(--itz-rule)]`}>
+            {PILLARS.map((item, i) => (
+              <div key={item.title} className="col-span-12 md:col-span-4 md:px-7 md:first:pl-0">
+                <dt>
+                  <span className={`${EYEBROW} block`}>{String(i + 1).padStart(2, "0")}</span>
+                  <span className={`${H3} mt-3 block`}>{item.title}</span>
+                </dt>
+                <dd className={`${BODY} mt-3`}>{item.body}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        {/* Permukaan produk: satu bingkai berisi garis rambut, bukan kotak bersarang. */}
+        <section aria-labelledby="produk-h" className={`${SHELL} pb-16 md:pb-24`}>
+          <div className="grid grid-cols-12 gap-x-6 gap-y-10">
+            <div className="col-span-12 md:col-span-5">
+              <p className={EYEBROW}>AI chat</p>
+              <h2 id="produk-h" className={`${H2} mt-5`}>
+                Percakapan yang menjawab dari <span className="itz-serif">datamu.</span>
+              </h2>
+              <p className={`${BODY} mt-5 max-w-[44ch]`}>
+                Setiap jawaban disusun dari hasil pencarian semantik di pengetahuanmu sendiri,
+                dengan sumber yang bisa diperiksa. Kalau tidak ada di sumber, ia bilang tidak ada.
+              </p>
+            </div>
+
+            <div className="col-span-12 md:col-span-7">
+              <div className={`rounded-[2px] border bg-[var(--itz-surface)] ${RULE}`}>
+                <div className={`flex items-center justify-between border-b px-5 py-3 ${RULE}`}>
+                  <span className={EYEBROW}>Sesi chat</span>
+                  <span className="font-mono text-[11px] text-[var(--itz-ink-3)]">stream</span>
+                </div>
+                <dl className={`divide-y divide-[color:var(--itz-rule)]`}>
+                  <div className="grid grid-cols-12 gap-x-4 px-5 py-5">
+                    <dt className="col-span-3 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--itz-ink-3)]">
+                      Kamu
+                    </dt>
+                    <dd className="col-span-9 text-[14.5px] leading-[1.55] text-[var(--itz-ink)]">
+                      Berapa omzet tiga bulan terakhir dan kategori mana yang turun?
+                    </dd>
+                  </div>
+                  <div className="grid grid-cols-12 gap-x-4 px-5 py-5">
+                    <dt className="col-span-3 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--itz-ink-3)]">
+                      ITZ AI
+                    </dt>
+                    <dd className="col-span-9">
+                      <p className="text-[14.5px] leading-[1.55] text-[var(--itz-ink-2)]">
+                        Omzet naik 12%, tapi kategori sembako turun 6% karena dua pembelian besar
+                        tidak tercatat di periode ini.
+                      </p>
+                      <p className="mt-4 font-mono text-[11.5px] leading-[1.7] text-[var(--itz-ink-3)]">
+                        sumber: laporan_q3.xlsx
+                        <br />
+                        pgvector · cosine
+                      </p>
+                    </dd>
+                  </div>
+                </dl>
+                <p
+                  className={`border-t px-5 py-3 font-mono text-[11px] text-[var(--itz-ink-3)] ${RULE}`}
+                >
+                  Ilustrasi pola antarmuka, bukan data nyata.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Kemampuan: baris editorial bernomor, tanpa kartu. */}
+        <section
+          aria-labelledby="kemampuan-h"
+          id="kemampuan"
+          className={`${SHELL} scroll-mt-24 pb-16 md:pb-24`}
+        >
+          <h2 id="kemampuan-h" className={`${H2_LEAD} max-w-[26ch]`}>
+            Kemampuan yang dibutuhkan, dari yang paling{" "}
+            <span className="itz-serif">sederhana.</span>
+          </h2>
+          <ol className={`mt-10 border-t ${RULE}`}>
+            {CAPABILITIES.map(({ icon: Icon, title, body }, i) => (
+              <li
+                key={title}
+                className={`grid grid-cols-12 items-start gap-x-6 gap-y-3 border-b py-7 ${RULE}`}
+              >
+                <span className={`col-span-3 md:col-span-1 ${EYEBROW}`}>
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <h3 className="col-span-9 flex items-center gap-3 md:col-span-3">
+                  <Icon className="size-4 shrink-0 text-[var(--itz-ink-3)]" strokeWidth={1.6} aria-hidden />
+                  <span className={H3}>{title}</span>
+                </h3>
+                <p className={`col-span-12 md:col-span-7 md:col-start-6 ${BODY}`}>{body}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* Integrasi: daftar teks, bukan pil. */}
+        <section aria-labelledby="integrasi-h" className={`border-y ${RULE}`}>
+          <div className={`${SHELL} py-16 md:py-20`}>
+            <div className="grid grid-cols-12 gap-x-6 gap-y-6">
+              <h2 id="integrasi-h" className={`col-span-12 md:col-span-7 ${H2}`}>
+                Menempel ke sistem yang <span className="itz-serif">sudah jalan.</span>
+              </h2>
+              <p className={`col-span-12 md:col-span-4 md:col-start-9 md:self-end ${BODY}`}>
+                Tidak perlu membongkar yang lama. AI masuk lewat jalur yang sudah ada.
+              </p>
+            </div>
+            <ul className="mt-10 grid grid-cols-2 gap-x-6 md:grid-cols-3">
+              {INTEGRATIONS.map((item) => (
+                <li
+                  key={item}
+                  className={`border-t py-3 text-[14px] text-[var(--itz-ink-2)] ${RULE}`}
+                >
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        {/* Layanan: catatan bernomor, bukan kartu gradien. */}
+        <section
+          aria-labelledby="layanan-h"
+          id="layanan"
+          className={`${SHELL} scroll-mt-24 py-16 md:py-24`}
+        >
+          <div className="grid grid-cols-12 gap-x-6 gap-y-8">
+            <div className="col-span-12 md:sticky md:top-[92px] md:col-span-4 md:self-start">
+              <h2 id="layanan-h" className={H2}>
+                Layanan yang bisa <span className="itz-serif">kamu ambil.</span>
+              </h2>
+              <p className={`${BODY} mt-5 max-w-[38ch]`}>
+                Semua dimulai dari masalah, bukan dari daftar teknologi.
+              </p>
+            </div>
+            <ol className={`col-span-12 border-t md:col-span-7 md:col-start-6 ${RULE}`}>
+              {SERVICES.map((service, i) => (
+                <li
+                  key={service.title}
+                  className={`grid grid-cols-12 gap-x-5 gap-y-2 border-b py-6 ${RULE}`}
+                >
+                  <span className={`col-span-2 md:col-span-1 ${EYEBROW}`}>
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <div className="col-span-10 md:col-span-11">
+                    <h3 className={H3}>{service.title}</h3>
+                    <p className={`${BODY} mt-2`}>{service.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        {/* Proyek: catatan lebar, tag di kolom kiri. */}
+        <section
+          aria-labelledby="proyek-h"
+          id="proyek"
+          className={`${SHELL} scroll-mt-24 pb-16 md:pb-24`}
+        >
+          <h2 id="proyek-h" className={`${H2_LEAD} max-w-[30ch]`}>
+            Sistem yang sudah jalan, <span className="itz-serif">lengkap dengan operasionalnya.</span>
+          </h2>
+          <div className={`mt-10 border-t ${RULE}`}>
+            {PROJECTS.map((project) => (
+              <article
+                key={project.name}
+                className={`grid grid-cols-12 gap-x-6 gap-y-4 border-b py-8 ${RULE}`}
+              >
+                <div className="col-span-12 md:col-span-4">
+                  <p className={EYEBROW}>{project.tag}</p>
+                  <p className="mt-4 font-mono text-[12px] leading-[1.6] text-[var(--itz-ink-3)]">
+                    {project.stack}
+                  </p>
+                </div>
+                <div className="col-span-12 md:col-span-8">
+                  <h3 className="itz-display text-[1.5rem] tracking-[-0.02em] text-[var(--itz-ink)] md:text-[1.75rem]">
+                    {project.name}
+                  </h3>
+                  <p className={`${BODY} mt-3`}>{project.body}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        {/* FAQ: judul di kolom kiri, daftar di kolom kanan. */}
+        <section
+          aria-labelledby="faq-h"
+          id="faq"
+          className={`${SHELL} scroll-mt-24 pb-16 md:pb-24`}
+        >
+          <div className="grid grid-cols-12 gap-x-6 gap-y-8">
+            <div className="col-span-12 md:sticky md:top-[92px] md:col-span-4 md:self-start">
+              <h2 id="faq-h" className={H2}>
+                Kami punya <span className="itz-serif">jawabannya.</span>
+              </h2>
+              <p className={`${BODY} mt-5 max-w-[34ch]`}>
+                Kalau pertanyaanmu belum ada di sini, tanyakan langsung.
+              </p>
+            </div>
+            <div className={`col-span-12 border-t md:col-span-7 md:col-start-6 ${RULE}`}>
+              {FAQ.map(({ q, a }) => (
+                <details key={q} className={`group border-b ${RULE}`}>
+                  <summary
+                    className={`flex cursor-pointer list-none items-start justify-between gap-6 py-5 [&::-webkit-details-marker]:hidden`}
+                  >
+                    <span className="text-[15.5px] leading-[1.5] text-[var(--itz-ink)]">{q}</span>
+                    <Plus
+                      className="mt-0.5 size-4 shrink-0 text-[var(--itz-ink-3)] transition-transform duration-200 group-open:rotate-45"
+                      strokeWidth={1.6}
+                      aria-hidden
+                    />
+                  </summary>
+                  <p className={`${BODY} max-w-[62ch] pb-6`}>{a}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Penutup: pernyataan penuh lebar, bukan dua kolom dengan ruang kosong. */}
+        <section aria-labelledby="tutup-h" className={`border-t bg-[var(--itz-surface)] ${RULE}`}>
+          <div className={`${SHELL} py-16 md:py-20`}>
+            <h2 id="tutup-h" className={`${H2_LEAD} max-w-[26ch]`}>
+              Siap mengotomasi yang <span className="itz-serif">berulang?</span>
+            </h2>
+            <p className={`${BODY} mt-6 max-w-[54ch]`}>
+              Ceritakan alurnya. Saya bantu petakan mana yang bisa dibantu AI, mana yang lebih baik
+              dibiarkan sederhana.
+            </p>
+            <div className={`mt-9 flex flex-wrap items-center gap-x-7 gap-y-3 border-t pt-8 ${RULE}`}>
+              <a href={CONTACT} className={CTA}>
+                Mulai discovery
+                <ArrowRight className="size-4" strokeWidth={1.6} aria-hidden />
+              </a>
+              <Link href="/chat" className={GHOST}>
+                Coba demo
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        <footer className={`border-t ${RULE}`}>
+          <div className={`${SHELL} grid grid-cols-12 gap-x-6 gap-y-10 py-14`}>
+            <div className="col-span-12 md:col-span-4">
+              <p className="text-[15px] font-semibold tracking-[-0.01em] text-[var(--itz-ink)]">
+                <Mark />
+                ITZ AI
+              </p>
+              <p className="mt-4 max-w-[30ch] text-[13px] leading-[1.6] text-[var(--itz-ink-2)]">
+                AI yang menempel ke sistem dan masalah nyata — bukan demo yang berhenti di
+                presentasi.
+              </p>
+            </div>
+            <nav aria-label="Layanan" className="col-span-6 md:col-span-3 md:col-start-6">
+              <p className={`${EYEBROW}`}>Layanan</p>
+              <ul className="mt-4 space-y-2.5 text-[13px]">
+                {SERVICES.slice(0, 3).map((service) => (
+                  <li key={service.title}>
+                    <a href="#layanan" className={LINK}>
+                      {service.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+            <nav aria-label="Proyek" className="col-span-6 md:col-span-3">
+              <p className={`${EYEBROW}`}>Proyek</p>
+              <ul className="mt-4 space-y-2.5 text-[13px]">
+                {PROJECTS.map((project) => (
+                  <li key={project.name}>
+                    <a href="#proyek" className={LINK}>
+                      {project.name}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+            <nav aria-label="Kontak" className="col-span-12 md:col-span-2">
+              <p className={`${EYEBROW}`}>Kontak</p>
+              <ul className="mt-4 space-y-2.5 text-[13px]">
+                <li>
+                  <a href={CONTACT} className={LINK}>
+                    Email
+                  </a>
+                </li>
+                <li>
+                  <Link href="/chat" className={LINK}>
+                    Demo chat
+                  </Link>
+                </li>
+              </ul>
+            </nav>
+          </div>
+          <div className={`border-t ${RULE}`}>
+            <div
+              className={`${SHELL} flex flex-wrap items-center justify-between gap-2 py-6 font-mono text-[12px] text-[var(--itz-ink-3)]`}
+            >
+              <span>© 2026 ITZ AI</span>
+              <span>ayormahaki@gmail.com</span>
+            </div>
+          </div>
+        </footer>
+      </main>
+    </div>
   );
 }

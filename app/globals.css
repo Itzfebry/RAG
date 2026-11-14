@@ -531,44 +531,79 @@
   opacity: 0.04;
 }
 
-.aurora {
-  background: conic-gradient(
-    from 0deg,
-    #ff2d95,
-    #ff8a00,
-    #ffe600,
-    #22ff88,
-    #00d4ff,
-    #8b5cf6,
-    #ff2d95
-  );
-  animation: itz-hue 18s linear infinite;
-  filter: blur(70px) saturate(150%);
+/* landing: satu aksen, garis rambut sebagai pemisah, tanpa gradien/glow.
+   Token di-scope ke halaman ini supaya permukaan aplikasi tetap pakai paletnya sendiri. */
+.itz-page {
+  --itz-bg: #0a0a0b;
+  --itz-ink: #f5f5f6;
+  --itz-ink-2: #a4a4aa;
+  --itz-ink-3: #8d8d94; /* meta 12–13px; lolos 4.5:1 di atas --itz-bg */
+  --itz-accent: #d6a15c;
+  --itz-accent-ink: #14100a;
+  --itz-rule: rgba(255, 255, 255, 0.1);
+  --itz-surface: #0f0f11;
+  background: var(--itz-bg);
+  color: var(--itz-ink);
 }
 
-@keyframes itz-hue {
-  0% {
-    transform: rotate(0deg);
-    filter: blur(70px) saturate(150%) hue-rotate(0deg);
+.itz-display {
+  font-family: var(--font-display);
+  font-weight: 500;
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+}
+
+.itz-serif {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.012em;
+}
+
+/* Satu momen gerak untuk seluruh halaman: masuknya kepala halaman.
+   Tanpa prefers-reduced-motion tidak ada animasi sama sekali. */
+@media (prefers-reduced-motion: no-preference) {
+  .itz-enter {
+    animation: itz-enter 0.66s cubic-bezier(0.2, 0.7, 0.2, 1) both;
   }
-  50% {
-    transform: rotate(180deg);
-    filter: blur(70px) saturate(160%) hue-rotate(45deg);
+  .itz-enter-2 {
+    animation-delay: 0.06s;
   }
-  100% {
-    transform: rotate(360deg);
-    filter: blur(70px) saturate(150%) hue-rotate(0deg);
+  .itz-enter-3 {
+    animation-delay: 0.12s;
+  }
+  .itz-enter-4 {
+    animation-delay: 0.18s;
+  }
+  .itz-progress {
+    animation: itz-progress linear both;
+    animation-timeline: scroll(root block);
+    transform-origin: left;
+  }
+}
+
+@keyframes itz-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes itz-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
   }
 }
 
 :where(a, button, summary, [tabindex]):focus-visible {
-  outline: 2px solid rgba(196, 181, 253, 0.9);
+  outline: 2px solid var(--itz-accent);
   outline-offset: 3px;
-  border-radius: 999px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .aurora {
-    animation: none;
-  }
+  border-radius: 2px;
 }
