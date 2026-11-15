@@ -10,10 +10,8 @@
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains-mono);
   --font-heading: var(--font-sans);
-  /* Landing page mengikuti tipografi referensi: Geist + Source Serif 4 (aksen miring). */
-  --font-display: var(--font-geist);
-  --font-serif: var(--font-source-serif);
-  --font-viaoda: var(--font-viaoda-libre);
+  /* Tipografi landing: Montserrat (display) + Inter (body) + JetBrains Mono (label). */
+  --font-montserrat: var(--font-montserrat-google);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -525,11 +523,11 @@
   }
 }
 
-/* landing: denyut opacity latar hero (0 → 100% tiap 2,5 detik) */
+/* landing: denyut opacity latar hero (65% → 100% tiap 2,5 detik) */
 @keyframes hero-pulse {
   0%,
   100% {
-    opacity: 0;
+    opacity: 0.65;
   }
   50% {
     opacity: 1;
@@ -543,6 +541,81 @@
   .hero-pulse {
     animation: none;
     opacity: 0.7;
+  }
+}
+
+/* landing: FAQ buka/tutup — hanya fade + geser (GPU), tinggi snap sekali (tanpa reflow per frame) */
+@keyframes faq-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+details[open] > .js-faq-body {
+  animation: faq-in 0.22s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  details[open] > .js-faq-body {
+    animation: none;
+  }
+}
+
+/* landing: aurora hero — drift compositor-only (transform+opacity), non-WebGL */
+@keyframes hero-aurora {
+  0%,
+  100% {
+    transform: translate3d(-56%, -54%, 0) scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translate3d(-44%, -46%, 0) scale(1.12);
+    opacity: 0.8;
+  }
+}
+.hero-aurora {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  width: 60vw;
+  height: 60vw;
+  max-width: 720px;
+  max-height: 720px;
+  pointer-events: none;
+  border-radius: 9999px;
+  background: radial-gradient(
+    closest-side,
+    rgba(139, 92, 246, 0.35),
+    rgba(34, 211, 238, 0.14) 55%,
+    transparent 72%
+  );
+  filter: blur(70px);
+  animation: hero-aurora 26s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-aurora {
+    animation: none;
+    opacity: 0.6;
+    transform: translate3d(-50%, -50%, 0);
+  }
+}
+
+/* landing: ribbon rainbow — geser hue seluruh canvas fiber */
+@keyframes fiber-hue {
+  to {
+    filter: hue-rotate(360deg);
+  }
+}
+.hero-fibers {
+  animation: fiber-hue 18s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-fibers {
+    animation: none;
   }
 }
 

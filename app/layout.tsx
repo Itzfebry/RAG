@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Inter, JetBrains_Mono, Source_Serif_4, Viaoda_Libre } from "next/font/google";
+import { Inter, JetBrains_Mono, Montserrat } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import MotionProvider from "@/components/motion-provider";
@@ -10,32 +10,17 @@ const inter = Inter({
   display: "swap",
 });
 
-// Dipakai landing page (mengikuti tipografi referensi MONO AI).
-const geist = Geist({
-  subsets: ["latin"],
-  variable: "--font-geist",
-  display: "swap",
-});
-
-const sourceSerif = Source_Serif_4({
-  subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
-  variable: "--font-source-serif",
-  display: "swap",
-});
-
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-jetbrains-mono",
   display: "swap",
 });
 
-// Wordmark "ITZ AI" di landing page.
-const viaodaLibre = Viaoda_Libre({
+// Display landing page (slogan/H1 + label brand).
+const montserrat = Montserrat({
   subsets: ["latin"],
-  weight: "400",
-  variable: "--font-viaoda-libre",
+  weight: ["400", "500"],
+  variable: "--font-montserrat-google",
   display: "swap",
 });
 
@@ -61,9 +46,7 @@ export default function RootLayout({
         "h-full dark",
         inter.variable,
         jetbrainsMono.variable,
-        geist.variable,
-        sourceSerif.variable,
-        viaodaLibre.variable,
+        montserrat.variable,
       )}
     >
       <body className="font-sans bg-background text-foreground antialiased h-full">

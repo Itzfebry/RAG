@@ -17,19 +17,27 @@ import {
   Workflow,
   Wrench,
 } from "lucide-react";
+import ShinyText from "@/components/ShinyText";
+import BlurText from "@/components/BlurText";
+import StarBorder from "@/components/StarBorder";
+import FadeContent from "@/components/FadeContent";
+import GhostFibers from "@/components/GhostFibers";
 
 const CONTACT = "mailto:ayormahaki@gmail.com?subject=Discovery%20proyek%20AI";
 
 /* Kerangka mengikuti monoai.framer.website:
    kontainer 1320px · H1 800px terpusat · art hero full-bleed 2:1 tanpa radius ·
-   grid 3×440 tanpa gap · FAQ 700px terpusat · footer 12px. */
+   grid 3×440 tanpa gap · FAQ 700px terpusat · footer 12px.
+   Narasi halaman mengikuti Golden Circle: Kenali (Apa) → Alasan (Mengapa) → Cara Kerja (Bagaimana). */
 const SHELL = "mx-auto w-full max-w-[1424px] px-5 md:px-[52px]";
 const NARROW = "mx-auto w-full max-w-[804px] px-5 md:px-[52px]";
 const HEADLINE = "mx-auto w-full max-w-[904px] px-5 md:px-[52px]";
 const EYEBROW = "font-mono text-[11px] uppercase tracking-[0.14em] text-white/70";
-const ACCENT = "font-serif font-medium italic text-white";
+const ACCENT = "font-sans font-medium italic text-white";
 const H1 =
-  "text-balance text-[clamp(5.74rem,calc(7.57vw_+_23.8px),8.29rem)] font-medium leading-[1.12] tracking-[-0.04em]";
+  "text-balance font-montserrat text-[clamp(1.5rem,2.6vw,2rem)] font-normal leading-[1.2] tracking-[-0.02em]";
+const BRANDLABEL =
+  "font-montserrat text-[clamp(3rem,5.5vw,5rem)] font-medium uppercase tracking-[0.06em] text-white [mask-image:linear-gradient(to_bottom,black_54%,transparent_86%)]";
 const H2 =
   "text-balance text-[clamp(1.75rem,3vw,2.25rem)] font-medium leading-[1.2] tracking-[-0.03em]";
 const BODY = "text-[15px] leading-[1.65] text-white/65 md:text-[16px]";
@@ -40,10 +48,10 @@ const GHOST =
 const NAVLINK = "text-[15px] text-white/80 transition-colors hover:text-white";
 
 const NAV = [
-  { href: "#inti", label: "Prinsip" },
-  { href: "#kemampuan", label: "Kemampuan" },
-  { href: "#layanan", label: "Layanan" },
-  { href: "#proyek", label: "Proyek" },
+  { href: "#kenali", label: "Kenali" },
+  { href: "#alasan", label: "Alasan" },
+  { href: "#cara-kerja", label: "Cara Kerja" },
+  { href: "#karya", label: "Karya" },
   { href: "#faq", label: "FAQ" },
 ];
 
@@ -62,7 +70,7 @@ const FLOW = [
   { label: "Perintah bahasa alami", gate: false },
   { label: "Retrieval pgvector · cosine HNSW", gate: false },
   { label: "Tool: REST / webhook", gate: false },
-  { label: "Berhenti — keputusanmu", gate: true },
+  { label: "Berhenti, keputusanmu", gate: true },
   { label: "Jawaban + sumber", gate: false },
 ];
 
@@ -89,7 +97,7 @@ const CAPABILITIES = [
     icon: MessagesSquare,
     step: "01",
     title: "Asisten & chat",
-    body: "Antarmuka percakapan dengan identitas, gaya komunikasi, dan instruksi sendiri — di web, WhatsApp, atau Telegram.",
+    body: "Antarmuka percakapan dengan identitas, gaya komunikasi, dan instruksi sendiri, di web, WhatsApp, atau Telegram.",
   },
   {
     icon: Database,
@@ -112,14 +120,21 @@ const CAPABILITIES = [
 ];
 
 const INTEGRATIONS = [
-  "REST API",
-  "Webhook",
-  "PostgreSQL",
-  "Supabase",
-  "WhatsApp",
-  "Telegram",
-  "Google Sheets",
-  "Object Storage",
+  { name: "WhatsApp", logo: "/logos/whatsapp.svg" },
+  { name: "Telegram", logo: "/logos/telegram.svg" },
+  { name: "Discord", logo: "/logos/discord.svg" },
+  { name: "Microsoft Teams", logo: "/logos/microsoft-teams.svg" },
+  { name: "Google Sheets", logo: "/logos/google-sheets.svg" },
+  { name: "Excel", logo: "/logos/excel.svg" },
+  { name: "Google Drive", logo: "/logos/google-drive.svg" },
+  { name: "Shopee", logo: "/logos/shopee.svg" },
+  { name: "GitHub", logo: "/logos/github.svg" },
+  { name: "Google Calendar", logo: "/logos/google-calendar.svg" },
+  { name: "OneDrive", logo: "/logos/onedrive.svg" },
+  { name: "Midtrans", logo: null },
+  { name: "Xendit", logo: "/logos/xendit.svg" },
+  { name: "TikTok", logo: "/logos/tiktok.svg" },
+  { name: "Instagram", logo: "/logos/instagram.svg" },
 ];
 
 const SERVICES = [
@@ -132,7 +147,7 @@ const SERVICES = [
   {
     icon: Database,
     title: "Chatbot & basis pengetahuan",
-    body: "Menjawab dari dokumen, SOP, produk, atau katalog sendiri — bisa dibatasi hanya ke sumber itu.",
+    body: "Menjawab dari dokumen, SOP, produk, atau katalog sendiri, bisa dibatasi hanya ke sumber itu.",
     material: "/landing/iridescent-waves.jpg",
   },
   {
@@ -153,7 +168,7 @@ const PROJECTS = [
   {
     name: "UMKM-AI",
     tag: "Platform keuangan & analisis bisnis",
-    body: "Pencatatan transaksi, utang-piutang, laporan dengan ekspor CSV/Excel/PDF, dan AI Finance Analyst yang menjelaskan kondisi bisnis dari angka aktual — bukan tebakan.",
+    body: "Pencatatan transaksi, utang-piutang, laporan dengan ekspor CSV/Excel/PDF, dan AI Finance Analyst yang menjelaskan kondisi bisnis dari angka aktual, bukan tebakan.",
     stack: "Next.js 15 · Drizzle · PostgreSQL · Auth.js · Cloudflare R2",
   },
   {
@@ -173,7 +188,7 @@ const PROJECTS = [
 const FAQ = [
   {
     q: "Data saya masih berantakan. Bisa mulai dari situ?",
-    a: "Bisa — justru di situ nilainya. Kita mulai dari yang ada: dokumen, spreadsheet, catatan, riwayat percakapan. Data yang belum lengkap bukan alasan menunggu.",
+    a: "Bisa, justru di situ nilainya. Kita mulai dari yang ada: dokumen, spreadsheet, catatan, riwayat percakapan. Data yang belum lengkap bukan alasan menunggu.",
   },
   {
     q: "Apakah harus mengganti sistem yang sekarang?",
@@ -357,7 +372,7 @@ export default function Landing() {
       });
 
       // 8b · Integrasi: chip masuk memantul.
-      gsap.from(".js-chips span", {
+      gsap.from(".js-chips > div > span", {
         scale: 0.85,
         opacity: 0,
         duration: 0.45,
@@ -386,19 +401,7 @@ export default function Landing() {
         });
       });
 
-      // 9 · FAQ: tinggi dianimasikan.
-      el.querySelectorAll<HTMLDetailsElement>("details").forEach((item) => {
-        const body = item.querySelector(".js-faq-body");
-        if (!body) return;
-        item.addEventListener("toggle", () => {
-          if (!item.open) return;
-          gsap.fromTo(
-            body,
-            { height: 0, opacity: 0 },
-            { height: "auto", opacity: 1, duration: 0.34, ease: "power2.out" },
-          );
-        });
-      });
+      // 9 · FAQ: buka/tutup native <details>; animasi fade via CSS (tanpa tween height = tanpa layout tiap frame).
 
       // 10 · Tombol magnetik.
       el.querySelectorAll<HTMLElement>(".js-magnet").forEach((magnet) => {
@@ -427,11 +430,11 @@ export default function Landing() {
     <main
       ref={root}
       id="main"
-      className="obsidian-field relative isolate min-h-full overflow-x-hidden font-display text-[#f7f8f8]"
+      className="obsidian-field relative isolate min-h-full overflow-x-hidden font-sans text-[#f7f8f8]"
       style={{ fontFeatureSettings: '"cv01", "ss03"' }}
     >
       <a
-        href="#inti"
+        href="#kenali"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-full focus:bg-white focus:px-4 focus:py-2 focus:text-[13px] focus:text-black"
       >
         Lompat ke konten
@@ -445,14 +448,14 @@ export default function Landing() {
         <nav className="js-nav g-frosted g-float mx-auto flex h-[60px] w-full max-w-[1320px] items-center justify-between gap-6 rounded-full px-5 md:px-6">
           <span
             aria-hidden
-            className="spectral-line pointer-events-none absolute inset-x-8 bottom-0 opacity-70"
+            className="spectral-line pointer-events-none absolute inset-x-8 bottom-0 opacity-30"
           />
           <Link href="/" className="text-[15px] font-semibold">
             ITZ AI
           </Link>
-          <div className="hidden items-center gap-8 lg:flex">
+          <div className="hidden items-center gap-8 lg:ml-auto lg:mr-24 lg:flex">
             {NAV.map((item) => (
-              <a key={item.href} href={item.href} className={NAVLINK}>
+              <a key={item.href} href={item.href} className={`${NAVLINK} font-light`}>
                 {item.label}
               </a>
             ))}
@@ -474,101 +477,102 @@ export default function Landing() {
       {/* 1 · Hero: gambar iridescent jadi latar, konten mengapung di atasnya */}
       <section className="relative flex min-h-[100svh] flex-col justify-center overflow-hidden pb-20 pt-[calc(env(safe-area-inset-top,0px)+8rem)] md:pb-28 md:pt-40">
         <div aria-hidden className="js-hero-bg pointer-events-none absolute inset-0 -z-10">
-          <Image
-            src="/landing/iridescent-flow.jpg"
-            alt=""
-            fill
-            priority
-            sizes="100vw"
-            className="hero-pulse object-cover"
-          />
-          <Image
-            src="/landing/spectral-streaks.jpg"
-            alt=""
-            fill
-            priority
-            sizes="100vw"
-            className="object-cover opacity-[0.46] mix-blend-screen"
-          />
-          <div className="absolute inset-0 bg-[radial-gradient(70%_50%_at_50%_20%,rgba(5,6,10,0.55),rgba(5,6,10,0.9)_55%,#05060a)]" />
-          <div className="absolute inset-x-0 top-0 h-52 bg-[linear-gradient(180deg,rgba(5,6,10,0.95),rgba(5,6,10,0.45)_55%,transparent)]" />
-          <div
-            aria-hidden
-            className="js-hero-dim absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_30%,rgba(5,6,10,0.15),rgba(5,6,10,0.72)_72%,#05060a)] opacity-25"
-          />
+          <div aria-hidden className="hero-aurora" />
+          <div className="hero-fibers absolute inset-0">
+            <GhostFibers
+              glowColor="#8b5cf6"
+              secondaryColor="#22d3ee"
+              gradient="depth"
+              fiberStyle="lines"
+              speed={0.35}
+              twist={1.1}
+              thickness={1}
+              glow={0.7}
+              brightness={1}
+              vignette={0.4}
+              particles={0}
+              sparkle={0}
+              mouseInteraction
+              hoverEffect="part"
+              pulseOnClick={false}
+            />
+          </div>
+          {/* Vignette + fade hitam merata di atas ribbon */}
+          <div className="absolute inset-0 bg-[radial-gradient(90%_70%_at_50%_38%,transparent_30%,rgba(5,6,10,0.55)_78%,#05060a_100%)]" />
+          <div className="absolute inset-x-0 top-0 h-44 bg-[linear-gradient(180deg,#05060a,rgba(5,6,10,0.35)_60%,transparent)]" />
+          <div className="absolute inset-x-0 bottom-0 h-72 bg-[linear-gradient(0deg,#05060a,rgba(5,6,10,0.5)_55%,transparent)]" />
         </div>
 
         <div className={`${HEADLINE} relative isolate text-center`}>
-          <div
+          <div className="relative">
+            <ShinyText
+              text="ITZ AI"
+              color="#c7ccd4"
+              shineColor="#ffffff"
+              speed={3.6}
+              delay={1.2}
+              angle={115}
+              shineWidth={24}
+              softness={0.9}
+              direction="right"
+              className={BRANDLABEL}
+            />
+          </div>
+          <h1 className="sr-only">Hadirkan Kecerdasan AI ke Bisnis Anda.</h1>
+          <BlurText
+            text="Hadirkan Kecerdasan AI ke Bisnis Anda."
             aria-hidden
-            className="pointer-events-none absolute inset-x-[-25%] bottom-[-14%] -z-[1] h-[75%] bg-[linear-gradient(180deg,transparent_28%,rgba(5,6,10,0.9)_72%,#05060a)]"
+            trigger="load"
+            effect="blur"
+            animateBy="words"
+            direction="bottom"
+            delay={90}
+            stepDuration={0.5}
+            blur={8}
+            distance={18}
+            className={`${H1} relative mt-4 justify-center`}
           />
-          <h1
-            className={`${H1} relative font-viaoda font-normal uppercase tracking-[0.06em] [mask-image:linear-gradient(to_bottom,black_58%,transparent)]`}
+          <FadeContent
+            trigger="mount"
+            effect="fade"
+            duration={0.9}
+            delay={0.45}
+            className={`${BODY} mx-auto mt-5 max-w-[54ch]`}
           >
-            <Words text="ITZ AI" />
-          </h1>
-          <p className={`${BODY} mx-auto mt-5 max-w-[54ch]`}>
-            Sistem AI yang menempel ke sistem yang sudah kamu pakai — dari chatbot yang paham data
-            bisnis, otomasi alur kerja, sampai orchestrator multi-agen.
-          </p>
+            Integrasikan AI ke aplikasi Anda atau bangun solusi digital baru berbasis AI. Dari AI
+            integration hingga custom AI application development.
+          </FadeContent>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <span className="js-magnet inline-flex">
-              <a href={CONTACT} className={PILL}>
+              <StarBorder
+                as="a"
+                href={CONTACT}
+                color="#ffffff"
+                trailColor="#ffffff"
+                backgroundColor="rgba(255,255,255,0.12)"
+                textColor="#ffffff"
+                borderColor="rgba(255,255,255,0.3)"
+                duration={6}
+                thickness={1}
+                radius={999}
+                glow={0.55}
+                className="backdrop-blur-md transition-[transform,backdrop-filter] duration-300 hover:scale-[1.04] hover:backdrop-blur-xl"
+              >
                 Mulai discovery
                 <ArrowRight className="ml-2 size-4" strokeWidth={1.7} />
-              </a>
+              </StarBorder>
             </span>
-            <a href="#proyek" className={GHOST}>
-              Lihat proyek
-            </a>
           </div>
         </div>
       </section>
 
-      {/* 1b · Alur agen */}
-      <section className={`${SHELL} relative isolate scroll-mt-28 py-20 md:py-28`}>
-        {/* Shadow hitam di puncak section, fade ke bawah */}
+      {/* 2 · Strip stack (menggantikan baris logo) */}
+      <section className="relative isolate border-b border-white/[0.08] py-8">
+        {/* Gradient hitam di belakang running text tech stack */}
         <div
           aria-hidden
-          className="pointer-events-none absolute left-1/2 top-0 -z-[1] h-96 w-screen -translate-x-1/2 bg-[linear-gradient(180deg,#05060a,transparent)]"
+          className="pointer-events-none absolute left-1/2 top-0 -z-[1] h-72 w-screen -translate-x-1/2 bg-[linear-gradient(180deg,#05060a,transparent)]"
         />
-        <h2 className={`${H2} mx-auto max-w-[24ch] text-center`}>
-          <Words text="Alur" />{" "}
-          <span className={ACCENT}>
-            <Words text="agen." />
-          </span>
-        </h2>
-        <div className="relative mt-12">
-          <span
-            aria-hidden
-            className="js-connector spectral-line absolute inset-x-10 top-[46px] hidden h-px origin-left opacity-70 lg:block"
-          />
-          <ol className="js-nodes relative grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
-              {FLOW.map((step, i) => (
-                <li
-                  key={step.label}
-                  className={
-                    step.gate
-                      ? "g-dark rounded-2xl border border-[color:var(--spectral-violet)]/45 px-3.5 py-3"
-                      : "g-dark rounded-2xl px-3.5 py-3"
-                  }
-                >
-                  <span className="flex items-center justify-between font-mono text-[10px] text-white/55">
-                    {String(i + 1).padStart(2, "0")}
-                    {step.gate ? <span className="uppercase">gate</span> : null}
-                  </span>
-                  <span className="mt-2 block text-[12px] leading-[1.45] text-white/85">
-                    {step.label}
-                  </span>
-                </li>
-              ))}
-          </ol>
-        </div>
-      </section>
-
-      {/* 2 · Strip stack (menggantikan baris logo) */}
-      <section className="border-b border-white/[0.08] py-8">
         <p className={`${SHELL} text-center text-[13px] text-white/45`}>
           Dibangun dengan stack yang sudah jalan di produksi
         </p>
@@ -587,32 +591,35 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 3 · Inti: grid 3×440 tanpa gap, dipisah garis rambut */}
-      <section id="inti" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
-        <h2 className={`${H2} mx-auto max-w-[24ch] text-center`}>
-          <Words text="Inti dari sistem AI yang" />{" "}
-          <span className={ACCENT}>
-            <Words text="bisa dipercaya." />
-          </span>
-        </h2>
-        <div className="js-reveal mt-14 grid gap-px overflow-hidden rounded-[20px] border border-white/[0.08] bg-white/[0.06] md:grid-cols-3">
-          {PILLARS.map(({ icon: Icon, label, body }) => (
-            <article key={label} className="bg-[#08090d] p-7 md:p-8">
-              <Icon className="size-5 text-white/60" strokeWidth={1.6} />
-              <h3 className="mt-6 text-[17px] font-medium">{label}</h3>
-              <p className="mt-3 text-[14px] leading-[1.65] text-white/60">{body}</p>
+      {/* 3 · Kenali (Apa): grid 2×2 kemampuan */}
+      <section id="kenali" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
+        <div className="mx-auto max-w-[760px] text-center">
+          <h2 className={H2}>
+            <Words text="Satu lapisan di atas sistem yang" />{" "}
+            <span className={ACCENT}>
+              <Words text="sudah jalan." />
+            </span>
+          </h2>
+          <p className={`${BODY} mx-auto mt-5 max-w-[52ch]`}>
+            ITZ AI menyatukan percakapan, data, dan otomasi. Tidak semua masalah butuh tingkat paling
+            atas, itu yang ditentukan di discovery.
+          </p>
+        </div>
+        <div className="js-reveal mt-14 grid gap-px overflow-hidden rounded-[20px] border border-white/[0.08] bg-white/[0.06] md:grid-cols-2">
+          {CAPABILITIES.map(({ icon: Icon, step, title, body }) => (
+            <article key={step} className="bg-[#08090d] p-7 md:p-9">
+              <div className="flex items-center gap-3">
+                <Icon className="size-4 text-white/55" strokeWidth={1.6} />
+                <span className="font-mono text-[11px] text-white/50">{step}</span>
+              </div>
+              <h3 className="mt-5 text-[20px] font-medium tracking-[-0.01em]">{title}</h3>
+              <p className="mt-3 text-[15px] leading-[1.65] text-white/60">{body}</p>
             </article>
           ))}
-          <a
-            href={CONTACT}
-            className="bg-[#08090d] p-7 text-[13px] text-white/70 transition-colors hover:text-white md:col-span-3 md:p-6"
-          >
-            Mulai discovery →
-          </a>
         </div>
       </section>
 
-      {/* 4 · AI chat: teks + mock dalam kaca gelap */}
+      {/* 3b · AI chat: teks + mock dalam kaca gelap */}
       <section className="border-y border-white/[0.08] py-20 md:py-28">
         <div className={`${SHELL} grid items-center gap-12 lg:grid-cols-12 lg:gap-16`}>
           <div className="js-reveal lg:col-span-5">
@@ -660,34 +667,32 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 5 · Kemampuan: grid 2×2, dipisah garis rambut */}
-      <section id="kemampuan" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
-        <div className="mx-auto max-w-[760px] text-center">
-          <h2 className={H2}>
-            <Words text="Dari satu percakapan sampai" />{" "}
-            <span className={ACCENT}>
-              <Words text="orkestrasi banyak agen." />
-            </span>
-          </h2>
-          <p className={`${BODY} mx-auto mt-5 max-w-[52ch]`}>
-            Tidak semua masalah butuh tingkat paling atas — itu yang ditentukan di discovery.
-          </p>
-        </div>
-        <div className="js-reveal mt-14 grid gap-px overflow-hidden rounded-[20px] border border-white/[0.08] bg-white/[0.06] md:grid-cols-2">
-          {CAPABILITIES.map(({ icon: Icon, step, title, body }) => (
-            <article key={step} className="bg-[#08090d] p-7 md:p-9">
-              <div className="flex items-center gap-3">
-                <Icon className="size-4 text-white/55" strokeWidth={1.6} />
-                <span className="font-mono text-[11px] text-white/50">{step}</span>
-              </div>
-              <h3 className="mt-5 text-[20px] font-medium tracking-[-0.01em]">{title}</h3>
-              <p className="mt-3 text-[15px] leading-[1.65] text-white/60">{body}</p>
+      {/* 4 · Alasan (Mengapa): grid 3×440 tanpa gap */}
+      <section id="alasan" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
+        <h2 className={`${H2} mx-auto max-w-[24ch] text-center`}>
+          <Words text="Karena jawaban harus" />{" "}
+          <span className={ACCENT}>
+            <Words text="bisa dipercaya." />
+          </span>
+        </h2>
+        <div className="js-reveal mt-14 grid gap-px overflow-hidden rounded-[20px] border border-white/[0.08] bg-white/[0.06] md:grid-cols-3">
+          {PILLARS.map(({ icon: Icon, label, body }) => (
+            <article key={label} className="bg-[#08090d] p-7 md:p-8">
+              <Icon className="size-5 text-white/60" strokeWidth={1.6} />
+              <h3 className="mt-6 text-[17px] font-medium">{label}</h3>
+              <p className="mt-3 text-[14px] leading-[1.65] text-white/60">{body}</p>
             </article>
           ))}
+          <a
+            href={CONTACT}
+            className="bg-[#08090d] p-7 text-[13px] text-white/70 transition-colors hover:text-white md:col-span-3 md:p-6"
+          >
+            Mulai discovery →
+          </a>
         </div>
       </section>
 
-      {/* 6 · Kutipan prinsip (slot testimonial, tanpa nama palsu) */}
+      {/* 4b · Kutipan prinsip (slot testimonial, tanpa nama palsu) */}
       <section className="border-y border-white/[0.08] py-20 md:py-28">
         <div className={`${HEADLINE} text-center`}>
           <p className="text-[clamp(1.35rem,2.6vw,2rem)] font-medium leading-[1.35] tracking-[-0.02em]">
@@ -700,34 +705,92 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 7 · Integrasi: heading terpusat + kaca kristal besar */}
+      {/* 5 · Cara Kerja (Bagaimana): diagram alur agen */}
+      <section id="cara-kerja" className={`${SHELL} relative isolate scroll-mt-28 py-20 md:py-28`}>
+        {/* Shadow hitam di puncak section, fade ke bawah */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-0 -z-[1] h-96 w-screen -translate-x-1/2 bg-[linear-gradient(180deg,#05060a,transparent)]"
+        />
+        <h2 className={`${H2} mx-auto max-w-[26ch] text-center`}>
+          <Words text="Dari satu percakapan sampai" />{" "}
+          <span className={ACCENT}>
+            <Words text="orkestrasi banyak agen." />
+          </span>
+        </h2>
+        <div className="relative mt-12">
+          <span
+            aria-hidden
+            className="js-connector spectral-line absolute inset-x-10 top-[46px] hidden h-px origin-left opacity-70 lg:block"
+          />
+          <ol className="js-nodes relative grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+            {FLOW.map((step, i) => (
+              <li
+                key={step.label}
+                className={
+                  step.gate
+                    ? "g-dark rounded-2xl border border-[color:var(--spectral-violet)]/45 px-3.5 py-3"
+                    : "g-dark rounded-2xl px-3.5 py-3"
+                }
+              >
+                <span className="flex items-center justify-between font-mono text-[10px] text-white/55">
+                  {String(i + 1).padStart(2, "0")}
+                  {step.gate ? <span className="uppercase">gate</span> : null}
+                </span>
+                <span className="mt-2 block text-[12px] leading-[1.45] text-white/85">
+                  {step.label}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* 5b · Integrasi: heading terpusat + kaca kristal besar */}
       <section className={`${SHELL} py-20 md:py-28`}>
         <div className="mx-auto max-w-[720px] text-center">
           <h2 className={H2}>
-            <Words text="Menempel ke sistem yang" />{" "}
+            <Words text="Integrasikan AI" />{" "}
             <span className={ACCENT}>
-              <Words text="sudah jalan." />
+              <Words text="ke dalam Apps." />
             </span>
           </h2>
           <p className={`${BODY} mx-auto mt-5 max-w-[52ch]`}>
-            Tidak perlu membongkar yang lama. AI masuk lewat jalur yang sudah ada.
+            Dari chat, dokumen, hingga pembayaran, integrasikan AI ke seluruh alat kerja Anda.
           </p>
         </div>
         <div className="js-reveal js-chips g-crystal g-sheen mx-auto mt-12 max-w-[1000px] rounded-[28px] p-8 md:p-10">
           <div className="flex flex-wrap items-center justify-center gap-3">
             {INTEGRATIONS.map((item) => (
               <span
-                key={item}
-                className="rounded-full border border-white/[0.1] bg-white/[0.04] px-4 py-2 text-[13px] text-white/70"
+                key={item.name}
+                className="inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.04] px-4 py-2 text-[13px] text-white/70"
               >
-                {item}
+                {item.logo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={item.logo}
+                    alt=""
+                    width={16}
+                    height={16}
+                    className="size-4 shrink-0"
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="flex size-4 items-center justify-center rounded-[3px] border border-white/30 text-[9px] leading-none text-white/60"
+                  >
+                    {item.name.charAt(0)}
+                  </span>
+                )}
+                {item.name}
               </span>
             ))}
           </div>
         </div>
       </section>
 
-      {/* 8 · Layanan: korsel kartu material (pola "Next-gen AI features") */}
+      {/* 5c · Layanan: korsel kartu material (pola "Next-gen AI features") */}
       <section id="layanan" className="scroll-mt-28 border-y border-white/[0.08] py-20 md:py-28">
         <div className={`${SHELL} flex flex-wrap items-end justify-between gap-6`}>
           <h2 className={`${H2} max-w-[22ch]`}>
@@ -769,8 +832,8 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 9 · Proyek: tiga panel penuh, garis rambut */}
-      <section id="proyek" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
+      {/* 6 · Karya (Bukti): tiga panel penuh, garis rambut */}
+      <section id="karya" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
         <h2 className={`${H2} mx-auto max-w-[26ch] text-center`}>
           <Words text="Sistem yang sudah jalan," />{" "}
           <span className={ACCENT}>
@@ -796,7 +859,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 10 · FAQ: kolom 700px terpusat */}
+      {/* 7 · FAQ: kolom 700px terpusat */}
       <section id="faq" className="scroll-mt-28 border-y border-white/[0.08] py-20 md:py-28">
         <div className={NARROW}>
           <h2 className={`${H2} text-center`}>
@@ -824,7 +887,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 11 · CTA penutup terpusat */}
+      {/* 8 · CTA penutup terpusat */}
       <section className={`${SHELL} py-20 md:py-28`}>
         <div className="g-irid g-irid--live g-float rounded-[28px] p-px">
           <div className="g-dark relative overflow-hidden rounded-[27px] px-6 py-16 text-center md:px-16 md:py-20">
@@ -857,7 +920,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 12 · Footer: 4 kolom + bilah legal (pola referensi) */}
+      {/* 9 · Footer: 4 kolom + bilah legal (pola referensi) */}
       <footer className="border-t border-white/[0.08]">
         <div
           className={`${SHELL} grid gap-10 py-14 text-[12px] md:grid-cols-[1.8fr_1fr_1fr_1fr] md:py-16`}
@@ -868,7 +931,7 @@ export default function Landing() {
               ITZ AI
             </div>
             <p className="mt-4 max-w-[28ch] text-[13px] leading-[1.7] text-white/45">
-              AI yang menempel ke sistem dan masalah nyata — bukan demo yang berhenti di presentasi.
+              AI yang menempel ke sistem dan masalah nyata, bukan demo yang berhenti di presentasi.
             </p>
           </div>
           <div>
@@ -888,7 +951,7 @@ export default function Landing() {
             <ul className="mt-4 space-y-2.5 text-[13px]">
               {PROJECTS.map((project) => (
                 <li key={project.name}>
-                  <a href="#proyek" className="text-white/65 transition-colors hover:text-white">
+                  <a href="#karya" className="text-white/65 transition-colors hover:text-white">
                     {project.name}
                   </a>
                 </li>
@@ -912,7 +975,20 @@ export default function Landing() {
           </div>
         </div>
         <div className="border-t border-white/[0.07] py-6">
-          <p className={`${SHELL} text-[12px] text-white/35`}>© 2026 ITZ AI</p>
+          <div
+            className={`${SHELL} flex flex-col gap-2 text-[12px] text-white/35 sm:flex-row sm:items-center sm:justify-between`}
+          >
+            <p>© 2026 ITZ AI</p>
+            <p>
+              By{" "}
+              <a
+                href={CONTACT}
+                className="text-white/55 transition-colors hover:text-white"
+              >
+                Mochammad Ginata Febryansyah
+              </a>
+            </p>
+          </div>
         </div>
       </footer>
     </main>
