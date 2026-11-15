@@ -29,7 +29,7 @@ const HEADLINE = "mx-auto w-full max-w-[904px] px-5 md:px-[52px]";
 const EYEBROW = "font-mono text-[11px] uppercase tracking-[0.14em] text-white/70";
 const ACCENT = "font-serif font-medium italic text-white";
 const H1 =
-  "text-balance text-[clamp(2.5rem,4.45vw,4rem)] font-medium leading-[1.12] tracking-[-0.04em]";
+  "text-balance text-[clamp(5.74rem,calc(7.57vw_+_23.8px),8.29rem)] font-medium leading-[1.12] tracking-[-0.04em]";
 const H2 =
   "text-balance text-[clamp(1.75rem,3vw,2.25rem)] font-medium leading-[1.2] tracking-[-0.03em]";
 const BODY = "text-[15px] leading-[1.65] text-white/65 md:text-[16px]";
@@ -272,30 +272,8 @@ export default function Landing() {
         });
       });
 
-      // 4 · Latar hero: masuk dengan skala, lalu bergerak saat digulir (parallax).
-      gsap.from(".js-hero-bg", { opacity: 0, scale: 1.06, duration: 1.4, ease: "power3.out" });
-      gsap.to(".js-hero-bg", {
-        yPercent: 12,
-        scale: 1.1,
-        ease: "none",
-        scrollTrigger: { trigger: ".js-hero-bg", start: "top top", end: "bottom top", scrub: true },
-      });
-      // Denyut peredupan: latar meredup & menyala perlahan (satu napas 7 detik).
-      gsap.to(".js-hero-dim", {
-        opacity: 0.85,
-        duration: 7,
-        repeat: -1,
-        yoyo: true,
-        ease: "sine.inOut",
-      });
-      // Napas cahaya lambat, tanpa mengganggu keterbacaan.
-      gsap.to(".js-hero-bg img:first-child", {
-        scale: 1.12,
-        duration: 16,
-        repeat: -1,
-        yoyo: true,
-        ease: "sine.inOut",
-      });
+      // 4 · Latar hero: full-bleed statis, tanpa zoom/parallax.
+      gsap.from(".js-hero-bg", { opacity: 0, duration: 1.2, ease: "power3.out" });
 
       // 4b · Diagram alur: garis tergambar, node menyusul berurutan.
       gsap.from(".js-connector", {
@@ -469,8 +447,7 @@ export default function Landing() {
             aria-hidden
             className="spectral-line pointer-events-none absolute inset-x-8 bottom-0 opacity-70"
           />
-          <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold">
-            <Sparkles className="size-4" strokeWidth={1.7} />
+          <Link href="/" className="text-[15px] font-semibold">
             ITZ AI
           </Link>
           <div className="hidden items-center gap-8 lg:flex">
@@ -495,7 +472,7 @@ export default function Landing() {
       </header>
 
       {/* 1 · Hero: gambar iridescent jadi latar, konten mengapung di atasnya */}
-      <section className="relative overflow-hidden pb-16 pt-[calc(env(safe-area-inset-top,0px)+7.5rem)] md:pb-24 md:pt-32">
+      <section className="relative flex min-h-[100svh] flex-col justify-center overflow-hidden pb-20 pt-[calc(env(safe-area-inset-top,0px)+8rem)] md:pb-28 md:pt-40">
         <div aria-hidden className="js-hero-bg pointer-events-none absolute inset-0 -z-10">
           <Image
             src="/landing/iridescent-flow.jpg"
@@ -503,7 +480,7 @@ export default function Landing() {
             fill
             priority
             sizes="100vw"
-            className="scale-105 object-cover opacity-[0.5]"
+            className="hero-pulse object-cover"
           />
           <Image
             src="/landing/spectral-streaks.jpg"
@@ -511,30 +488,25 @@ export default function Landing() {
             fill
             priority
             sizes="100vw"
-            className="object-cover opacity-[0.26] mix-blend-screen"
+            className="object-cover opacity-[0.46] mix-blend-screen"
           />
           <div className="absolute inset-0 bg-[radial-gradient(70%_50%_at_50%_20%,rgba(5,6,10,0.55),rgba(5,6,10,0.9)_55%,#05060a)]" />
           <div className="absolute inset-x-0 top-0 h-52 bg-[linear-gradient(180deg,rgba(5,6,10,0.95),rgba(5,6,10,0.45)_55%,transparent)]" />
-          <div className="absolute inset-x-0 bottom-0 h-52 bg-[linear-gradient(180deg,transparent,#05060a)]" />
           <div
             aria-hidden
             className="js-hero-dim absolute inset-0 bg-[radial-gradient(80%_60%_at_50%_30%,rgba(5,6,10,0.15),rgba(5,6,10,0.72)_72%,#05060a)] opacity-25"
           />
         </div>
 
-        <div className={`${HEADLINE} relative text-center`}>
-          <span className="g-crystal inline-flex items-center gap-2.5 rounded-full px-4 py-1.5 text-[12px] text-white/85">
-            <span
-              aria-hidden
-              className="size-1.5 rounded-full bg-[linear-gradient(120deg,var(--spectral-cyan),var(--spectral-violet),var(--spectral-magenta))]"
-            />
-            Terbuka untuk proyek AI baru
-          </span>
-          <h1 className={`${H1} mt-7`}>
-            <Words text="Lapisan AI yang membuat kerja rumit jadi" />{" "}
-            <span className={ACCENT}>
-              <Words text="sederhana." />
-            </span>
+        <div className={`${HEADLINE} relative isolate text-center`}>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-[-25%] bottom-[-14%] -z-[1] h-[75%] bg-[linear-gradient(180deg,transparent_28%,rgba(5,6,10,0.9)_72%,#05060a)]"
+          />
+          <h1
+            className={`${H1} relative font-viaoda font-normal uppercase tracking-[0.06em] [mask-image:linear-gradient(to_bottom,black_58%,transparent)]`}
+          >
+            <Words text="ITZ AI" />
           </h1>
           <p className={`${BODY} mx-auto mt-5 max-w-[54ch]`}>
             Sistem AI yang menempel ke sistem yang sudah kamu pakai — dari chatbot yang paham data
@@ -552,18 +524,27 @@ export default function Landing() {
             </a>
           </div>
         </div>
+      </section>
 
-        {/* Diagram alur di atas latar */}
-        <div className="relative mx-auto mt-14 w-full max-w-[1320px] px-5 md:px-8">
-          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/70">
-            FIG 0.1 · alur agen
+      {/* 1b · Alur agen */}
+      <section className={`${SHELL} relative isolate scroll-mt-28 py-20 md:py-28`}>
+        {/* Shadow hitam di puncak section, fade ke bawah */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-0 -z-[1] h-96 w-screen -translate-x-1/2 bg-[linear-gradient(180deg,#05060a,transparent)]"
+        />
+        <h2 className={`${H2} mx-auto max-w-[24ch] text-center`}>
+          <Words text="Alur" />{" "}
+          <span className={ACCENT}>
+            <Words text="agen." />
           </span>
-          <div className="relative mt-4">
-            <span
-              aria-hidden
-              className="js-connector spectral-line absolute inset-x-10 top-[46px] hidden h-px origin-left opacity-70 lg:block"
-            />
-            <ol className="js-nodes relative grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+        </h2>
+        <div className="relative mt-12">
+          <span
+            aria-hidden
+            className="js-connector spectral-line absolute inset-x-10 top-[46px] hidden h-px origin-left opacity-70 lg:block"
+          />
+          <ol className="js-nodes relative grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
               {FLOW.map((step, i) => (
                 <li
                   key={step.label}
@@ -582,8 +563,7 @@ export default function Landing() {
                   </span>
                 </li>
               ))}
-            </ol>
-          </div>
+          </ol>
         </div>
       </section>
 

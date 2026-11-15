@@ -4,6 +4,8 @@ node_modules/
 dist/
 build/
 itzairemotion/
+itz-ai-iridescent-loader/
+landing-page-reference/
 # Python
 __pycache__/
 *.pyc

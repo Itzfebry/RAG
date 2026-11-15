@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Inter, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
+import { Geist, Inter, JetBrains_Mono, Source_Serif_4, Viaoda_Libre } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import MotionProvider from "@/components/motion-provider";
@@ -31,6 +31,14 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+// Wordmark "ITZ AI" di landing page.
+const viaodaLibre = Viaoda_Libre({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-viaoda-libre",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: { default: "ITZ AI - Chat", template: "ITZ AI - %s" },
   description: "Personal AI Agent customized with owner knowledge, personality, and context.",
@@ -55,6 +63,7 @@ export default function RootLayout({
         jetbrainsMono.variable,
         geist.variable,
         sourceSerif.variable,
+        viaodaLibre.variable,
       )}
     >
       <body className="font-sans bg-background text-foreground antialiased h-full">

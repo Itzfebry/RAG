@@ -13,6 +13,7 @@
   /* Landing page mengikuti tipografi referensi: Geist + Source Serif 4 (aksen miring). */
   --font-display: var(--font-geist);
   --font-serif: var(--font-source-serif);
+  --font-viaoda: var(--font-viaoda-libre);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -524,10 +525,30 @@
   }
 }
 
+/* landing: denyut opacity latar hero (0 → 100% tiap 2,5 detik) */
+@keyframes hero-pulse {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.hero-pulse {
+  animation: hero-pulse 2.5s ease-in-out infinite;
+  will-change: opacity;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-pulse {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 /* landing: butiran halus (antik-banding) + fokus keyboard + aurora pelangi */
 .grain {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='120' height='120' filter='url(%23n)'/></svg>");
-  mix-blend-mode: overlay;
   opacity: 0.04;
 }
 

@@ -240,9 +240,12 @@ Retrieval quality is tested, not vibes-checked:
 git clone https://github.com/Itzfebry/RAG.git
 cd RAG
 npm install
-pip install -r requirements.txt
+uv sync
 cp .env.example .env
 ```
+
+> Python dependencies are managed with `uv` (lockfile: `uv.lock`).
+> If you don't use `uv`, fall back to `pip install -r requirements.txt`.
 
 Minimum RAG-relevant configuration:
 
