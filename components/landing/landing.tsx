@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
+import { SparklesIcon, type SparklesIconHandle } from "lucide-animated";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import {
@@ -28,16 +29,16 @@ const CONTACT = "mailto:ayormahaki@gmail.com?subject=Discovery%20proyek%20AI";
 /* Kerangka mengikuti monoai.framer.website:
    kontainer 1320px · H1 800px terpusat · art hero full-bleed 2:1 tanpa radius ·
    grid 3×440 tanpa gap · FAQ 700px terpusat · footer 12px.
-   Narasi halaman mengikuti Golden Circle: Kenali (Apa) → Alasan (Mengapa) → Cara Kerja (Bagaimana). */
+   Narasi halaman: Masalah → Mengapa → Kapabilitas → Project Launch → Cara Kerja → FAQ. */
 const SHELL = "mx-auto w-full max-w-[1424px] px-5 md:px-[52px]";
 const NARROW = "mx-auto w-full max-w-[804px] px-5 md:px-[52px]";
 const HEADLINE = "mx-auto w-full max-w-[904px] px-5 md:px-[52px]";
 const EYEBROW = "font-mono text-[11px] uppercase tracking-[0.14em] text-white/70";
 const ACCENT = "font-sans font-medium italic text-white";
 const H1 =
-  "text-balance font-montserrat text-[clamp(1.5rem,2.6vw,2rem)] font-normal leading-[1.2] tracking-[-0.02em]";
+  "text-balance font-heading text-[clamp(1.5rem,2.6vw,2rem)] font-normal leading-[1.2] tracking-[-0.02em]";
 const BRANDLABEL =
-  "font-montserrat text-[clamp(3rem,5.5vw,5rem)] font-medium uppercase tracking-[0.06em] text-white [mask-image:linear-gradient(to_bottom,black_54%,transparent_86%)]";
+  "font-heading text-[clamp(3rem,5.5vw,5rem)] font-medium uppercase tracking-[0.06em] text-white [mask-image:linear-gradient(to_bottom,black_54%,transparent_86%)]";
 const H2 =
   "text-balance text-[clamp(1.75rem,3vw,2.25rem)] font-medium leading-[1.2] tracking-[-0.03em]";
 const BODY = "text-[15px] leading-[1.65] text-white/65 md:text-[16px]";
@@ -48,30 +49,42 @@ const GHOST =
 const NAVLINK = "text-[15px] text-white/80 transition-colors hover:text-white";
 
 const NAV = [
-  { href: "#kenali", label: "Kenali" },
-  { href: "#alasan", label: "Alasan" },
+  { href: "#masalah", label: "Masalah" },
+  { href: "#alasan", label: "Mengapa" },
+  { href: "#kenali", label: "Kapabilitas" },
+  { href: "#karya", label: "Project" },
   { href: "#cara-kerja", label: "Cara Kerja" },
-  { href: "#karya", label: "Karya" },
   { href: "#faq", label: "FAQ" },
 ];
 
-const STACK = [
-  "Next.js",
-  "TypeScript",
-  "FastAPI",
-  "PostgreSQL + pgvector",
-  "Supabase",
-  "OpenAI-compatible LLM",
-  "Cloudflare",
-  "Vercel",
+const STRIP = [
+  "AI Integration",
+  "Chatbot",
+  "Otomasi Dokumen",
+  "RAG & Basis Pengetahuan",
+  "Dashboard",
+  "Otomasi Pembayaran",
+  "Voice AI",
+  "Workflow",
 ];
 
 const FLOW = [
-  { label: "Perintah bahasa alami", gate: false },
-  { label: "Retrieval pgvector · cosine HNSW", gate: false },
-  { label: "Tool: REST / webhook", gate: false },
-  { label: "Berhenti, keputusanmu", gate: true },
-  { label: "Jawaban + sumber", gate: false },
+  {
+    label: "Discovery",
+    body: "Pemetaan masalah, data, dan target. Menentukan apa yang layak dibangun lebih dulu.",
+  },
+  {
+    label: "Architecture",
+    body: "Rancangan alur, pemilihan model, skema retrieval, dan batas tool sebelum satu baris kode ditulis.",
+  },
+  {
+    label: "Development",
+    body: "Pembangunan bertahap dengan demo yang bisa dicoba, bukan laporan yang tak bisa diuji.",
+  },
+  {
+    label: "Deployment",
+    body: "Deploy, kuota, pemantauan biaya, dan serah terima. Satu pekerjaan, satu tanggung jawab.",
+  },
 ];
 
 const PILLARS = [
@@ -92,30 +105,60 @@ const PILLARS = [
   },
 ];
 
+const PROBLEMS = [
+  {
+    icon: Gauge,
+    label: "Kerja manual menyita waktu",
+    body: "Rekap, entri data, dan laporan masih dikerjakan tangan. Jam kerja habis untuk hal yang bisa otomatis.",
+  },
+  {
+    icon: Database,
+    label: "Data menumpuk tanpa nilai",
+    body: "Dokumen dan transaksi tersimpan rapi, tapi tak pernah berubah jadi jawaban yang bisa dipakai ambil keputusan.",
+  },
+  {
+    icon: Workflow,
+    label: "Kompetitor sudah bergerak",
+    body: "Yang mulai lebih dulu memakai AI memangkas biaya dan waktu lebih cepat. Jaraknya melebar tiap bulan.",
+  },
+];
+
 const CAPABILITIES = [
   {
     icon: MessagesSquare,
     step: "01",
-    title: "Asisten & chat",
+    title: "AI Chatbot",
     body: "Antarmuka percakapan dengan identitas, gaya komunikasi, dan instruksi sendiri, di web, WhatsApp, atau Telegram.",
   },
   {
     icon: Database,
     step: "02",
-    title: "Retrieval (RAG)",
+    title: "RAG & Knowledge AI",
     body: "Dokumen dipecah jadi chunk, di-embed, disimpan di pgvector, dicari dengan cosine HNSW. Jawaban disertai sumbernya.",
   },
   {
     icon: Workflow,
     step: "03",
-    title: "Otomasi & integrasi",
+    title: "AI Automation",
     body: "AI memanggil tool dan API nyata: mencatat transaksi, menyusun laporan, mengirim notifikasi ke sistem yang sudah jalan.",
   },
   {
-    icon: Network,
+    icon: Sparkles,
     step: "04",
-    title: "Orchestrator multi-agen",
-    body: "Beberapa agen dengan peran berbeda bekerja dari satu perintah bahasa alami, dan tahu kapan harus berhenti bertanya.",
+    title: "AI Agent",
+    body: "Satu agen yang tahu kapan harus bertanya, kapan memakai tool, dan kapan berhenti sebelum salah langkah.",
+  },
+  {
+    icon: Network,
+    step: "05",
+    title: "Multi-Agent System",
+    body: "Beberapa agen dengan peran berbeda bekerja dari satu perintah bahasa alami, saling menyerahkan hasil.",
+  },
+  {
+    icon: Wrench,
+    step: "06",
+    title: "AI API Integration",
+    body: "AI ditempel ke sistem yang sudah berjalan lewat REST, webhook, atau konektor. Tanpa membongkar aplikasi lama.",
   },
 ];
 
@@ -212,6 +255,49 @@ const FAQ = [
   },
 ];
 
+function AiBold({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(\bAI\b)/g).map((part, i) =>
+        part === "AI" ? (
+          <strong key={i} className="font-semibold text-white/90">
+            {part}
+          </strong>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+function AiSparkle({ className }: { className?: string }) {
+  const wrap = useRef<HTMLSpanElement>(null);
+  const icon = useRef<SparklesIconHandle>(null);
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const el = wrap.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        icon.current?.startAnimation();
+        io.disconnect();
+      },
+      { threshold: 0.6 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <span ref={wrap} aria-hidden className={`inline-block ${className ?? ""}`}>
+      <SparklesIcon ref={icon} size={30} />
+    </span>
+  );
+}
+
 function Words({ text, className }: { text: string; className?: string }) {
   const words = text.split(" ");
   return (
@@ -235,6 +321,9 @@ export default function Landing() {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     gsap.registerPlugin(ScrollTrigger);
+
+    let stopMarquee: (() => void) | undefined;
+    let stopCursorGlow: (() => void) | undefined;
 
     const ctx = gsap.context(() => {
       // 1 · Nav kaca saat digulir + garis kemajuan spektral.
@@ -265,15 +354,80 @@ export default function Landing() {
         },
       );
 
-      // 2 · Judul: kata muncul dari blur.
-      gsap.from(".js-w", {
-        opacity: 0,
-        filter: "blur(10px)",
-        y: 16,
-        stagger: 0.04,
-        duration: 0.85,
-        ease: "power3.out",
+      // 2 · Judul: kata muncul dari blur saat heading masuk viewport.
+      el.querySelectorAll<HTMLElement>("h2").forEach((heading) => {
+        const words = heading.querySelectorAll<HTMLElement>(".js-w");
+        if (!words.length) return;
+        gsap.from(words, {
+          opacity: 0,
+          filter: "blur(10px)",
+          y: 16,
+          stagger: 0.04,
+          duration: 0.85,
+          ease: "power3.out",
+          scrollTrigger: { trigger: heading, start: "top 88%" },
+        });
       });
+
+      // 2b · Masalah: spotlight parallax + narasi per paragraf.
+      const spot = el.querySelector<HTMLElement>(".js-masalah-spot");
+      if (spot) {
+        gsap.fromTo(
+          spot,
+          { yPercent: -4, scale: 1 },
+          {
+            yPercent: 10,
+            scale: 1.15,
+            ease: "none",
+            scrollTrigger: {
+              trigger: "#masalah",
+              start: "top bottom",
+              end: "bottom top",
+              scrub: 0.6,
+            },
+          },
+        );
+      }
+      const masalahLines = el.querySelector<HTMLElement>(".js-masalah-lines");
+      if (masalahLines) {
+        gsap.from(masalahLines.children, {
+          opacity: 0,
+          y: 18,
+          filter: "blur(8px)",
+          duration: 0.8,
+          stagger: 0.16,
+          ease: "power3.out",
+          scrollTrigger: { trigger: masalahLines, start: "top 84%" },
+        });
+      }
+
+      // 2c · Masalah: spotlight mengikuti kursor (transform only).
+      const masalahSection = el.querySelector<HTMLElement>("#masalah");
+      const cursorGlow = el.querySelector<HTMLElement>(".js-masalah-cursor");
+      if (masalahSection && cursorGlow) {
+        const half = 210;
+        const xTo = gsap.quickTo(cursorGlow, "x", { duration: 0.55, ease: "power3" });
+        const yTo = gsap.quickTo(cursorGlow, "y", { duration: 0.55, ease: "power3" });
+        const place = (event: PointerEvent) => {
+          if (event.pointerType === "touch") return;
+          const box = masalahSection.getBoundingClientRect();
+          xTo(event.clientX - box.left - half);
+          yTo(event.clientY - box.top - half);
+        };
+        const onEnter = (event: PointerEvent) => {
+          place(event);
+          gsap.to(cursorGlow, { opacity: 1, duration: 0.35, overwrite: "auto" });
+        };
+        const onLeave = () => gsap.to(cursorGlow, { opacity: 0, duration: 0.35, overwrite: "auto" });
+        masalahSection.addEventListener("pointermove", place, { passive: true });
+        masalahSection.addEventListener("pointerenter", onEnter);
+        masalahSection.addEventListener("pointerleave", onLeave);
+        stopCursorGlow = () => {
+          masalahSection.removeEventListener("pointermove", place);
+          masalahSection.removeEventListener("pointerenter", onEnter);
+          masalahSection.removeEventListener("pointerleave", onLeave);
+        };
+      }
 
       // 3 · Reveal per kelompok.
       gsap.utils.toArray<HTMLElement>(".js-reveal").forEach((group) => {
@@ -325,7 +479,7 @@ export default function Landing() {
         });
       });
 
-      // 6 · Pita stack: kecepatan ikut kecepatan gulir.
+      // 6 · Pita kapabilitas: kecepatan ikut gulir, jeda saat kursor di atasnya.
       const marquee = gsap.to(".js-marquee", {
         xPercent: -50,
         duration: 42,
@@ -338,6 +492,15 @@ export default function Landing() {
           gsap.to(marquee, { timeScale: boost, duration: 0.5, overwrite: true });
         },
       });
+      const marqueeWrap = el.querySelector<HTMLElement>(".js-marquee-wrap");
+      const pauseMarquee = () => gsap.to(marquee, { timeScale: 0, duration: 0.4, overwrite: true });
+      const resumeMarquee = () => gsap.to(marquee, { timeScale: 1, duration: 0.4, overwrite: true });
+      marqueeWrap?.addEventListener("pointerenter", pauseMarquee);
+      marqueeWrap?.addEventListener("pointerleave", resumeMarquee);
+      stopMarquee = () => {
+        marqueeWrap?.removeEventListener("pointerenter", pauseMarquee);
+        marqueeWrap?.removeEventListener("pointerleave", resumeMarquee);
+      };
 
       // 7 · Korsel layanan: drag-scroll halus (native snap + indikator).
       const rail = el.querySelector<HTMLElement>(".js-rail");
@@ -421,6 +584,8 @@ export default function Landing() {
     }, el);
 
     return () => {
+      stopMarquee?.();
+      stopCursorGlow?.();
       ctx.revert();
       ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
     };
@@ -481,7 +646,8 @@ export default function Landing() {
           <div className="hero-fibers absolute inset-0">
             <GhostFibers
               glowColor="#8b5cf6"
-              secondaryColor="#22d3ee"
+              secondaryColor="#4f46e5"
+              lineColor="#cbd5e1"
               gradient="depth"
               fiberStyle="lines"
               speed={0.35}
@@ -518,9 +684,9 @@ export default function Landing() {
               className={BRANDLABEL}
             />
           </div>
-          <h1 className="sr-only">Hadirkan Kecerdasan AI ke Bisnis Anda.</h1>
+          <h1 className="sr-only">Hadirkan Kecerdasan AI ke dalam Bisnis Anda.</h1>
           <BlurText
-            text="Hadirkan Kecerdasan AI ke Bisnis Anda."
+            text="Hadirkan Kecerdasan AI ke dalam Bisnis Anda."
             aria-hidden
             trigger="load"
             effect="blur"
@@ -539,7 +705,7 @@ export default function Landing() {
             delay={0.45}
             className={`${BODY} mx-auto mt-5 max-w-[54ch]`}
           >
-            Integrasikan AI ke aplikasi Anda atau bangun solusi digital baru berbasis AI. Dari AI
+            Integrasikan AI ke aplikasi Anda dan bangun solusi digital baru berbasis AI. Dari AI
             integration hingga custom AI application development.
           </FadeContent>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
@@ -566,46 +732,167 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 2 · Strip stack (menggantikan baris logo) */}
-      <section className="relative isolate border-b border-white/[0.08] py-8">
-        {/* Gradient hitam di belakang running text tech stack */}
+      {/* 2 · Strip kapabilitas */}
+      <section className="relative isolate border-y border-white/[0.08] py-8">
+        {/* fade simetris di belakang marquee biar tak ada pita gelap */}
         <div
           aria-hidden
-          className="pointer-events-none absolute left-1/2 top-0 -z-[1] h-72 w-screen -translate-x-1/2 bg-[linear-gradient(180deg,#05060a,transparent)]"
+          className="pointer-events-none absolute inset-x-0 top-0 -z-[1] h-24 bg-[linear-gradient(180deg,#05060a,transparent)]"
         />
-        <p className={`${SHELL} text-center text-[13px] text-white/45`}>
-          Dibangun dengan stack yang sudah jalan di produksi
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 -z-[1] h-24 bg-[linear-gradient(0deg,#05060a,transparent)]"
+        />
+        <p className={`${SHELL} text-center text-[12px] tracking-[0.02em] text-white/50`}>
+          Kapabilitas yang bisa dibawa ke bisnis Anda
         </p>
-        <div className="mt-5 flex overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_22%,black_78%,transparent)]">
-          <div className="js-marquee flex shrink-0 items-center gap-14 pr-14 text-[14px] text-white/60">
-            {[...STACK, ...STACK].map((item, i) => (
-              <span
-                key={`${item}-${i}`}
-                className="whitespace-nowrap"
-                aria-hidden={i >= STACK.length}
-              >
-                {item}
+        <div className="group mt-5 flex overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_22%,black_78%,transparent)]">
+          <div className="js-marquee-wrap flex w-full overflow-hidden">
+            <div className="js-marquee flex shrink-0 items-center gap-14 pr-14 text-[14px] text-white/60">
+              {[...STRIP, ...STRIP].map((item, i) => (
+                <span
+                  key={`${item}-${i}`}
+                  className="whitespace-nowrap"
+                  aria-hidden={i >= STRIP.length}
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 3 · Masalah: cinematic, storytelling */}
+      <section
+        id="masalah"
+        className="relative isolate scroll-mt-28 overflow-hidden border-y border-white/[0.06] bg-[#05060a] py-24 md:py-36"
+      >
+        {/* Latar sinematik: spotlight violet + garis spektrum + fade tepi */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+          <div className="js-masalah-spot absolute inset-0 origin-center bg-[radial-gradient(75%_55%_at_50%_-5%,rgba(139,92,246,0.18),transparent_62%)] will-change-transform" />
+          <div className="absolute inset-x-0 top-0 h-48 bg-[linear-gradient(180deg,#05060a,transparent)]" />
+          <div className="absolute inset-x-0 bottom-0 h-48 bg-[linear-gradient(0deg,#05060a,transparent)]" />
+          <div className="absolute left-1/2 top-0 h-px w-[70%] -translate-x-1/2 bg-[linear-gradient(90deg,transparent,rgba(167,139,250,0.5),transparent)]" />
+        </div>
+
+        {/* Spotlight mengikuti kursor */}
+        <div
+          aria-hidden
+          className="js-masalah-cursor pointer-events-none absolute left-0 top-0 -z-[1] h-[420px] w-[420px] rounded-full opacity-0 blur-2xl will-change-transform"
+          style={{ background: "radial-gradient(circle,rgba(139,92,246,0.22),transparent 70%)" }}
+        />
+
+        <div className={SHELL}>
+          <div className="mx-auto max-w-[860px] text-center">
+            <p className={`${EYEBROW} js-reveal`}>Masalah</p>
+            <h2 className={`${H2} mt-6`}>
+              <Words text="Apakah Infrastruktur Bisnis Anda Siap Menghadapi" />{" "}
+              <span className={ACCENT}>
+                <Words text="Era AI?" />
               </span>
+              <AiSparkle className="ml-2 align-[-0.06em] text-[color:var(--spectral-violet)]" />
+            </h2>
+          </div>
+
+          {/* Narasi */}
+          <div className="js-masalah-lines mx-auto mt-14 max-w-[64ch] space-y-5 text-center text-[15px] leading-[1.75] text-white/60">
+            <p>
+              <AiBold text="Banyak perusahaan, mitra, dan pelaku bisnis masih menghadapi tantangan dalam mengelola operasional, memproses informasi, serta menghubungkan berbagai sistem yang mereka gunakan." />
+            </p>
+            <p>
+              <AiBold text="Di tengah perkembangan industri yang semakin cepat, pendekatan konvensional tidak lagi cukup untuk menjawab kompleksitas kebutuhan bisnis. Efisiensi, otomatisasi, dan pengambilan keputusan berbasis data menjadi semakin penting." />
+            </p>
+            <p className="text-white/80">
+              <AiBold text="AI bukan lagi sekadar teknologi tambahan. AI mulai menjadi bagian penting dari infrastruktur bisnis modern." />
+            </p>
+            <p className="text-white/80">
+              <ShinyText
+                text="ITZ AI hadir untuk menjembatani kebutuhan tersebut."
+                className="font-semibold"
+                color="#dfe3ea"
+                shineColor="#ffffff"
+                speed={3.2}
+                delay={0.4}
+                angle={110}
+                shineWidth={22}
+                softness={0.9}
+              />
+            </p>
+            <p>
+              <AiBold text="Kami membantu bisnis mengintegrasikan kapabilitas AI ke dalam sistem yang sudah berjalan maupun membangun aplikasi digital baru berbasis AI. Mengubah proses yang kompleks menjadi workflow yang lebih cerdas, terintegrasi, dan adaptif terhadap kebutuhan bisnis." />
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* 3b · Tantangan: tiga hambatan nyata */}
+      <section className="border-b border-white/[0.08] py-16 md:py-20">
+        <div className={SHELL}>
+          <p className={`${EYEBROW} text-center`}>Tantangan</p>
+          <div className="js-reveal mt-8 grid gap-px overflow-hidden rounded-[20px] border border-white/[0.08] bg-white/[0.06] md:grid-cols-3">
+            {PROBLEMS.map(({ icon: Icon, label, body }, i) => (
+              <article key={label} className="group relative bg-[#08090d] p-7 md:p-9">
+                <span className="pointer-events-none absolute right-6 top-5 font-mono text-[42px] leading-none text-white/[0.04]">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <Icon className="size-5 text-white/60" strokeWidth={1.6} />
+                <h3 className="mt-6 text-[17px] font-medium">{label}</h3>
+                <p className="mt-3 text-[14px] leading-[1.65] text-white/60">
+                  <AiBold text={body} />
+                </p>
+              </article>
             ))}
           </div>
         </div>
       </section>
 
-      {/* 3 · Kenali (Apa): grid 2×2 kemampuan */}
+      {/* 4 · Mengapa ITZ AI: diferensiasi */}
+      <section id="alasan" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
+        <div className="mx-auto max-w-[760px] text-center">
+          <p className={EYEBROW}>Mengapa ITZ AI</p>
+        </div>
+        <h2 className={`${H2} mx-auto mt-5 max-w-[24ch] text-center`}>
+          <Words text="Karena jawaban harus" />{" "}
+          <span className={ACCENT}>
+            <Words text="bisa dipercaya." />
+          </span>
+        </h2>
+        <div className="js-reveal mt-14 grid gap-px overflow-hidden rounded-[20px] border border-white/[0.08] bg-white/[0.06] md:grid-cols-3">
+          {PILLARS.map(({ icon: Icon, label, body }) => (
+            <article key={label} className="bg-[#08090d] p-7 md:p-8">
+              <Icon className="size-5 text-white/60" strokeWidth={1.6} />
+              <h3 className="mt-6 text-[17px] font-medium">{label}</h3>
+              <p className="mt-3 text-[14px] leading-[1.65] text-white/60">
+                  <AiBold text={body} />
+                </p>
+            </article>
+          ))}
+          <a
+            href={CONTACT}
+            className="bg-[#08090d] p-7 text-[13px] text-white/70 transition-colors hover:text-white md:col-span-3 md:p-6"
+          >
+            Mulai discovery →
+          </a>
+        </div>
+      </section>
+
+      {/* 5 · Apa yang bisa ITZ AI lakukan: 6 kapabilitas */}
       <section id="kenali" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
         <div className="mx-auto max-w-[760px] text-center">
-          <h2 className={H2}>
-            <Words text="Satu lapisan di atas sistem yang" />{" "}
+          <p className={EYEBROW}>Kapabilitas</p>
+          <h2 className={`${H2} mt-5`}>
+            <Words text="Apa yang bisa ITZ AI" />{" "}
             <span className={ACCENT}>
-              <Words text="sudah jalan." />
+              <Words text="lakukan." />
             </span>
           </h2>
           <p className={`${BODY} mx-auto mt-5 max-w-[52ch]`}>
-            ITZ AI menyatukan percakapan, data, dan otomasi. Tidak semua masalah butuh tingkat paling
-            atas, itu yang ditentukan di discovery.
+            Satu tim, satu tanggung jawab. Dari chatbot sampai sistem multi-agen yang memanggil API
+            nyata. Tidak semua masalah butuh tingkat paling atas, itu yang ditentukan di discovery.
           </p>
         </div>
-        <div className="js-reveal mt-14 grid gap-px overflow-hidden rounded-[20px] border border-white/[0.08] bg-white/[0.06] md:grid-cols-2">
+        <div className="js-reveal mt-14 grid gap-px overflow-hidden rounded-[20px] border border-white/[0.08] bg-white/[0.06] md:grid-cols-3">
           {CAPABILITIES.map(({ icon: Icon, step, title, body }) => (
             <article key={step} className="bg-[#08090d] p-7 md:p-9">
               <div className="flex items-center gap-3">
@@ -667,31 +954,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 4 · Alasan (Mengapa): grid 3×440 tanpa gap */}
-      <section id="alasan" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
-        <h2 className={`${H2} mx-auto max-w-[24ch] text-center`}>
-          <Words text="Karena jawaban harus" />{" "}
-          <span className={ACCENT}>
-            <Words text="bisa dipercaya." />
-          </span>
-        </h2>
-        <div className="js-reveal mt-14 grid gap-px overflow-hidden rounded-[20px] border border-white/[0.08] bg-white/[0.06] md:grid-cols-3">
-          {PILLARS.map(({ icon: Icon, label, body }) => (
-            <article key={label} className="bg-[#08090d] p-7 md:p-8">
-              <Icon className="size-5 text-white/60" strokeWidth={1.6} />
-              <h3 className="mt-6 text-[17px] font-medium">{label}</h3>
-              <p className="mt-3 text-[14px] leading-[1.65] text-white/60">{body}</p>
-            </article>
-          ))}
-          <a
-            href={CONTACT}
-            className="bg-[#08090d] p-7 text-[13px] text-white/70 transition-colors hover:text-white md:col-span-3 md:p-6"
-          >
-            Mulai discovery →
-          </a>
-        </div>
-      </section>
-
       {/* 4b · Kutipan prinsip (slot testimonial, tanpa nama palsu) */}
       <section className="border-y border-white/[0.08] py-20 md:py-28">
         <div className={`${HEADLINE} text-center`}>
@@ -705,41 +967,33 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 5 · Cara Kerja (Bagaimana): diagram alur agen */}
-      <section id="cara-kerja" className={`${SHELL} relative isolate scroll-mt-28 py-20 md:py-28`}>
-        {/* Shadow hitam di puncak section, fade ke bawah */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute left-1/2 top-0 -z-[1] h-96 w-screen -translate-x-1/2 bg-[linear-gradient(180deg,#05060a,transparent)]"
-        />
-        <h2 className={`${H2} mx-auto max-w-[26ch] text-center`}>
-          <Words text="Dari satu percakapan sampai" />{" "}
-          <span className={ACCENT}>
-            <Words text="orkestrasi banyak agen." />
-          </span>
-        </h2>
-        <div className="relative mt-12">
+      {/* 5 · Cara Kerja: empat fase */}
+      <section id="cara-kerja" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
+        <div className="mx-auto max-w-[760px] text-center">
+          <p className={EYEBROW}>Cara kerja</p>
+          <h2 className={`${H2} mt-5`}>
+            <Words text="Empat langkah," />{" "}
+            <span className={ACCENT}>
+              <Words text="satu alur." />
+            </span>
+          </h2>
+          <p className={`${BODY} mx-auto mt-5 max-w-[52ch]`}>
+            Proses yang sama untuk setiap pekerjaan. Tidak ada lompatan dari ide ke produksi.
+          </p>
+        </div>
+        <div className="relative mt-14">
           <span
             aria-hidden
-            className="js-connector spectral-line absolute inset-x-10 top-[46px] hidden h-px origin-left opacity-70 lg:block"
+            className="js-connector spectral-line absolute inset-x-12 top-[30px] hidden h-px origin-left opacity-70 lg:block"
           />
-          <ol className="js-nodes relative grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+          <ol className="js-nodes relative grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
             {FLOW.map((step, i) => (
-              <li
-                key={step.label}
-                className={
-                  step.gate
-                    ? "g-dark rounded-2xl border border-[color:var(--spectral-violet)]/45 px-3.5 py-3"
-                    : "g-dark rounded-2xl px-3.5 py-3"
-                }
-              >
-                <span className="flex items-center justify-between font-mono text-[10px] text-white/55">
+              <li key={step.label} className="g-dark rounded-2xl px-5 py-5">
+                <span className="font-mono text-[10px] text-white/55">
                   {String(i + 1).padStart(2, "0")}
-                  {step.gate ? <span className="uppercase">gate</span> : null}
                 </span>
-                <span className="mt-2 block text-[12px] leading-[1.45] text-white/85">
-                  {step.label}
-                </span>
+                <h3 className="mt-2 text-[16px] font-medium">{step.label}</h3>
+                <p className="mt-2 text-[13px] leading-[1.55] text-white/60">{step.body}</p>
               </li>
             ))}
           </ol>
@@ -832,14 +1086,17 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 6 · Karya (Bukti): tiga panel penuh, garis rambut */}
+      {/* 6 · Project Launch: proyek yang sudah jalan */}
       <section id="karya" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
-        <h2 className={`${H2} mx-auto max-w-[26ch] text-center`}>
-          <Words text="Sistem yang sudah jalan," />{" "}
-          <span className={ACCENT}>
-            <Words text="lengkap dengan operasionalnya." />
-          </span>
-        </h2>
+        <div className="mx-auto max-w-[760px] text-center">
+          <p className={EYEBROW}>Project Launch</p>
+          <h2 className={`${H2} mt-5`}>
+            <Words text="Sistem yang sudah jalan," />{" "}
+            <span className={ACCENT}>
+              <Words text="lengkap dengan operasionalnya." />
+            </span>
+          </h2>
+        </div>
         <div className="js-reveal mt-12 space-y-4">
           {PROJECTS.map((project) => (
             <article

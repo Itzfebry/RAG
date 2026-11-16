@@ -1,26 +1,18 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Montserrat } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import MotionProvider from "@/components/motion-provider";
 
-const inter = Inter({
+const geist = Geist({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-geist-sans",
   display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const geistMono = Geist_Mono({
   subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-  display: "swap",
-});
-
-// Display landing page (slogan/H1 + label brand).
-const montserrat = Montserrat({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-montserrat-google",
+  variable: "--font-geist-mono",
   display: "swap",
 });
 
@@ -44,9 +36,8 @@ export default function RootLayout({
       lang="id"
       className={cn(
         "h-full dark",
-        inter.variable,
-        jetbrainsMono.variable,
-        montserrat.variable,
+        geist.variable,
+        geistMono.variable,
       )}
     >
       <body className="font-sans bg-background text-foreground antialiased h-full">
