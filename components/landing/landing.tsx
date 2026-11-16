@@ -105,24 +105,6 @@ const PILLARS = [
   },
 ];
 
-const PROBLEMS = [
-  {
-    icon: Gauge,
-    label: "Kerja manual menyita waktu",
-    body: "Rekap, entri data, dan laporan masih dikerjakan tangan. Jam kerja habis untuk hal yang bisa otomatis.",
-  },
-  {
-    icon: Database,
-    label: "Data menumpuk tanpa nilai",
-    body: "Dokumen dan transaksi tersimpan rapi, tapi tak pernah berubah jadi jawaban yang bisa dipakai ambil keputusan.",
-  },
-  {
-    icon: Workflow,
-    label: "Kompetitor sudah bergerak",
-    body: "Yang mulai lebih dulu memakai AI memangkas biaya dan waktu lebih cepat. Jaraknya melebar tiap bulan.",
-  },
-];
-
 const CAPABILITIES = [
   {
     icon: MessagesSquare,
@@ -160,6 +142,15 @@ const CAPABILITIES = [
     title: "AI API Integration",
     body: "AI ditempel ke sistem yang sudah berjalan lewat REST, webhook, atau konektor. Tanpa membongkar aplikasi lama.",
   },
+];
+
+const MAS_LOGO_BUBBLES = [
+  { name: "OpenAI", src: "/logos/llm-openai.svg", size: "size-20", delay: "0s", style: { left: "5%", top: "30%" } },
+  { name: "Anthropic", src: "/logos/llm-anthropic.svg", size: "size-16", delay: "1.2s", style: { left: "12%", top: "54%" } },
+  { name: "DeepSeek", src: "/logos/llm-deepseek.svg", size: "size-14", delay: "2.4s", style: { left: "4%", top: "72%" } },
+  { name: "Google Gemini", src: "/logos/llm-googlegemini.svg", size: "size-20", delay: "0.6s", style: { right: "5%", top: "26%" } },
+  { name: "Mistral", src: "/logos/llm-mistralai.svg", size: "size-16", delay: "1.8s", style: { right: "12%", top: "52%" } },
+  { name: "Meta", src: "/logos/llm-meta.svg", size: "size-14", delay: "3s", style: { right: "4%", top: "70%" } },
 ];
 
 const INTEGRATIONS = [
@@ -254,22 +245,6 @@ const FAQ = [
     a: "Tergantung cakupan. Chatbot di atas data yang sudah ada jauh lebih cepat daripada orchestrator yang menyentuh beberapa sistem sekaligus.",
   },
 ];
-
-function AiBold({ text }: { text: string }) {
-  return (
-    <>
-      {text.split(/(\bAI\b)/g).map((part, i) =>
-        part === "AI" ? (
-          <strong key={i} className="font-semibold text-white/90">
-            {part}
-          </strong>
-        ) : (
-          <span key={i}>{part}</span>
-        ),
-      )}
-    </>
-  );
-}
 
 function AiSparkle({ className }: { className?: string }) {
   const wrap = useRef<HTMLSpanElement>(null);
@@ -768,8 +743,17 @@ export default function Landing() {
         id="masalah"
         className="relative isolate scroll-mt-28 overflow-hidden border-y border-white/[0.06] bg-[#05060a] py-24 md:py-36"
       >
-        {/* Latar sinematik: spotlight violet + garis spektrum + fade tepi */}
+        {/* Latar sinematik: foto section + spotlight violet + fade tepi */}
         <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+          <div
+            className="absolute inset-0 opacity-15"
+            style={{
+              backgroundImage: "url('/image/section_masalah.webp')",
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              filter: "brightness(0.17)",
+            }}
+          />
           <div className="js-masalah-spot absolute inset-0 origin-center bg-[radial-gradient(75%_55%_at_50%_-5%,rgba(139,92,246,0.18),transparent_62%)] will-change-transform" />
           <div className="absolute inset-x-0 top-0 h-48 bg-[linear-gradient(180deg,#05060a,transparent)]" />
           <div className="absolute inset-x-0 bottom-0 h-48 bg-[linear-gradient(0deg,#05060a,transparent)]" />
@@ -782,6 +766,36 @@ export default function Landing() {
           className="js-masalah-cursor pointer-events-none absolute left-0 top-0 -z-[1] h-[420px] w-[420px] rounded-full opacity-0 blur-2xl will-change-transform"
           style={{ background: "radial-gradient(circle,rgba(139,92,246,0.22),transparent 70%)" }}
         />
+
+        {/* Bubble logo model AI (kiri & kanan, desktop) */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 hidden lg:block">
+          {MAS_LOGO_BUBBLES.map((b) => (
+            <div
+              key={b.name}
+              className="mas-bubble-wrap pointer-events-auto absolute"
+              style={{ position: "absolute", ...b.style }}
+              title={b.name}
+            >
+              <div className={`mas-bubble ${b.size}`} style={{ animationDelay: b.delay }}>
+                <span
+                  className="block bg-white/85"
+                  style={{
+                    width: "46%",
+                    height: "46%",
+                    maskImage: `url(${b.src})`,
+                    WebkitMaskImage: `url(${b.src})`,
+                    maskSize: "contain",
+                    WebkitMaskSize: "contain",
+                    maskRepeat: "no-repeat",
+                    WebkitMaskRepeat: "no-repeat",
+                    maskPosition: "center",
+                    WebkitMaskPosition: "center",
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
 
         <div className={SHELL}>
           <div className="mx-auto max-w-[860px] text-center">
@@ -796,15 +810,18 @@ export default function Landing() {
           </div>
 
           {/* Narasi */}
-          <div className="js-masalah-lines mx-auto mt-14 max-w-[64ch] space-y-5 text-center text-[15px] leading-[1.75] text-white/60">
+          <div className="mt-14">
+            <div className="js-masalah-lines mx-auto max-w-[64ch] space-y-5 text-center text-[15px] leading-[1.75] text-white/60">
             <p>
-              <AiBold text="Banyak perusahaan, mitra, dan pelaku bisnis masih menghadapi tantangan dalam mengelola operasional, memproses informasi, serta menghubungkan berbagai sistem yang mereka gunakan." />
-            </p>
-            <p>
-              <AiBold text="Di tengah perkembangan industri yang semakin cepat, pendekatan konvensional tidak lagi cukup untuk menjawab kompleksitas kebutuhan bisnis. Efisiensi, otomatisasi, dan pengambilan keputusan berbasis data menjadi semakin penting." />
+              Banyak <em className="italic">perusahaan, mitra, dan pelaku bisnis</em> masih menghadapi
+              tantangan dalam mengelola operasional, memproses informasi, serta menghubungkan berbagai
+              sistem yang mereka gunakan. Di tengah perkembangan industri yang semakin cepat,
+              pendekatan konvensional tidak lagi cukup untuk menjawab kompleksitas kebutuhan bisnis.
+              Efisiensi, otomatisasi, dan pengambilan keputusan berbasis data menjadi semakin penting.
             </p>
             <p className="text-white/80">
-              <AiBold text="AI bukan lagi sekadar teknologi tambahan. AI mulai menjadi bagian penting dari infrastruktur bisnis modern." />
+              AI bukan lagi sekadar teknologi tambahan. AI mulai menjadi bagian penting dari
+              infrastruktur bisnis modern.
             </p>
             <p className="text-white/80">
               <ShinyText
@@ -820,29 +837,11 @@ export default function Landing() {
               />
             </p>
             <p>
-              <AiBold text="Kami membantu bisnis mengintegrasikan kapabilitas AI ke dalam sistem yang sudah berjalan maupun membangun aplikasi digital baru berbasis AI. Mengubah proses yang kompleks menjadi workflow yang lebih cerdas, terintegrasi, dan adaptif terhadap kebutuhan bisnis." />
+              Kami membantu bisnis mengintegrasikan kapabilitas AI ke dalam sistem yang sudah berjalan
+              maupun membangun aplikasi digital baru berbasis AI. Mengubah proses yang kompleks
+              menjadi workflow yang lebih cerdas, terintegrasi, dan adaptif terhadap kebutuhan bisnis.
             </p>
-          </div>
-        </div>
-      </section>
-
-      {/* 3b · Tantangan: tiga hambatan nyata */}
-      <section className="border-b border-white/[0.08] py-16 md:py-20">
-        <div className={SHELL}>
-          <p className={`${EYEBROW} text-center`}>Tantangan</p>
-          <div className="js-reveal mt-8 grid gap-px overflow-hidden rounded-[20px] border border-white/[0.08] bg-white/[0.06] md:grid-cols-3">
-            {PROBLEMS.map(({ icon: Icon, label, body }, i) => (
-              <article key={label} className="group relative bg-[#08090d] p-7 md:p-9">
-                <span className="pointer-events-none absolute right-6 top-5 font-mono text-[42px] leading-none text-white/[0.04]">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <Icon className="size-5 text-white/60" strokeWidth={1.6} />
-                <h3 className="mt-6 text-[17px] font-medium">{label}</h3>
-                <p className="mt-3 text-[14px] leading-[1.65] text-white/60">
-                  <AiBold text={body} />
-                </p>
-              </article>
-            ))}
+            </div>
           </div>
         </div>
       </section>
@@ -863,9 +862,7 @@ export default function Landing() {
             <article key={label} className="bg-[#08090d] p-7 md:p-8">
               <Icon className="size-5 text-white/60" strokeWidth={1.6} />
               <h3 className="mt-6 text-[17px] font-medium">{label}</h3>
-              <p className="mt-3 text-[14px] leading-[1.65] text-white/60">
-                  <AiBold text={body} />
-                </p>
+              <p className="mt-3 text-[14px] leading-[1.65] text-white/60">{body}</p>
             </article>
           ))}
           <a
@@ -951,19 +948,6 @@ export default function Landing() {
               </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* 4b · Kutipan prinsip (slot testimonial, tanpa nama palsu) */}
-      <section className="border-y border-white/[0.08] py-20 md:py-28">
-        <div className={`${HEADLINE} text-center`}>
-          <p className="text-[clamp(1.35rem,2.6vw,2rem)] font-medium leading-[1.35] tracking-[-0.02em]">
-            <Words text="Kalau jawabannya tidak ada di sumber, ia bilang tidak ada." />{" "}
-            <span className="text-white/45">
-              <Words text="Itu yang membedakan asisten dengan generator teks." />
-            </span>
-          </p>
-          <p className={`${EYEBROW} mt-8`}>Prinsip kerja</p>
         </div>
       </section>
 
