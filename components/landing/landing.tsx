@@ -23,13 +23,14 @@ import BlurText from "@/components/BlurText";
 import StarBorder from "@/components/StarBorder";
 import FadeContent from "@/components/FadeContent";
 import GhostFibers from "@/components/GhostFibers";
+import ChromaGrid from "@/components/ChromaGrid";
 
 const CONTACT = "mailto:ayormahaki@gmail.com?subject=Discovery%20proyek%20AI";
 
 /* Kerangka mengikuti monoai.framer.website:
    kontainer 1320px · H1 800px terpusat · art hero full-bleed 2:1 tanpa radius ·
    grid 3×440 tanpa gap · FAQ 700px terpusat · footer 12px.
-   Narasi halaman: Masalah → Mengapa → Kapabilitas → Project Launch → Cara Kerja → FAQ. */
+   Narasi halaman: Masalah → Layanan → Project Launch → Cara Kerja → FAQ. */
 const SHELL = "mx-auto w-full max-w-[1424px] px-5 md:px-[52px]";
 const NARROW = "mx-auto w-full max-w-[804px] px-5 md:px-[52px]";
 const HEADLINE = "mx-auto w-full max-w-[904px] px-5 md:px-[52px]";
@@ -50,8 +51,7 @@ const NAVLINK = "text-[15px] text-white/80 transition-colors hover:text-white";
 
 const NAV = [
   { href: "#masalah", label: "Masalah" },
-  { href: "#alasan", label: "Mengapa" },
-  { href: "#kenali", label: "Kapabilitas" },
+  { href: "#kenali", label: "Layanan" },
   { href: "#karya", label: "Project" },
   { href: "#cara-kerja", label: "Cara Kerja" },
   { href: "#faq", label: "FAQ" },
@@ -87,62 +87,59 @@ const FLOW = [
   },
 ];
 
-const PILLARS = [
-  {
-    icon: Database,
-    label: "Data",
-    body: "Dokumen, SOP, transaksi, dan riwayat percakapan jadi sumber jawaban. Retrieval dulu, model belakangan.",
-  },
-  {
-    icon: Workflow,
-    label: "Tool",
-    body: "AI boleh memanggil API dan menulis ke sistem nyata, dengan batas yang jelas soal apa yang harus dikonfirmasi.",
-  },
-  {
-    icon: Network,
-    label: "Batas",
-    body: "Kalau jawabannya tidak ada di sumber, ia bilang tidak ada. Halusinasi bukan fitur, itu bug.",
-  },
-];
-
 const CAPABILITIES = [
   {
     icon: MessagesSquare,
     step: "01",
     title: "AI Chatbot",
     body: "Antarmuka percakapan dengan identitas, gaya komunikasi, dan instruksi sendiri, di web, WhatsApp, atau Telegram.",
+    img: "/landing/layanan-chatbot.webp",
   },
   {
     icon: Database,
     step: "02",
     title: "RAG & Knowledge AI",
     body: "Dokumen dipecah jadi chunk, di-embed, disimpan di pgvector, dicari dengan cosine HNSW. Jawaban disertai sumbernya.",
+    img: "/landing/layanan-rag.webp",
   },
   {
     icon: Workflow,
     step: "03",
     title: "AI Automation",
     body: "AI memanggil tool dan API nyata: mencatat transaksi, menyusun laporan, mengirim notifikasi ke sistem yang sudah jalan.",
+    img: "/landing/layanan-automation.webp",
   },
   {
     icon: Sparkles,
     step: "04",
     title: "AI Agent",
     body: "Satu agen yang tahu kapan harus bertanya, kapan memakai tool, dan kapan berhenti sebelum salah langkah.",
+    img: "/landing/layanan-agent.webp",
   },
   {
     icon: Network,
     step: "05",
     title: "Multi-Agent System",
     body: "Beberapa agen dengan peran berbeda bekerja dari satu perintah bahasa alami, saling menyerahkan hasil.",
+    img: "/landing/layanan-multiagent.webp",
   },
   {
     icon: Wrench,
     step: "06",
     title: "AI API Integration",
     body: "AI ditempel ke sistem yang sudah berjalan lewat REST, webhook, atau konektor. Tanpa membongkar aplikasi lama.",
+    img: "/landing/layanan-api.webp",
   },
 ];
+
+const CHROMA_ACCENTS = ["#a78bfa", "#818cf8", "#38bdf8", "#c084fc", "#22d3ee", "#e879f9"];
+
+const CHROMA = CAPABILITIES.map(({ title, body, img }, i) => ({
+  image: img,
+  title,
+  subtitle: body,
+  accent: CHROMA_ACCENTS[i % CHROMA_ACCENTS.length],
+}));
 
 const MAS_LOGO_BUBBLES = [
   { name: "OpenAI", src: "/logos/llm-openai.svg", size: "size-20", delay: "0s", style: { left: "5%", top: "30%" } },
@@ -846,38 +843,10 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 4 · Mengapa ITZ AI: diferensiasi */}
-      <section id="alasan" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
-        <div className="mx-auto max-w-[760px] text-center">
-          <p className={EYEBROW}>Mengapa ITZ AI</p>
-        </div>
-        <h2 className={`${H2} mx-auto mt-5 max-w-[24ch] text-center`}>
-          <Words text="Karena jawaban harus" />{" "}
-          <span className={ACCENT}>
-            <Words text="bisa dipercaya." />
-          </span>
-        </h2>
-        <div className="js-reveal mt-14 grid gap-px overflow-hidden rounded-[20px] border border-white/[0.08] bg-white/[0.06] md:grid-cols-3">
-          {PILLARS.map(({ icon: Icon, label, body }) => (
-            <article key={label} className="bg-[#08090d] p-7 md:p-8">
-              <Icon className="size-5 text-white/60" strokeWidth={1.6} />
-              <h3 className="mt-6 text-[17px] font-medium">{label}</h3>
-              <p className="mt-3 text-[14px] leading-[1.65] text-white/60">{body}</p>
-            </article>
-          ))}
-          <a
-            href={CONTACT}
-            className="bg-[#08090d] p-7 text-[13px] text-white/70 transition-colors hover:text-white md:col-span-3 md:p-6"
-          >
-            Mulai discovery →
-          </a>
-        </div>
-      </section>
-
       {/* 5 · Apa yang bisa ITZ AI lakukan: 6 kapabilitas */}
       <section id="kenali" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
         <div className="mx-auto max-w-[760px] text-center">
-          <p className={EYEBROW}>Kapabilitas</p>
+          <p className={EYEBROW}>Layanan</p>
           <h2 className={`${H2} mt-5`}>
             <Words text="Apa yang bisa ITZ AI" />{" "}
             <span className={ACCENT}>
@@ -885,21 +854,13 @@ export default function Landing() {
             </span>
           </h2>
           <p className={`${BODY} mx-auto mt-5 max-w-[52ch]`}>
-            Satu tim, satu tanggung jawab. Dari chatbot sampai sistem multi-agen yang memanggil API
-            nyata. Tidak semua masalah butuh tingkat paling atas, itu yang ditentukan di discovery.
+            Layanan kami mencakup perancangan hingga penerapan solusi AI, mulai dari chatbot dan
+            basis pengetahuan, otomasi proses bisnis, integrasi API, serta sistem multi-agen. Setiap
+            layanan disesuaikan dengan kebutuhan dan kematangan sistem yang Anda miliki.
           </p>
         </div>
-        <div className="js-reveal mt-14 grid gap-px overflow-hidden rounded-[20px] border border-white/[0.08] bg-white/[0.06] md:grid-cols-3">
-          {CAPABILITIES.map(({ icon: Icon, step, title, body }) => (
-            <article key={step} className="bg-[#08090d] p-7 md:p-9">
-              <div className="flex items-center gap-3">
-                <Icon className="size-4 text-white/55" strokeWidth={1.6} />
-                <span className="font-mono text-[11px] text-white/50">{step}</span>
-              </div>
-              <h3 className="mt-5 text-[20px] font-medium tracking-[-0.01em]">{title}</h3>
-              <p className="mt-3 text-[15px] leading-[1.65] text-white/60">{body}</p>
-            </article>
-          ))}
+        <div className="mt-14">
+          <ChromaGrid items={CHROMA} columns={3} minCardWidth={280} gap={14} radius={300} cardRadius={20} aspectRatio="16 / 10" theme="dark" />
         </div>
       </section>
 
