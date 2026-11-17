@@ -24,6 +24,8 @@ import StarBorder from "@/components/StarBorder";
 import FadeContent from "@/components/FadeContent";
 import GhostFibers from "@/components/GhostFibers";
 import ChromaGrid from "@/components/ChromaGrid";
+import ClickSpark from "@/components/ClickSpark";
+import CircularCarousel from "@/components/CircularCarousel";
 
 const CONTACT = "mailto:ayormahaki@gmail.com?subject=Discovery%20proyek%20AI";
 
@@ -70,19 +72,39 @@ const STRIP = [
 
 const FLOW = [
   {
+    icon: Sparkles,
     label: "Discovery",
+    tag: "Brief",
+    input: "Masalah",
+    output: "Scope",
+    img: "/landing/spectral-streaks.jpg",
     body: "Pemetaan masalah, data, dan target. Menentukan apa yang layak dibangun lebih dulu.",
   },
   {
+    icon: Network,
     label: "Architecture",
+    tag: "Blueprint",
+    input: "Scope",
+    output: "Rancangan",
+    img: "/landing/iridescent-flow.jpg",
     body: "Rancangan alur, pemilihan model, skema retrieval, dan batas tool sebelum satu baris kode ditulis.",
   },
   {
+    icon: Workflow,
     label: "Development",
+    tag: "Build",
+    input: "Rancangan",
+    output: "Demo",
+    img: "/landing/iridescent-waves.jpg",
     body: "Pembangunan bertahap dengan demo yang bisa dicoba, bukan laporan yang tak bisa diuji.",
   },
   {
+    icon: Gauge,
     label: "Deployment",
+    tag: "Live",
+    input: "Demo",
+    output: "Produksi",
+    img: "/image/section_masalah.webp",
     body: "Deploy, kuota, pemantauan biaya, dan serah terima. Satu pekerjaan, satu tanggung jawab.",
   },
 ];
@@ -132,6 +154,13 @@ const CAPABILITIES = [
   },
 ];
 
+const SERVICE_RING = CAPABILITIES.map(({ title, img }, i) => ({
+  src: img,
+  alt: title,
+  title,
+  subtitle: ["Chatbot", "RAG", "Otomasi", "Agent", "Multi-agent", "Integrasi"][i],
+}));
+
 const CHROMA_ACCENTS = ["#a78bfa", "#818cf8", "#38bdf8", "#c084fc", "#22d3ee", "#e879f9"];
 
 const CHROMA = CAPABILITIES.map(({ title, body, img }, i) => ({
@@ -142,12 +171,48 @@ const CHROMA = CAPABILITIES.map(({ title, body, img }, i) => ({
 }));
 
 const MAS_LOGO_BUBBLES = [
-  { name: "OpenAI", src: "/logos/llm-openai.svg", size: "size-20", delay: "0s", style: { left: "5%", top: "30%" } },
-  { name: "Anthropic", src: "/logos/llm-anthropic.svg", size: "size-16", delay: "1.2s", style: { left: "12%", top: "54%" } },
-  { name: "DeepSeek", src: "/logos/llm-deepseek.svg", size: "size-14", delay: "2.4s", style: { left: "4%", top: "72%" } },
-  { name: "Google Gemini", src: "/logos/llm-googlegemini.svg", size: "size-20", delay: "0.6s", style: { right: "5%", top: "26%" } },
-  { name: "Mistral", src: "/logos/llm-mistralai.svg", size: "size-16", delay: "1.8s", style: { right: "12%", top: "52%" } },
-  { name: "Meta", src: "/logos/llm-meta.svg", size: "size-14", delay: "3s", style: { right: "4%", top: "70%" } },
+  {
+    name: "OpenAI",
+    src: "/logos/llm-openai.svg",
+    size: "size-20",
+    delay: "0s",
+    style: { left: "5%", top: "30%" },
+  },
+  {
+    name: "Anthropic",
+    src: "/logos/llm-anthropic.svg",
+    size: "size-16",
+    delay: "1.2s",
+    style: { left: "12%", top: "54%" },
+  },
+  {
+    name: "DeepSeek",
+    src: "/logos/llm-deepseek.svg",
+    size: "size-14",
+    delay: "2.4s",
+    style: { left: "4%", top: "72%" },
+  },
+  {
+    name: "Google Gemini",
+    src: "/logos/llm-googlegemini.svg",
+    size: "size-20",
+    delay: "0.6s",
+    style: { right: "5%", top: "26%" },
+  },
+  {
+    name: "Mistral",
+    src: "/logos/llm-mistralai.svg",
+    size: "size-16",
+    delay: "1.8s",
+    style: { right: "12%", top: "52%" },
+  },
+  {
+    name: "Meta",
+    src: "/logos/llm-meta.svg",
+    size: "size-14",
+    delay: "3s",
+    style: { right: "4%", top: "70%" },
+  },
 ];
 
 const INTEGRATIONS = [
@@ -362,14 +427,19 @@ export default function Landing() {
       }
       const masalahLines = el.querySelector<HTMLElement>(".js-masalah-lines");
       if (masalahLines) {
-        gsap.from(masalahLines.children, {
-          opacity: 0,
-          y: 18,
-          filter: "blur(8px)",
-          duration: 0.8,
-          stagger: 0.16,
-          ease: "power3.out",
-          scrollTrigger: { trigger: masalahLines, start: "top 84%" },
+        // Tiap paragraf menyala mengikuti gulir, bukan sekadar fade sekali.
+        Array.from(masalahLines.children).forEach((line) => {
+          gsap.fromTo(
+            line,
+            { opacity: 0.18, y: 24, filter: "blur(6px)" },
+            {
+              opacity: 1,
+              y: 0,
+              filter: "blur(0px)",
+              ease: "none",
+              scrollTrigger: { trigger: line, start: "top 90%", end: "top 58%", scrub: 0.5 },
+            },
+          );
         });
       }
 
@@ -390,7 +460,8 @@ export default function Landing() {
           place(event);
           gsap.to(cursorGlow, { opacity: 1, duration: 0.35, overwrite: "auto" });
         };
-        const onLeave = () => gsap.to(cursorGlow, { opacity: 0, duration: 0.35, overwrite: "auto" });
+        const onLeave = () =>
+          gsap.to(cursorGlow, { opacity: 0, duration: 0.35, overwrite: "auto" });
         masalahSection.addEventListener("pointermove", place, { passive: true });
         masalahSection.addEventListener("pointerenter", onEnter);
         masalahSection.addEventListener("pointerleave", onLeave);
@@ -403,6 +474,7 @@ export default function Landing() {
 
       // 3 · Reveal per kelompok.
       gsap.utils.toArray<HTMLElement>(".js-reveal").forEach((group) => {
+        if (!group.children.length) return;
         gsap.from(group.children, {
           y: 26,
           opacity: 0,
@@ -413,31 +485,117 @@ export default function Landing() {
         });
       });
 
-      // 4 · Latar hero: full-bleed statis, tanpa zoom/parallax.
-      gsap.from(".js-hero-bg", { opacity: 0, duration: 1.2, ease: "power3.out" });
+      // 4 · Hero: keluar sinematik saat digulir + parallax pointer halus.
+      gsap.from(".hero-fibers", { opacity: 0, duration: 1.2, ease: "power3.out" });
+      const hero = el.querySelector<HTMLElement>(".js-hero");
+      const heroCopy = el.querySelector<HTMLElement>(".js-hero-copy");
+      if (hero && heroCopy) {
+        gsap.to(heroCopy, {
+          yPercent: -14,
+          opacity: 0,
+          filter: "blur(8px)",
+          ease: "none",
+          scrollTrigger: { trigger: hero, start: "top top", end: "bottom top", scrub: 0.4 },
+        });
+        gsap.fromTo(
+          ".js-hero-bg",
+          { opacity: 1 },
+          {
+            scale: 1.12,
+            opacity: 0.22,
+            ease: "none",
+            scrollTrigger: { trigger: hero, start: "top top", end: "bottom top", scrub: 0.6 },
+          },
+        );
+        gsap.to(".js-hero-cue", {
+          opacity: 0,
+          y: 12,
+          ease: "none",
+          scrollTrigger: { trigger: hero, start: "top top", end: "30% top", scrub: 0.3 },
+        });
 
-      // 4b · Diagram alur: garis tergambar, node menyusul berurutan.
-      gsap.from(".js-connector", {
-        scaleX: 0,
-        duration: 1.1,
-        ease: "power2.out",
-        delay: 0.5,
-      });
-      gsap.from(".js-nodes li", {
-        y: 22,
+        const xTo = gsap.quickTo(heroCopy, "x", { duration: 1.1, ease: "power3" });
+        const yTo = gsap.quickTo(heroCopy, "y", { duration: 1.1, ease: "power3" });
+        hero.addEventListener(
+          "pointermove",
+          (event) => {
+            if (event.pointerType === "touch") return;
+            const nx = event.clientX / window.innerWidth - 0.5;
+            const ny = event.clientY / window.innerHeight - 0.5;
+            xTo(nx * 22);
+            yTo(ny * 14);
+          },
+          { passive: true },
+        );
+        hero.addEventListener("pointerleave", () => {
+          xTo(0);
+          yTo(0);
+        });
+      }
+
+      // 4b · Mekanisme alur: tiap tautan terisi, paket sinyal jalan, node menyala.
+      gsap.from(".js-node", {
+        y: 24,
         opacity: 0,
         filter: "blur(6px)",
         duration: 0.7,
         stagger: 0.08,
         ease: "power3.out",
-        delay: 0.65,
+        scrollTrigger: { trigger: ".js-nodes", start: "top 84%" },
       });
-      gsap.to(".js-nodes li", {
-        y: -6,
-        duration: 4.5,
-        stagger: { each: 0.35, yoyo: true, repeat: -1 },
-        ease: "sine.inOut",
-        delay: 1.6,
+      const flowCards = gsap.utils.toArray<HTMLElement>(".js-node");
+      const flowLinks = gsap.utils.toArray<HTMLElement>(".js-flow-link");
+      const flowBg = el.querySelector<HTMLElement>(".js-flow-bg");
+      if (flowBg) {
+        gsap.fromTo(
+          flowBg,
+          { yPercent: -5, scale: 1.05 },
+          {
+            yPercent: 5,
+            scale: 1.05,
+            ease: "none",
+            scrollTrigger: {
+              trigger: "#cara-kerja",
+              start: "top bottom",
+              end: "bottom top",
+              scrub: true,
+            },
+          },
+        );
+      }
+      const flow = gsap.timeline({
+        scrollTrigger: { trigger: ".js-nodes", start: "top 76%", end: "bottom 62%", scrub: 0.5 },
+      });
+      flowCards.forEach((card, i) => {
+        const link = flowLinks[i];
+        const fill = link?.querySelector<HTMLElement>(".js-flow-fill");
+        const packet = link?.querySelector<HTMLElement>(".js-flow-packet");
+        if (fill && packet) {
+          flow.fromTo(
+            fill,
+            { scaleX: 0 },
+            { scaleX: 1, ease: "power1.inOut", duration: 0.18 },
+            i * 0.25 + 0.06,
+          );
+          flow.fromTo(
+            packet,
+            { left: "0%", opacity: 0 },
+            { left: "100%", opacity: 1, ease: "power1.inOut", duration: 0.24 },
+            i * 0.25 + 0.02,
+          );
+          flow.to(packet, { opacity: 0, duration: 0.06 }, i * 0.25 + 0.26);
+        }
+        flow.to(
+          card,
+          {
+            borderColor: "rgba(167,139,250,0.42)",
+            backgroundColor: "rgba(139,92,246,0.08)",
+            boxShadow: "0 0 0 1px rgba(167,139,250,0.16), 0 28px 70px -38px rgba(139,92,246,0.65)",
+            duration: 0.16,
+            ease: "power2.out",
+          },
+          i * 0.25 + 0.2,
+        );
       });
 
       // 5 · Pantulan kaca mengikuti pointer.
@@ -466,7 +624,8 @@ export default function Landing() {
       });
       const marqueeWrap = el.querySelector<HTMLElement>(".js-marquee-wrap");
       const pauseMarquee = () => gsap.to(marquee, { timeScale: 0, duration: 0.4, overwrite: true });
-      const resumeMarquee = () => gsap.to(marquee, { timeScale: 1, duration: 0.4, overwrite: true });
+      const resumeMarquee = () =>
+        gsap.to(marquee, { timeScale: 1, duration: 0.4, overwrite: true });
       marqueeWrap?.addEventListener("pointerenter", pauseMarquee);
       marqueeWrap?.addEventListener("pointerleave", resumeMarquee);
       stopMarquee = () => {
@@ -474,18 +633,7 @@ export default function Landing() {
         marqueeWrap?.removeEventListener("pointerleave", resumeMarquee);
       };
 
-      // 7 · Korsel layanan: drag-scroll halus (native snap + indikator).
-      const rail = el.querySelector<HTMLElement>(".js-rail");
-      if (rail) {
-        gsap.from(rail.children, {
-          y: 30,
-          opacity: 0,
-          duration: 0.6,
-          stagger: 0.08,
-          ease: "power3.out",
-          scrollTrigger: { trigger: rail, start: "top 86%" },
-        });
-      }
+      // 7 · Korsel layanan memakai CircularCarousel (animasi internal komponen).
 
       // 8 · Parallax material gambar.
       el.querySelectorAll<HTMLElement>(".js-material img").forEach((img) => {
@@ -527,13 +675,33 @@ export default function Landing() {
             scrollTrigger: { trigger: card, start: "top bottom", end: "bottom top", scrub: true },
           },
         );
-        gsap.from(card, {
-          opacity: 0,
-          scale: 0.985,
-          duration: 0.7,
-          ease: "power3.out",
-          scrollTrigger: { trigger: card, start: "top 88%" },
-        });
+      });
+
+      // 8d · Proyek: tilt 3D + sorot kaca mengikuti pointer.
+      el.querySelectorAll<HTMLElement>(".js-tilt").forEach((card) => {
+        gsap.set(card, { transformPerspective: 1200, transformStyle: "preserve-3d" });
+        const rotX = gsap.quickTo(card, "rotationX", { duration: 0.5, ease: "power2" });
+        const rotY = gsap.quickTo(card, "rotationY", { duration: 0.5, ease: "power2" });
+        const glare = card.querySelector<HTMLElement>(".js-glare");
+        const move = (event: PointerEvent) => {
+          if (event.pointerType === "touch") return;
+          const box = card.getBoundingClientRect();
+          const px = (event.clientX - box.left) / box.width - 0.5;
+          const py = (event.clientY - box.top) / box.height - 0.5;
+          rotX(-py * 6);
+          rotY(px * 8);
+          if (!glare) return;
+          glare.style.setProperty("--gx", `${(px + 0.5) * 100}%`);
+          glare.style.setProperty("--gy", `${(py + 0.5) * 100}%`);
+          glare.style.opacity = "1";
+        };
+        const leave = () => {
+          rotX(0);
+          rotY(0);
+          if (glare) glare.style.opacity = "0";
+        };
+        card.addEventListener("pointermove", move, { passive: true });
+        card.addEventListener("pointerleave", leave);
       });
 
       // 9 · FAQ: buka/tutup native <details>; animasi fade via CSS (tanpa tween height = tanpa layout tiap frame).
@@ -578,6 +746,7 @@ export default function Landing() {
       </a>
 
       <div aria-hidden className="grain pointer-events-none fixed inset-0 z-[45]" />
+      <ClickSpark />
       <div className="js-progress spectral-line fixed inset-x-0 top-0 z-[60] origin-left scale-x-0" />
 
       {/* Nav kaca mengambang */}
@@ -612,7 +781,7 @@ export default function Landing() {
       </header>
 
       {/* 1 · Hero: gambar iridescent jadi latar, konten mengapung di atasnya */}
-      <section className="relative flex min-h-[100svh] flex-col justify-center overflow-hidden pb-20 pt-[calc(env(safe-area-inset-top,0px)+8rem)] md:pb-28 md:pt-40">
+      <section className="js-hero relative flex min-h-[100svh] flex-col justify-center overflow-hidden pb-20 pt-[calc(env(safe-area-inset-top,0px)+8rem)] md:pb-28 md:pt-40">
         <div aria-hidden className="js-hero-bg pointer-events-none absolute inset-0 -z-10">
           <div aria-hidden className="hero-aurora" />
           <div className="hero-fibers absolute inset-0">
@@ -641,7 +810,7 @@ export default function Landing() {
           <div className="absolute inset-x-0 bottom-0 h-72 bg-[linear-gradient(0deg,#05060a,rgba(5,6,10,0.5)_55%,transparent)]" />
         </div>
 
-        <div className={`${HEADLINE} relative isolate text-center`}>
+        <div className={`${HEADLINE} js-hero-copy relative isolate text-center`}>
           <div className="relative">
             <ShinyText
               text="ITZ AI"
@@ -701,6 +870,18 @@ export default function Landing() {
               </StarBorder>
             </span>
           </div>
+        </div>
+
+        <div
+          aria-hidden
+          className="js-hero-cue pointer-events-none absolute bottom-6 left-1/2 hidden -translate-x-1/2 flex-col items-center gap-2 md:flex"
+        >
+          <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/35">
+            scroll
+          </span>
+          <span className="relative h-12 w-px overflow-hidden bg-white/10">
+            <span className="hero-cue-run absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-transparent via-white/70 to-transparent" />
+          </span>
         </div>
       </section>
 
@@ -809,35 +990,37 @@ export default function Landing() {
           {/* Narasi */}
           <div className="mt-14">
             <div className="js-masalah-lines mx-auto max-w-[64ch] space-y-5 text-center text-[15px] leading-[1.75] text-white/60">
-            <p>
-              Banyak <em className="italic">perusahaan, mitra, dan pelaku bisnis</em> masih menghadapi
-              tantangan dalam mengelola operasional, memproses informasi, serta menghubungkan berbagai
-              sistem yang mereka gunakan. Di tengah perkembangan industri yang semakin cepat,
-              pendekatan konvensional tidak lagi cukup untuk menjawab kompleksitas kebutuhan bisnis.
-              Efisiensi, otomatisasi, dan pengambilan keputusan berbasis data menjadi semakin penting.
-            </p>
-            <p className="text-white/80">
-              AI bukan lagi sekadar teknologi tambahan. AI mulai menjadi bagian penting dari
-              infrastruktur bisnis modern.
-            </p>
-            <p className="text-white/80">
-              <ShinyText
-                text="ITZ AI hadir untuk menjembatani kebutuhan tersebut."
-                className="font-semibold"
-                color="#dfe3ea"
-                shineColor="#ffffff"
-                speed={3.2}
-                delay={0.4}
-                angle={110}
-                shineWidth={22}
-                softness={0.9}
-              />
-            </p>
-            <p>
-              Kami membantu bisnis mengintegrasikan kapabilitas AI ke dalam sistem yang sudah berjalan
-              maupun membangun aplikasi digital baru berbasis AI. Mengubah proses yang kompleks
-              menjadi workflow yang lebih cerdas, terintegrasi, dan adaptif terhadap kebutuhan bisnis.
-            </p>
+              <p>
+                Banyak <em className="italic">perusahaan, mitra, dan pelaku bisnis</em> masih
+                menghadapi tantangan dalam mengelola operasional, memproses informasi, serta
+                menghubungkan berbagai sistem yang mereka gunakan. Di tengah perkembangan industri
+                yang semakin cepat, pendekatan konvensional tidak lagi cukup untuk menjawab
+                kompleksitas kebutuhan bisnis. Efisiensi, otomatisasi, dan pengambilan keputusan
+                berbasis data menjadi semakin penting.
+              </p>
+              <p className="text-white/80">
+                AI bukan lagi sekadar teknologi tambahan. AI mulai menjadi bagian penting dari
+                infrastruktur bisnis modern.
+              </p>
+              <p className="text-white/80">
+                <ShinyText
+                  text="ITZ AI hadir untuk menjembatani kebutuhan tersebut."
+                  className="font-semibold"
+                  color="#dfe3ea"
+                  shineColor="#ffffff"
+                  speed={3.2}
+                  delay={0.4}
+                  angle={110}
+                  shineWidth={22}
+                  softness={0.9}
+                />
+              </p>
+              <p>
+                Kami membantu bisnis mengintegrasikan kapabilitas AI ke dalam sistem yang sudah
+                berjalan maupun membangun aplikasi digital baru berbasis AI. Mengubah proses yang
+                kompleks menjadi workflow yang lebih cerdas, terintegrasi, dan adaptif terhadap
+                kebutuhan bisnis.
+              </p>
             </div>
           </div>
         </div>
@@ -860,88 +1043,140 @@ export default function Landing() {
           </p>
         </div>
         <div className="mt-14">
-          <ChromaGrid items={CHROMA} columns={3} minCardWidth={280} gap={14} radius={300} cardRadius={20} aspectRatio="16 / 10" theme="dark" />
+          <ChromaGrid
+            items={CHROMA}
+            columns={3}
+            minCardWidth={280}
+            gap={14}
+            radius={300}
+            cardRadius={20}
+            aspectRatio="16 / 10"
+            theme="dark"
+          />
         </div>
       </section>
 
-      {/* 3b · AI chat: teks + mock dalam kaca gelap */}
-      <section className="border-y border-white/[0.08] py-20 md:py-28">
-        <div className={`${SHELL} grid items-center gap-12 lg:grid-cols-12 lg:gap-16`}>
-          <div className="js-reveal lg:col-span-5">
-            <p className={EYEBROW}>AI chat</p>
+      {/* 5 · Cara Kerja: mekanisme alur empat tahap */}
+      <section
+        id="cara-kerja"
+        className="relative isolate scroll-mt-28 overflow-hidden border-y border-white/[0.08] py-20 md:py-28"
+      >
+        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+          <div className="js-flow-bg absolute inset-0 opacity-25">
+            <Image
+              src="/landing/spectral-streaks.jpg"
+              alt=""
+              fill
+              sizes="100vw"
+              className="object-cover"
+            />
+          </div>
+          <div className="absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_40%,rgba(5,6,10,0.3),#05060a_78%)]" />
+          <div className="absolute inset-x-0 top-0 h-40 bg-[linear-gradient(180deg,#05060a,transparent)]" />
+          <div className="absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(0deg,#05060a,transparent)]" />
+        </div>
+
+        <div className={SHELL}>
+          <div className="mx-auto max-w-[760px] text-center">
+            <p className={EYEBROW}>Cara kerja</p>
             <h2 className={`${H2} mt-5`}>
-              <Words text="Percakapan yang menjawab dari" />{" "}
+              <Words text="Empat langkah," />{" "}
               <span className={ACCENT}>
-                <Words text="datamu." />
+                <Words text="satu alur." />
               </span>
             </h2>
-            <p className={`${BODY} mt-5 max-w-[46ch]`}>
-              Setiap jawaban disusun dari hasil pencarian semantik di pengetahuanmu sendiri, dengan
-              sumber yang bisa diperiksa. Kalau tidak ada di sumber, ia bilang tidak ada.
+            <p className={`${BODY} mx-auto mt-5 max-w-[52ch]`}>
+              Proses yang sama untuk setiap pekerjaan. Tidak ada lompatan dari ide ke produksi.
             </p>
           </div>
-          <div className="lg:col-span-7">
-            <div className="js-reveal g-dark g-sheen g-float rounded-[24px] p-4 md:p-6">
-              <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-                <span className={EYEBROW}>Sesi chat</span>
-                <span className="flex gap-1.5">
-                  <span className="size-2 rounded-full bg-white/20" />
-                  <span className="size-2 rounded-full bg-white/20" />
-                  <span className="size-2 rounded-full bg-white/20" />
-                </span>
-              </div>
-              <div className="mt-5 space-y-4">
-                <div className="ml-auto max-w-[85%] rounded-2xl bg-white/[0.12] px-4 py-3 text-[14px] text-white/90">
-                  Berapa omzet tiga bulan terakhir dan kategori mana yang turun?
-                </div>
-                <div className="max-w-[92%] rounded-2xl border border-white/[0.08] bg-black/40 px-4 py-3 text-[14px] leading-[1.65] text-white/75">
-                  Omzet naik 12%, tapi kategori sembako turun 6% karena dua pembelian besar tidak
-                  tercatat di periode ini.
-                  <span className="mt-3 flex flex-wrap gap-2">
-                    <span className="rounded-full bg-white/[0.08] px-2.5 py-1 font-mono text-[11px] text-white/60">
-                      sumber: laporan_q3.xlsx
-                    </span>
-                    <span className="rounded-full bg-white/[0.08] px-2.5 py-1 font-mono text-[11px] text-white/60">
-                      pgvector · cosine
-                    </span>
-                  </span>
-                </div>
-              </div>
+
+          <div className="js-flow-panel g-dark g-sheen relative mt-12 overflow-hidden rounded-[26px] border-white/[0.12] p-3 md:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-2 pb-3">
+              <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/45">
+                Flow mechanism
+              </span>
+              <span className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.18em] text-white/45">
+                <span className="size-1.5 rounded-full bg-emerald-300/80 shadow-[0_0_10px_rgba(110,231,183,0.8)]" />
+                04 stages · intake ke live
+              </span>
+            </div>
+
+            <ol className="js-nodes relative mt-5 flex flex-col gap-3 lg:flex-row lg:items-stretch lg:gap-0">
+              {FLOW.map((step, i) => {
+                const Icon = step.icon;
+                return (
+                  <li
+                    key={step.label}
+                    className={`relative flex flex-1 flex-col lg:flex-row lg:items-stretch ${
+                      i > 0
+                        ? "pt-3 before:absolute before:left-1/2 before:top-0 before:h-3 before:w-px before:-translate-x-1/2 before:bg-white/15 lg:pt-0 lg:before:hidden"
+                        : ""
+                    }`}
+                  >
+                    <article className="js-node group relative flex flex-1 flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0a0b12]">
+                      <div className="relative h-28 shrink-0 overflow-hidden">
+                        <Image
+                          src={step.img}
+                          alt=""
+                          fill
+                          sizes="(min-width: 1024px) 24vw, 100vw"
+                          className="object-cover opacity-50 saturate-[0.8] transition duration-700 group-hover:scale-[1.04] group-hover:opacity-80 group-hover:saturate-100"
+                        />
+                        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,6,10,0.15),rgba(10,11,18,0.82)_72%,#0a0b12)]" />
+                        <div className="absolute inset-x-3 top-3 flex items-center justify-between gap-3">
+                          <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/55">
+                            Stage {String(i + 1).padStart(2, "0")}
+                          </span>
+                          <span className="rounded-full border border-white/[0.14] bg-black/35 px-2 py-0.5 font-mono text-[8px] uppercase tracking-[0.16em] text-white/55 backdrop-blur-sm">
+                            {step.tag}
+                          </span>
+                        </div>
+                        <Icon
+                          className="absolute bottom-3 left-3 size-5 text-white/80"
+                          strokeWidth={1.6}
+                        />
+                        <span className="pointer-events-none absolute bottom-3 right-3 h-4 w-4 border-b border-r border-white/25" />
+                      </div>
+
+                      <div className="flex flex-1 flex-col p-4">
+                        <h3 className="text-[15px] font-medium tracking-[-0.01em]">{step.label}</h3>
+                        <p className="mt-1.5 text-[12.5px] leading-[1.55] text-white/55">
+                          {step.body}
+                        </p>
+                        <div className="mt-4 flex items-center justify-between gap-2 border-t border-white/[0.07] pt-3 font-mono text-[9px] uppercase tracking-[0.14em]">
+                          <span className="text-white/35">
+                            in · <span className="text-white/65">{step.input}</span>
+                          </span>
+                          <ArrowRight className="size-3 shrink-0 text-white/20" />
+                          <span className="text-right text-violet-200/70">{step.output}</span>
+                        </div>
+                      </div>
+                    </article>
+
+                    {i < FLOW.length - 1 ? (
+                      <span
+                        aria-hidden
+                        className="js-flow-link relative hidden w-9 shrink-0 items-center justify-center lg:flex"
+                      >
+                        <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/[0.12]" />
+                        <span className="js-flow-fill absolute inset-x-0 top-1/2 h-px origin-left -translate-y-1/2 scale-x-0 bg-gradient-to-r from-violet-300/90 via-fuchsia-200/80 to-cyan-200/90" />
+                        <span className="js-flow-packet absolute left-0 top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-200 opacity-0 shadow-[0_0_12px_3px_rgba(103,232,249,0.6)]" />
+                        <ArrowRight className="absolute right-0 top-1/2 size-3 -translate-y-1/2 text-white/25" />
+                      </span>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ol>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.07] px-2 pt-3 font-mono text-[9px] uppercase tracking-[0.16em] text-white/35">
+              <span>intake → discovery → architecture → development → deployment</span>
+              <span className="inline-flex items-center gap-1.5 text-white/45">
+                <span className="size-1.5 rounded-full bg-emerald-300/80" />
+                alur siap
+              </span>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* 5 · Cara Kerja: empat fase */}
-      <section id="cara-kerja" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
-        <div className="mx-auto max-w-[760px] text-center">
-          <p className={EYEBROW}>Cara kerja</p>
-          <h2 className={`${H2} mt-5`}>
-            <Words text="Empat langkah," />{" "}
-            <span className={ACCENT}>
-              <Words text="satu alur." />
-            </span>
-          </h2>
-          <p className={`${BODY} mx-auto mt-5 max-w-[52ch]`}>
-            Proses yang sama untuk setiap pekerjaan. Tidak ada lompatan dari ide ke produksi.
-          </p>
-        </div>
-        <div className="relative mt-14">
-          <span
-            aria-hidden
-            className="js-connector spectral-line absolute inset-x-12 top-[30px] hidden h-px origin-left opacity-70 lg:block"
-          />
-          <ol className="js-nodes relative grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-            {FLOW.map((step, i) => (
-              <li key={step.label} className="g-dark rounded-2xl px-5 py-5">
-                <span className="font-mono text-[10px] text-white/55">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <h3 className="mt-2 text-[16px] font-medium">{step.label}</h3>
-                <p className="mt-2 text-[13px] leading-[1.55] text-white/60">{step.body}</p>
-              </li>
-            ))}
-          </ol>
         </div>
       </section>
 
@@ -967,13 +1202,7 @@ export default function Landing() {
               >
                 {item.logo ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={item.logo}
-                    alt=""
-                    width={16}
-                    height={16}
-                    className="size-4 shrink-0"
-                  />
+                  <img src={item.logo} alt="" width={16} height={16} className="size-4 shrink-0" />
                 ) : (
                   <span
                     aria-hidden
@@ -998,36 +1227,33 @@ export default function Landing() {
               <Words text="kamu ambil." />
             </span>
           </h2>
-          <p className={`${BODY} max-w-[36ch]`}>
-            Semua mulai dari masalah, bukan dari daftar teknologi.
-          </p>
+          <div className="flex w-full flex-col gap-3 sm:max-w-[28rem] md:items-end">
+            <p className={`${BODY} max-w-[36ch] md:text-right`}>
+              Semua mulai dari masalah, bukan dari daftar teknologi.
+            </p>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/35">
+              drag · klik kartu untuk ke depan
+            </span>
+          </div>
         </div>
-        <div className="js-rail mt-12 flex snap-x snap-mandatory gap-5 overflow-x-auto px-5 pb-4 md:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {SERVICES.map(({ icon: Icon, title, body, material }) => (
-            <article
-              key={title}
-              className="g-sheen relative flex min-h-[19rem] w-[19rem] shrink-0 snap-start flex-col justify-between overflow-hidden rounded-[20px] border border-white/[0.1] p-6 md:w-[22rem]"
-            >
-              {material ? (
-                <div className="js-material absolute inset-0">
-                  <Image src={material} alt="" fill sizes="24rem" className="object-cover" />
-                  <div className="absolute inset-0 bg-[linear-gradient(160deg,rgba(5,6,10,0.75),rgba(5,6,10,0.9))]" />
-                </div>
-              ) : (
-                <div className="absolute inset-0 bg-[#0a0b10]" />
-              )}
-              <div className="relative flex items-center justify-between">
-                <Icon className="size-5 text-white/70" strokeWidth={1.6} />
-                <span className="flex size-6 items-center justify-center rounded-full border border-white/20 text-[13px] text-white/70">
-                  +
-                </span>
-              </div>
-              <div className="relative">
-                <h3 className="text-[18px] font-medium">{title}</h3>
-                <p className="mt-2 text-[13.5px] leading-[1.6] text-white/65">{body}</p>
-              </div>
-            </article>
-          ))}
+        <div className="relative mx-auto mt-8 h-[500px] w-full max-w-[1424px] sm:h-[560px] md:h-[600px]">
+          <CircularCarousel
+            items={SERVICE_RING}
+            preset="cylinder"
+            intro="rise"
+            cardWidth={300}
+            aspectRatio={0.82}
+            gap={30}
+            tilt={-6}
+            speed={9}
+            depthFade={0.7}
+            innerShade={0.85}
+            cornerRadius={22}
+            fadeColor="#05060a"
+            captions
+            draggable
+            pauseOnHover
+          />
         </div>
       </section>
 
@@ -1046,14 +1272,24 @@ export default function Landing() {
           {PROJECTS.map((project) => (
             <article
               key={project.name}
-              className="g-frosted g-sheen g-float rounded-[20px] p-6 md:p-8"
+              className="js-project js-tilt g-frosted g-sheen g-float relative overflow-hidden rounded-[20px] p-6 md:p-8"
             >
-              <p className={EYEBROW}>{project.tag}</p>
-              <h3 className="mt-3 text-[20px] font-medium tracking-[-0.01em]">{project.name}</h3>
-              <p className="mt-3 max-w-[72ch] text-[15px] leading-[1.65] text-white/60">
+              <div
+                aria-hidden
+                className="js-glare pointer-events-none absolute inset-0 rounded-[20px] opacity-0 transition-opacity duration-300"
+                style={{
+                  background:
+                    "radial-gradient(460px circle at var(--gx,50%) var(--gy,50%),rgba(167,139,250,0.18),transparent 58%)",
+                }}
+              />
+              <p className={`${EYEBROW} relative`}>{project.tag}</p>
+              <h3 className="relative mt-3 text-[20px] font-medium tracking-[-0.01em]">
+                {project.name}
+              </h3>
+              <p className="relative mt-3 max-w-[72ch] text-[15px] leading-[1.65] text-white/60">
                 {project.body}
               </p>
-              <p className="mt-5 border-t border-white/[0.07] pt-4 font-mono text-[12px] text-white/45">
+              <p className="relative mt-5 border-t border-white/[0.07] pt-4 font-mono text-[12px] text-white/45">
                 {project.stack}
               </p>
             </article>
@@ -1183,10 +1419,7 @@ export default function Landing() {
             <p>© 2026 ITZ AI</p>
             <p>
               By{" "}
-              <a
-                href={CONTACT}
-                className="text-white/55 transition-colors hover:text-white"
-              >
+              <a href={CONTACT} className="text-white/55 transition-colors hover:text-white">
                 Mochammad Ginata Febryansyah
               </a>
             </p>

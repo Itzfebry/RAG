@@ -863,3 +863,29 @@ details[open] > .js-faq-body {
     -webkit-backdrop-filter: blur(14px) saturate(120%);
   }
 }
+
+/* Landing: isyarat gulir hero */
+@keyframes hero-cue-run {
+  0% {
+    transform: translateY(-120%);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(320%);
+    opacity: 0;
+  }
+}
+.hero-cue-run {
+  animation: hero-cue-run 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-cue-run {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* Landing: smooth scroll ditangani Lenis di components/smooth-scroll.tsx */
