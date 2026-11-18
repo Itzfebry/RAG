@@ -96,8 +96,12 @@ type Camera = { eye: number[]; viewProj: number[]; orient: number[] };
 
 type Nearest = { gap: number; s: number; ribbon: number; depth: number };
 
-const MAX_RENDER_DIM = 2400;
-const BLOOM_LEVELS = 5;
+// Batas render: ribbonya blur, jadi resolusi rendah tak terlihat.
+// 1200 px + bloom 2 level = fill-rate jauh lebih kecil.
+const MAX_RENDER_DIM = 1200;
+const BLOOM_LEVELS = 2;
+const DOTS_PER_FIBER = 130;
+const MAX_DPR = 1;
 const INTRO_SECONDS = 2.6;
 const CAMERA = 7.5;
 const FOV = 0.56;
@@ -785,6 +789,7 @@ const GhostFibers = ({
       camera: null as Camera | null
     };
     let raf = 0;
+    let paint = 0;
     let last = 0;
     let visible = true;
     let alive = true;
@@ -860,7 +865,7 @@ const GhostFibers = ({
       const s = settingsRef.current;
       const width = Math.max(1, container.clientWidth);
       const height = Math.max(1, container.clientHeight);
-      const baseDpr = Math.min(s.dpr || window.devicePixelRatio || 1, 1.5);
+      const baseDpr = Math.min(s.dpr || window.devicePixelRatio || 1, MAX_DPR);
       const longest = Math.max(width, height) * baseDpr;
       const ratio = longest > MAX_RENDER_DIM ? (baseDpr * MAX_RENDER_DIM) / longest : baseDpr;
       const pixelWidth = Math.max(1, Math.round(width * ratio));
@@ -904,7 +909,7 @@ const GhostFibers = ({
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE);
 
-      const dotsPerFiber = Math.round(260 * s.density);
+      const dotsPerFiber = Math.round(DOTS_PER_FIBER * s.density);
       const blurCap = 22 * clamp(Math.sqrt(56000 / (s.threads * dotsPerFiber * s.layers)), 0.45, 1);
       const area = Math.max(0.8 * s.thickness, 0.45) ** 2 / 0.64;
       const load = Math.pow((s.threads / 72) * s.density * area, -0.75);
@@ -1040,6 +1045,12 @@ const GhostFibers = ({
       const elapsed = last ? (now - last) / 1000 : 1 / 60;
       const dt = Math.min(0.05, elapsed);
       last = now;
+      // Ambient blur: 30 fps cukup, hemat separuh kerja GPU.
+      if (now - paint < 1000 / 30) {
+        raf = requestAnimationFrame(frame);
+        return;
+      }
+      paint = now;
       const moving = !s.paused && !reduce;
       if (moving) {
         state.frame += 1;

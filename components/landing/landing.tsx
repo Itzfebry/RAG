@@ -2,10 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SparklesIcon, type SparklesIconHandle } from "lucide-animated";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { SplitText } from "gsap/SplitText";
+import { CustomEase } from "gsap/CustomEase";
 import {
   ArrowRight,
   Boxes,
@@ -19,13 +21,10 @@ import {
   Wrench,
 } from "lucide-react";
 import ShinyText from "@/components/ShinyText";
-import BlurText from "@/components/BlurText";
 import StarBorder from "@/components/StarBorder";
-import FadeContent from "@/components/FadeContent";
 import GhostFibers from "@/components/GhostFibers";
-import ChromaGrid from "@/components/ChromaGrid";
+import AccordionGallery from "@/components/AccordionGallery";
 import ClickSpark from "@/components/ClickSpark";
-import CircularCarousel from "@/components/CircularCarousel";
 
 const CONTACT = "mailto:ayormahaki@gmail.com?subject=Discovery%20proyek%20AI";
 
@@ -77,7 +76,7 @@ const FLOW = [
     tag: "Brief",
     input: "Masalah",
     output: "Scope",
-    img: "/landing/spectral-streaks.jpg",
+    img: "/landing/spectral-streaks.webp",
     body: "Pemetaan masalah, data, dan target. Menentukan apa yang layak dibangun lebih dulu.",
   },
   {
@@ -86,7 +85,7 @@ const FLOW = [
     tag: "Blueprint",
     input: "Scope",
     output: "Rancangan",
-    img: "/landing/iridescent-flow.jpg",
+    img: "/landing/iridescent-flow.webp",
     body: "Rancangan alur, pemilihan model, skema retrieval, dan batas tool sebelum satu baris kode ditulis.",
   },
   {
@@ -95,7 +94,7 @@ const FLOW = [
     tag: "Build",
     input: "Rancangan",
     output: "Demo",
-    img: "/landing/iridescent-waves.jpg",
+    img: "/landing/iridescent-waves.webp",
     body: "Pembangunan bertahap dengan demo yang bisa dicoba, bukan laporan yang tak bisa diuji.",
   },
   {
@@ -154,20 +153,10 @@ const CAPABILITIES = [
   },
 ];
 
-const SERVICE_RING = CAPABILITIES.map(({ title, img }, i) => ({
-  src: img,
-  alt: title,
-  title,
-  subtitle: ["Chatbot", "RAG", "Otomasi", "Agent", "Multi-agent", "Integrasi"][i],
-}));
-
-const CHROMA_ACCENTS = ["#a78bfa", "#818cf8", "#38bdf8", "#c084fc", "#22d3ee", "#e879f9"];
-
-const CHROMA = CAPABILITIES.map(({ title, body, img }, i) => ({
+const ACCORDION_ITEMS = CAPABILITIES.map(({ title, img }) => ({
   image: img,
-  title,
-  subtitle: body,
-  accent: CHROMA_ACCENTS[i % CHROMA_ACCENTS.length],
+  label: title,
+  alt: title,
 }));
 
 const MAS_LOGO_BUBBLES = [
@@ -238,13 +227,13 @@ const SERVICES = [
     icon: Boxes,
     title: "Aplikasi AI end-to-end",
     body: "Pemetaan masalah, arsitektur, pembangunan, deploy, dan serah terima. Satu pekerjaan, satu tanggung jawab.",
-    material: "/landing/iridescent-flow.jpg",
+    material: "/landing/iridescent-flow.webp",
   },
   {
     icon: Database,
     title: "Chatbot & basis pengetahuan",
     body: "Menjawab dari dokumen, SOP, produk, atau katalog sendiri, bisa dibatasi hanya ke sumber itu.",
-    material: "/landing/iridescent-waves.jpg",
+    material: "/landing/iridescent-waves.webp",
   },
   {
     icon: Wrench,
@@ -329,38 +318,38 @@ function AiSparkle({ className }: { className?: string }) {
   }, []);
 
   return (
-    <span ref={wrap} aria-hidden className={`inline-block ${className ?? ""}`}>
+    <span ref={wrap} aria-hidden className={`js-split-ignore inline-block ${className ?? ""}`}>
       <SparklesIcon ref={icon} size={30} />
     </span>
   );
 }
 
-function Words({ text, className }: { text: string; className?: string }) {
-  const words = text.split(" ");
-  return (
-    <>
-      {words.map((word, i) => (
-        <span key={`${word}-${i}`} className={`js-w inline-block ${className ?? ""}`}>
-          {word}
-          {i < words.length - 1 ? "\u00A0" : null}
-        </span>
-      ))}
-    </>
-  );
+/** Teks polos — pemecahan kata dilakukan SplitText di efek GSAP (autoSplit + a11y). */
+function Words({ text }: { text: string }) {
+  return <>{text}</>;
 }
 
 export default function Landing() {
   const root = useRef<HTMLElement>(null);
+  // Dimatikan saat hero tertutup tirai ATAU saat user sedang scroll:
+// GhostFibers berhenti merender frame GPU selama scroll (paling terasa jank).
+  const [heroPaused, setHeroPaused] = useState(false);
 
   useEffect(() => {
     const el = root.current;
     if (!el) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
-    gsap.registerPlugin(ScrollTrigger);
+    gsap.registerPlugin(ScrollTrigger, SplitText, CustomEase);
+    // Kurva gerak khas ITZ AI — dipakai ulang di reveal agar terasa konsisten.
+    // easeOutQuint: awal tetap cepat, tapi ekor lebih panjang & halus
+    // (dulu 0.16,1,0.3,1 terlalu "sentak" untuk reveal 0.7–0.85 detik).
+    CustomEase.create("itz", "0.22, 1, 0.36, 1");
 
     let stopMarquee: (() => void) | undefined;
     let stopCursorGlow: (() => void) | undefined;
+    let onHeroScroll: (() => void) | undefined;
+    let scrollIdleTimer: number | undefined;
 
     const ctx = gsap.context(() => {
       // 1 · Nav kaca saat digulir + garis kemajuan spektral.
@@ -392,17 +381,26 @@ export default function Landing() {
       );
 
       // 2 · Judul: kata muncul dari blur saat heading masuk viewport.
+      // SplitText menangani pemecahan kata (tag span agar aman di dalam <em>/<span>),
+      // autoSplit menjaga pemecahan tetap benar setelah font termuat / resize,
+      // dan aria default menjaga heading tetap terbaca pembaca layar.
       el.querySelectorAll<HTMLElement>("h2").forEach((heading) => {
-        const words = heading.querySelectorAll<HTMLElement>(".js-w");
-        if (!words.length) return;
-        gsap.from(words, {
-          opacity: 0,
-          filter: "blur(10px)",
-          y: 16,
-          stagger: 0.04,
-          duration: 0.85,
-          ease: "power3.out",
-          scrollTrigger: { trigger: heading, start: "top 88%" },
+        SplitText.create(heading, {
+          type: "words",
+          tag: "span",
+          wordsClass: "js-w",
+          ignore: ".js-split-ignore",
+          autoSplit: true,
+          onSplit(self) {
+            return gsap.from(self.words, {
+              opacity: 0,
+              y: 16,
+              stagger: 0.04,
+              duration: 0.85,
+              ease: "itz",
+              scrollTrigger: { trigger: heading, start: "top 88%" },
+            });
+          },
         });
       });
 
@@ -427,20 +425,36 @@ export default function Landing() {
       }
       const masalahLines = el.querySelector<HTMLElement>(".js-masalah-lines");
       if (masalahLines) {
-        // Tiap paragraf menyala mengikuti gulir, bukan sekadar fade sekali.
-        Array.from(masalahLines.children).forEach((line) => {
-          gsap.fromTo(
-            line,
-            { opacity: 0.18, y: 24, filter: "blur(6px)" },
-            {
-              opacity: 1,
-              y: 0,
-              filter: "blur(0px)",
-              ease: "none",
-              scrollTrigger: { trigger: line, start: "top 90%", end: "top 58%", scrub: 0.5 },
-            },
-          );
+        // Satu timeline scrub: eyebrow → paragraf → bubble, berurutan seperti film.
+        // Dimulai tepat saat tirai mulai membuka (top 46%) dan selesai sebelum
+        // tirai benar-benar hilang.
+        const intro = gsap.timeline({
+          scrollTrigger: {
+            trigger: "#masalah",
+            start: "top 46%",
+            end: "top 4%",
+            scrub: 0.55,
+          },
         });
+        intro
+          .fromTo(
+            ".js-masalah-eyebrow",
+            { opacity: 0, y: 10 },
+            { opacity: 1, y: 0, ease: "none" },
+          )
+          .fromTo(
+            Array.from(masalahLines.children),
+            { opacity: 0, y: 24 },
+            { opacity: 1, y: 0, stagger: 0.2, ease: "none" },
+            0.1,
+          )
+          // Bubble hanya opacity: transform-nya dipakai animasi CSS/hover.
+          .fromTo(
+            ".mas-bubble-wrap",
+            { opacity: 0 },
+            { opacity: 1, stagger: 0.07, ease: "none" },
+            0.18,
+          );
       }
 
       // 2c · Masalah: spotlight mengikuti kursor (transform only).
@@ -472,28 +486,52 @@ export default function Landing() {
         };
       }
 
-      // 3 · Reveal per kelompok.
-      gsap.utils.toArray<HTMLElement>(".js-reveal").forEach((group) => {
-        if (!group.children.length) return;
-        gsap.from(group.children, {
-          y: 26,
-          opacity: 0,
-          duration: 0.7,
-          stagger: 0.08,
-          ease: "power3.out",
-          scrollTrigger: { trigger: group, start: "top 86%" },
-        });
+      // 3 · Reveal per kelompok — di-batch agar grup yang masuk bareng
+      //     mendapat satu stagger terkoordinasi (lebih sedikit ScrollTrigger).
+      const revealGroups = gsap
+        .utils.toArray<HTMLElement>(".js-reveal")
+        .filter((group) => group.children.length > 0);
+      const revealTargets = revealGroups.flatMap((group) => Array.from(group.children));
+      gsap.set(revealTargets, { y: 26, opacity: 0 });
+      ScrollTrigger.batch(revealGroups, {
+        start: "top 86%",
+        once: true,
+        onEnter: (batch) =>
+          gsap.to(
+            batch.flatMap((group) => Array.from(group.children)),
+            {
+              y: 0,
+              opacity: 1,
+              duration: 0.7,
+              stagger: 0.08,
+              ease: "itz",
+              overwrite: true,
+            },
+          ),
       });
 
       // 4 · Hero: keluar sinematik saat digulir + parallax pointer halus.
-      gsap.from(".hero-fibers", { opacity: 0, duration: 1.2, ease: "power3.out" });
+      gsap.from(".hero-fibers", { opacity: 0, duration: 1.2, ease: "itz" });
+      // H1: hanya transform, tanpa opacity, supaya langsung ter-paint (LCP).
+      gsap.from(".js-hero-h1", { y: 18, duration: 0.8, ease: "itz" });
+
+      // 4a · Opening wordmark "ITZ AI": naik + menjauh lalu mengunci
+      //     (scaleX menggantikan animasi letter-spacing agar tetap transform-only).
+      //     Shine ShinyText mulai di 1.2s tepat saat entrance selesai.
+      gsap.from(".js-brand", {
+        y: 18,
+        scaleX: 1.06,
+        opacity: 0,
+        duration: 1.0,
+        ease: "itz",
+        clearProps: "transform,opacity",
+      });
       const hero = el.querySelector<HTMLElement>(".js-hero");
       const heroCopy = el.querySelector<HTMLElement>(".js-hero-copy");
       if (hero && heroCopy) {
         gsap.to(heroCopy, {
           yPercent: -14,
           opacity: 0,
-          filter: "blur(8px)",
           ease: "none",
           scrollTrigger: { trigger: hero, start: "top top", end: "bottom top", scrub: 0.4 },
         });
@@ -501,12 +539,89 @@ export default function Landing() {
           ".js-hero-bg",
           { opacity: 1 },
           {
-            scale: 1.12,
+            // Tanpa scale: menghindari resample tekstur canvas WebGL tiap frame.
             opacity: 0.22,
             ease: "none",
             scrollTrigger: { trigger: hero, start: "top top", end: "bottom top", scrub: 0.6 },
           },
         );
+        // Tirai tenggelam: (A) naik linear ke 0.85 lalu DITAHAN sampai Masalah
+        // mencapai tengah viewport; (B) baru setelah itu meredup terbuka.
+        // Jeda hitam setelah hero memberi ruang scroll ekstra untuk hold.
+        const veil = el.querySelector<HTMLElement>(".js-page-veil");
+        if (veil) {
+          gsap
+            .timeline({
+              scrollTrigger: {
+                trigger: hero,
+                start: "top top",
+                endTrigger: "#masalah",
+                end: "top 50%",
+                scrub: 0.5,
+              },
+            })
+            .fromTo(veil, { opacity: 0 }, { opacity: 1, ease: "none", duration: 0.75 })
+            // Hold: hitam penuh, hanya menahan jarak scroll.
+            .to(veil, { opacity: 1, ease: "none", duration: 1 });
+          // Fade-out baru mulai saat #masalah top di tengah layar.
+          gsap.fromTo(
+            veil,
+            { opacity: 1 },
+            {
+              opacity: 0,
+              ease: "none",
+              immediateRender: false,
+              scrollTrigger: {
+                trigger: "#masalah",
+                start: "top 50%",
+                end: "top 8%",
+                scrub: 0.5,
+              },
+            },
+          );
+        }
+        // Selama tirai hitam (waktu idle), panaskan aset section berikutnya:
+        // logo bubble + gambar Layanan. Reveal jadi mulus, tanpa nunggu decode.
+        ScrollTrigger.create({
+          trigger: "#masalah",
+          start: "top 80%",
+          once: true,
+          onEnter: () => {
+            const warm = () => {
+              if ((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData)
+                return;
+              MAS_LOGO_BUBBLES.forEach(({ src }) => {
+                const probe = document.createElement("img");
+                probe.decoding = "async";
+                probe.src = src;
+                probe.decode?.().catch(() => {});
+              });
+              document.querySelectorAll<HTMLImageElement>("#kenali img").forEach((img) => {
+                if (img.loading === "lazy") img.loading = "eager";
+                img.decode?.().catch(() => {});
+              });
+            };
+            if (window.requestIdleCallback) window.requestIdleCallback(warm, { timeout: 1200 });
+            else window.setTimeout(warm, 150);
+          },
+        });
+        // GhostFibers berhenti merender: (a) saat user scroll — jank paling
+        // terasa di sini, dan frame diam tak terlihat saat halaman bergerak;
+        // (b) setelah 45% hero lewat (tirai sudah setengah menutup).
+        // Listener scroll langsung, bukan callback arah ScrollTrigger, supaya
+        // lompatan scroll cepat dari Lenis tetap konsisten.
+        let scrollIdle = 0;
+        onHeroScroll = () => {
+          setHeroPaused(true);
+          window.clearTimeout(scrollIdle);
+          scrollIdle = window.setTimeout(() => {
+            const y = window.scrollY;
+            if (y <= hero.offsetHeight * 0.45) setHeroPaused(false);
+          }, 140);
+          scrollIdleTimer = scrollIdle;
+        };
+        window.addEventListener("scroll", onHeroScroll, { passive: true });
+        setHeroPaused(window.scrollY > hero.offsetHeight * 0.45);
         gsap.to(".js-hero-cue", {
           opacity: 0,
           y: 12,
@@ -537,7 +652,6 @@ export default function Landing() {
       gsap.from(".js-node", {
         y: 24,
         opacity: 0,
-        filter: "blur(6px)",
         duration: 0.7,
         stagger: 0.08,
         ease: "power3.out",
@@ -577,25 +691,20 @@ export default function Landing() {
             { scaleX: 1, ease: "power1.inOut", duration: 0.18 },
             i * 0.25 + 0.06,
           );
+          // Posisi paket memakai transform (x), bukan `left` yang memicu layout.
+          gsap.set(packet, { xPercent: -50 });
           flow.fromTo(
             packet,
-            { left: "0%", opacity: 0 },
-            { left: "100%", opacity: 1, ease: "power1.inOut", duration: 0.24 },
+            { x: 0, opacity: 0 },
+            { x: () => link.offsetWidth, opacity: 1, ease: "power1.inOut", duration: 0.24 },
             i * 0.25 + 0.02,
           );
           flow.to(packet, { opacity: 0, duration: 0.06 }, i * 0.25 + 0.26);
         }
-        flow.to(
-          card,
-          {
-            borderColor: "rgba(167,139,250,0.42)",
-            backgroundColor: "rgba(139,92,246,0.08)",
-            boxShadow: "0 0 0 1px rgba(167,139,250,0.16), 0 28px 70px -38px rgba(139,92,246,0.65)",
-            duration: 0.16,
-            ease: "power2.out",
-          },
-          i * 0.25 + 0.2,
-        );
+        const glow = card.querySelector<HTMLElement>(".js-node-glow");
+        if (glow) {
+          flow.to(glow, { opacity: 1, duration: 0.16, ease: "power2.out" }, i * 0.25 + 0.2);
+        }
       });
 
       // 5 · Pantulan kaca mengikuti pointer.
@@ -632,8 +741,6 @@ export default function Landing() {
         marqueeWrap?.removeEventListener("pointerenter", pauseMarquee);
         marqueeWrap?.removeEventListener("pointerleave", resumeMarquee);
       };
-
-      // 7 · Korsel layanan memakai CircularCarousel (animasi internal komponen).
 
       // 8 · Parallax material gambar.
       el.querySelectorAll<HTMLElement>(".js-material img").forEach((img) => {
@@ -723,7 +830,16 @@ export default function Landing() {
       });
     }, el);
 
+    // Hitung ulang posisi trigger setelah font & gambar selesai dimuat,
+    // supaya start/end tidak meleset dari layout akhir.
+    const refresh = () => ScrollTrigger.refresh();
+    document.fonts?.ready.then(refresh);
+    window.addEventListener("load", refresh, { once: true });
+
     return () => {
+      window.removeEventListener("load", refresh);
+      if (onHeroScroll) window.removeEventListener("scroll", onHeroScroll);
+      window.clearTimeout(scrollIdleTimer);
       stopMarquee?.();
       stopCursorGlow?.();
       ctx.revert();
@@ -746,12 +862,18 @@ export default function Landing() {
       </a>
 
       <div aria-hidden className="grain pointer-events-none fixed inset-0 z-[45]" />
+      {/* Tirai dip-to-black: meredupkan layar saat hero keluar, lalu terbuka
+          lagi ketika Masalah masuk. pointer-events-none, opacity saja. */}
+      <div
+        aria-hidden
+        className="js-page-veil pointer-events-none fixed inset-0 z-[40] bg-[#05060a] opacity-0"
+      />
       <ClickSpark />
       <div className="js-progress spectral-line fixed inset-x-0 top-0 z-[60] origin-left scale-x-0" />
 
       {/* Nav kaca mengambang */}
       <header className="fixed inset-x-0 top-3 z-50 px-4 md:top-4 md:px-8">
-        <nav className="js-nav g-frosted g-float mx-auto flex h-[60px] w-full max-w-[1320px] items-center justify-between gap-6 rounded-full px-5 md:px-6">
+        <nav className="js-nav g-flat g-float mx-auto flex h-[60px] w-full max-w-[1320px] items-center justify-between gap-6 rounded-full px-5 md:px-6">
           <span
             aria-hidden
             className="spectral-line pointer-events-none absolute inset-x-8 bottom-0 opacity-30"
@@ -767,7 +889,7 @@ export default function Landing() {
             ))}
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/chat" className={`hidden text-[14px] sm:block ${NAVLINK}`}>
+            <Link href="/chat" prefetch={false} className={`hidden text-[14px] sm:block ${NAVLINK}`}>
               Demo
             </Link>
             <a
@@ -794,6 +916,7 @@ export default function Landing() {
               speed={0.35}
               twist={1.1}
               thickness={1}
+              threads={56}
               glow={0.7}
               brightness={1}
               vignette={0.4}
@@ -802,16 +925,16 @@ export default function Landing() {
               mouseInteraction
               hoverEffect="part"
               pulseOnClick={false}
+              paused={heroPaused}
             />
           </div>
-          {/* Vignette + fade hitam merata di atas ribbon */}
-          <div className="absolute inset-0 bg-[radial-gradient(90%_70%_at_50%_38%,transparent_30%,rgba(5,6,10,0.55)_78%,#05060a_100%)]" />
-          <div className="absolute inset-x-0 top-0 h-44 bg-[linear-gradient(180deg,#05060a,rgba(5,6,10,0.35)_60%,transparent)]" />
-          <div className="absolute inset-x-0 bottom-0 h-72 bg-[linear-gradient(0deg,#05060a,rgba(5,6,10,0.5)_55%,transparent)]" />
+          {/* Vignette + fade hitam — satu layer, bukan tiga, supaya komposit
+              di atas canvas tiap frame lebih murah. */}
+          <div className="hero-vignette absolute inset-0" />
         </div>
 
         <div className={`${HEADLINE} js-hero-copy relative isolate text-center`}>
-          <div className="relative">
+          <div className="js-brand relative">
             <ShinyText
               text="ITZ AI"
               color="#c7ccd4"
@@ -825,30 +948,15 @@ export default function Landing() {
               className={BRANDLABEL}
             />
           </div>
-          <h1 className="sr-only">Hadirkan Kecerdasan AI ke dalam Bisnis Anda.</h1>
-          <BlurText
-            text="Hadirkan Kecerdasan AI ke dalam Bisnis Anda."
-            aria-hidden
-            trigger="load"
-            effect="blur"
-            animateBy="words"
-            direction="bottom"
-            delay={90}
-            stepDuration={0.5}
-            blur={8}
-            distance={18}
-            className={`${H1} relative mt-4 justify-center`}
-          />
-          <FadeContent
-            trigger="mount"
-            effect="fade"
-            duration={0.9}
-            delay={0.45}
-            className={`${BODY} mx-auto mt-5 max-w-[54ch]`}
-          >
+          {/* H1 dan paragraf hero sengaja tampil langsung (bukan opacity:0) agar LCP
+              tidak tertahan animasi entrance. Gerak hanya transform. */}
+          <h1 className={`${H1} js-hero-h1 relative mt-4`}>
+            Hadirkan Kecerdasan AI ke dalam Bisnis Anda.
+          </h1>
+          <p className={`${BODY} mx-auto mt-5 max-w-[54ch]`}>
             Integrasikan AI ke aplikasi Anda dan bangun solusi digital baru berbasis AI. Dari AI
             integration hingga custom AI application development.
-          </FadeContent>
+          </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <span className="js-magnet inline-flex">
               <StarBorder
@@ -916,22 +1024,20 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Jeda hitam + fade bertopeng antara hero dan Masalah.
+          CSS murni (tanpa JS/opacity gate) supaya tidak menambah biaya LCP. */}
+      <div aria-hidden className="relative h-[32vh] overflow-hidden bg-[#05060a] md:h-[40vh]">
+        <div className="absolute inset-x-0 top-0 h-full bg-[linear-gradient(180deg,rgba(139,92,246,0.10),transparent_72%)] [mask-image:linear-gradient(180deg,black,transparent)]" />
+        <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(167,139,250,0.22),transparent)]" />
+      </div>
+
       {/* 3 · Masalah: cinematic, storytelling */}
       <section
         id="masalah"
-        className="relative isolate scroll-mt-28 overflow-hidden border-y border-white/[0.06] bg-[#05060a] py-24 md:py-36"
+        className="relative isolate scroll-mt-28 overflow-hidden border-b border-white/[0.06] bg-[#05060a] py-24 md:py-36"
       >
         {/* Latar sinematik: foto section + spotlight violet + fade tepi */}
         <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-          <div
-            className="absolute inset-0 opacity-15"
-            style={{
-              backgroundImage: "url('/image/section_masalah.webp')",
-              backgroundSize: "cover",
-              backgroundPosition: "center",
-              filter: "brightness(0.17)",
-            }}
-          />
           <div className="js-masalah-spot absolute inset-0 origin-center bg-[radial-gradient(75%_55%_at_50%_-5%,rgba(139,92,246,0.18),transparent_62%)] will-change-transform" />
           <div className="absolute inset-x-0 top-0 h-48 bg-[linear-gradient(180deg,#05060a,transparent)]" />
           <div className="absolute inset-x-0 bottom-0 h-48 bg-[linear-gradient(0deg,#05060a,transparent)]" />
@@ -977,7 +1083,7 @@ export default function Landing() {
 
         <div className={SHELL}>
           <div className="mx-auto max-w-[860px] text-center">
-            <p className={`${EYEBROW} js-reveal`}>Masalah</p>
+            <p className={`${EYEBROW} js-masalah-eyebrow`}>Masalah</p>
             <h2 className={`${H2} mt-6`}>
               <Words text="Apakah Infrastruktur Bisnis Anda Siap Menghadapi" />{" "}
               <span className={ACCENT}>
@@ -989,22 +1095,15 @@ export default function Landing() {
 
           {/* Narasi */}
           <div className="mt-14">
-            <div className="js-masalah-lines mx-auto max-w-[64ch] space-y-5 text-center text-[15px] leading-[1.75] text-white/60">
+            <div className="js-masalah-lines mx-auto max-w-[62ch] space-y-5 text-center text-[18px] leading-[1.75] text-white/60 md:text-[19px]">
               <p>
-                Banyak <em className="italic">perusahaan, mitra, dan pelaku bisnis</em> masih
-                menghadapi tantangan dalam mengelola operasional, memproses informasi, serta
-                menghubungkan berbagai sistem yang mereka gunakan. Di tengah perkembangan industri
-                yang semakin cepat, pendekatan konvensional tidak lagi cukup untuk menjawab
-                kompleksitas kebutuhan bisnis. Efisiensi, otomatisasi, dan pengambilan keputusan
-                berbasis data menjadi semakin penting.
-              </p>
-              <p className="text-white/80">
-                AI bukan lagi sekadar teknologi tambahan. AI mulai menjadi bagian penting dari
-                infrastruktur bisnis modern.
+                Banyak bisnis menghadapi tantangan dalam mengelola operasional, informasi, dan
+                integrasi sistem. Di tengah perkembangan industri, efisiensi dan otomatisasi menjadi
+                kebutuhan utama.
               </p>
               <p className="text-white/80">
                 <ShinyText
-                  text="ITZ AI hadir untuk menjembatani kebutuhan tersebut."
+                  text="ITZ AI hadir sebagai solusi integrasi AI untuk bisnis."
                   className="font-semibold"
                   color="#dfe3ea"
                   shineColor="#ffffff"
@@ -1016,10 +1115,9 @@ export default function Landing() {
                 />
               </p>
               <p>
-                Kami membantu bisnis mengintegrasikan kapabilitas AI ke dalam sistem yang sudah
-                berjalan maupun membangun aplikasi digital baru berbasis AI. Mengubah proses yang
-                kompleks menjadi workflow yang lebih cerdas, terintegrasi, dan adaptif terhadap
-                kebutuhan bisnis.
+                Kami membantu mengintegrasikan AI ke dalam sistem yang sudah ada maupun membangun
+                aplikasi digital berbasis AI, menciptakan workflow yang lebih cerdas, efisien, dan
+                adaptif.
               </p>
             </div>
           </div>
@@ -1043,15 +1141,22 @@ export default function Landing() {
           </p>
         </div>
         <div className="mt-14">
-          <ChromaGrid
-            items={CHROMA}
-            columns={3}
-            minCardWidth={280}
-            gap={14}
-            radius={300}
-            cardRadius={20}
-            aspectRatio="16 / 10"
-            theme="dark"
+          <AccordionGallery
+            items={ACCORDION_ITEMS}
+            defaultIndex={0}
+            height={460}
+            gap={10}
+            radius={20}
+            expandRatio={0.52}
+            orientation="horizontal"
+            trigger="hover"
+            grayscale
+            overlayColor="#05060a"
+            accentColor="#a78bfa"
+            parallax={0.5}
+            tilt={8}
+            duration={0.6}
+            ease="power3.out"
           />
         </div>
       </section>
@@ -1064,10 +1169,10 @@ export default function Landing() {
         <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
           <div className="js-flow-bg absolute inset-0 opacity-25">
             <Image
-              src="/landing/spectral-streaks.jpg"
+              src="/landing/spectral-streaks.webp"
               alt=""
               fill
-              sizes="100vw"
+              sizes="(min-width: 1024px) 60vw, 100vw"
               className="object-cover"
             />
           </div>
@@ -1114,6 +1219,11 @@ export default function Landing() {
                     }`}
                   >
                     <article className="js-node group relative flex flex-1 flex-col overflow-hidden rounded-2xl border border-white/[0.09] bg-[#0a0b12]">
+                      {/* Sorot aktif: warna/static, yang dianimasikan hanya opacity. */}
+                      <span
+                        aria-hidden
+                        className="js-node-glow pointer-events-none absolute inset-0 rounded-2xl border border-violet-300/40 bg-violet-500/[0.08] opacity-0 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.16),inset_0_-28px_70px_-38px_rgba(139,92,246,0.65)]"
+                      />
                       <div className="relative h-28 shrink-0 overflow-hidden">
                         <Image
                           src={step.img}
@@ -1160,7 +1270,7 @@ export default function Landing() {
                       >
                         <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/[0.12]" />
                         <span className="js-flow-fill absolute inset-x-0 top-1/2 h-px origin-left -translate-y-1/2 scale-x-0 bg-gradient-to-r from-violet-300/90 via-fuchsia-200/80 to-cyan-200/90" />
-                        <span className="js-flow-packet absolute left-0 top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-200 opacity-0 shadow-[0_0_12px_3px_rgba(103,232,249,0.6)]" />
+                        <span className="js-flow-packet absolute left-0 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-cyan-200 opacity-0 shadow-[0_0_12px_3px_rgba(103,232,249,0.6)]" />
                         <ArrowRight className="absolute right-0 top-1/2 size-3 -translate-y-1/2 text-white/25" />
                       </span>
                     ) : null}
@@ -1215,45 +1325,6 @@ export default function Landing() {
               </span>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* 5c · Layanan: korsel kartu material (pola "Next-gen AI features") */}
-      <section id="layanan" className="scroll-mt-28 border-y border-white/[0.08] py-20 md:py-28">
-        <div className={`${SHELL} flex flex-wrap items-end justify-between gap-6`}>
-          <h2 className={`${H2} max-w-[22ch]`}>
-            <Words text="Layanan yang bisa" />{" "}
-            <span className={ACCENT}>
-              <Words text="kamu ambil." />
-            </span>
-          </h2>
-          <div className="flex w-full flex-col gap-3 sm:max-w-[28rem] md:items-end">
-            <p className={`${BODY} max-w-[36ch] md:text-right`}>
-              Semua mulai dari masalah, bukan dari daftar teknologi.
-            </p>
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/35">
-              drag · klik kartu untuk ke depan
-            </span>
-          </div>
-        </div>
-        <div className="relative mx-auto mt-8 h-[500px] w-full max-w-[1424px] sm:h-[560px] md:h-[600px]">
-          <CircularCarousel
-            items={SERVICE_RING}
-            preset="cylinder"
-            intro="rise"
-            cardWidth={300}
-            aspectRatio={0.82}
-            gap={30}
-            tilt={-6}
-            speed={9}
-            depthFade={0.7}
-            innerShade={0.85}
-            cornerRadius={22}
-            fadeColor="#05060a"
-            captions
-            draggable
-            pauseOnHover
-          />
         </div>
       </section>
 
@@ -1350,7 +1421,7 @@ export default function Landing() {
                   <ArrowRight className="ml-2 size-4" strokeWidth={1.7} />
                 </a>
               </span>
-              <Link href="/chat" className={GHOST}>
+              <Link href="/chat" prefetch={false} className={GHOST}>
                 Coba demo
               </Link>
             </div>
@@ -1377,7 +1448,7 @@ export default function Landing() {
             <ul className="mt-4 space-y-2.5 text-[13px]">
               {SERVICES.slice(0, 3).map((service) => (
                 <li key={service.title}>
-                  <a href="#layanan" className="text-white/65 transition-colors hover:text-white">
+                  <a href="#kenali" className="text-white/65 transition-colors hover:text-white">
                     {service.title}
                   </a>
                 </li>
@@ -1405,7 +1476,7 @@ export default function Landing() {
                 </a>
               </li>
               <li>
-                <Link href="/chat" className="text-white/65 transition-colors hover:text-white">
+                <Link href="/chat" prefetch={false} className="text-white/65 transition-colors hover:text-white">
                   Demo chat
                 </Link>
               </li>

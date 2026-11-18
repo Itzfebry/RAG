@@ -882,6 +882,7 @@ const CircularCarousel = ({
             alt=""
             draggable={false}
             decoding="async"
+            loading="lazy"
             style={photoStyle}
           />
           {gone && (
@@ -892,6 +893,7 @@ const CircularCarousel = ({
               alt=""
               draggable={false}
               decoding="async"
+              loading="lazy"
               style={{ ...photoStyle, animationDelay: `${Math.round(leaving.delays[index])}ms` }}
             />
           )}

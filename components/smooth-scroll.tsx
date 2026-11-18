@@ -15,7 +15,12 @@ export default function SmoothScroll() {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     gsap.registerPlugin(ScrollTrigger);
-    const lenis = new Lenis({ duration: 1.1 });
+    // Mode `lerp` (bukan `duration`): posisi mengejar target dengan damping
+    // berbasis deltaTime, jadi kecepatan terasa sama di 30/60/144 fps.
+    // `duration` membuat tiap tick wheel memutar ulang animasi 1,2 s — saat
+    // frame drop, gerakan datang dalam sedikit lompatan besar dan ekornya
+    // terasa lama.
+    const lenis = new Lenis({ lerp: 0.12, wheelMultiplier: 0.85 });
 
     lenis.on("scroll", ScrollTrigger.update);
     const raf = (time: number) => lenis.raf(time * 1000);
@@ -31,7 +36,7 @@ export default function SmoothScroll() {
       const target = document.querySelector(id);
       if (!target) return;
       event.preventDefault();
-      lenis.scrollTo(target as HTMLElement);
+      lenis.scrollTo(target as HTMLElement, { duration: 1.1 });
     };
     document.addEventListener("click", onClick);
 

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useLayoutEffect, useRef } from 'react';
 
 const THEMES = {
@@ -432,8 +433,21 @@ export const ChromaGrid = ({
             <>
               <span className="chroma-wash" aria-hidden="true" />
               <div className="chroma-media" data-chroma-area="">
-                <img className="chroma-mono" src={item.image} alt={item.alt ?? item.title ?? ''} loading="lazy" />
-                <img className="chroma-color" src={item.image} alt="" aria-hidden="true" loading="lazy" />
+                <Image
+                  className="chroma-mono"
+                  src={item.image}
+                  alt={item.alt ?? item.title ?? ''}
+                  fill
+                  sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, 100vw"
+                />
+                <Image
+                  className="chroma-color"
+                  src={item.image}
+                  alt=""
+                  aria-hidden="true"
+                  fill
+                  sizes="(min-width: 1024px) 30vw, (min-width: 640px) 45vw, 100vw"
+                />
                 <span className="chroma-media-rim" aria-hidden="true" />
               </div>
               {showInfo && (item.title || item.subtitle) && (

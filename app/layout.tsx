@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
-import MotionProvider from "@/components/motion-provider";
 import SmoothScroll from "@/components/smooth-scroll";
 
 const geist = Geist({
@@ -35,10 +34,8 @@ export default function RootLayout({
   return (
     <html lang="id" className={cn("h-full dark", geist.variable, geistMono.variable)}>
       <body className="font-sans bg-background text-foreground antialiased h-full">
-        <MotionProvider>
-          <SmoothScroll />
-          {children}
-        </MotionProvider>
+        <SmoothScroll />
+        {children}
       </body>
     </html>
   );

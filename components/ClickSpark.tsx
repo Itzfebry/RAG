@@ -28,12 +28,15 @@ export default function ClickSpark({
     let raf = 0;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
+    // Kanvas sengaja tidak dialokasikan sampai klik pertama: layer full-screen
+    // yang selalu ada membebani compositor walau kosong.
+    canvas.style.display = "none";
     const resize = () => {
       canvas.width = window.innerWidth * dpr;
       canvas.height = window.innerHeight * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      canvas.style.display = "block";
     };
-    resize();
 
     const draw = (now: number) => {
       ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
@@ -63,6 +66,12 @@ export default function ClickSpark({
 
     const onClick = (event: MouseEvent) => {
       if ((event as PointerEvent).pointerType === "touch") return;
+      if (
+        canvas.width !== window.innerWidth * dpr ||
+        canvas.height !== window.innerHeight * dpr
+      ) {
+        resize();
+      }
       const start = performance.now();
       for (let i = 0; i < count; i += 1) {
         sparks.push({
@@ -75,10 +84,8 @@ export default function ClickSpark({
       if (!raf) raf = requestAnimationFrame(draw);
     };
 
-    window.addEventListener("resize", resize, { passive: true });
     window.addEventListener("click", onClick);
     return () => {
-      window.removeEventListener("resize", resize);
       window.removeEventListener("click", onClick);
       cancelAnimationFrame(raf);
     };

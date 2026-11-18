@@ -528,8 +528,6 @@
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(6px) saturate(160%);
-  -webkit-backdrop-filter: blur(6px) saturate(160%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
     0 18px 40px -22px rgba(0, 0, 0, 0.9);
@@ -633,13 +631,15 @@ details[open] > .js-faq-body {
   max-height: 720px;
   pointer-events: none;
   border-radius: 9999px;
+  /* Tanpa filter blur: blur 70px pada layer besar memaksa re-raster tiap
+     frame saat transform/scale berubah. Gradient-nya sudah lembut. */
   background: radial-gradient(
     closest-side,
-    rgba(139, 92, 246, 0.35),
-    rgba(79, 70, 229, 0.16) 55%,
-    transparent 72%
+    rgba(139, 92, 246, 0.32),
+    rgba(124, 82, 235, 0.2) 42%,
+    rgba(79, 70, 229, 0.1) 62%,
+    transparent 74%
   );
-  filter: blur(70px);
   animation: hero-aurora 26s ease-in-out infinite;
   will-change: transform, opacity;
 }
@@ -651,23 +651,38 @@ details[open] > .js-faq-body {
   }
 }
 
-/* landing: ribbon palette — obsidian base, electric violet, indigo, silver/ice.
-   Motion: controlled hue shift (ayun sempit, bukan rainbow penuh). */
-@keyframes fiber-hue {
-  0%,
-  100% {
-    filter: hue-rotate(-8deg) saturate(1.05);
-  }
-  50% {
-    filter: hue-rotate(14deg) saturate(1.2);
-  }
+/* Vignette hero: tiga gradient digabung jadi satu layer. */
+.hero-vignette {
+  background:
+    radial-gradient(
+      90% 70% at 50% 38%,
+      transparent 30%,
+      rgba(5, 6, 10, 0.55) 78%,
+      #05060a 100%
+    ),
+    linear-gradient(180deg, #05060a, rgba(5, 6, 10, 0.35) 60%, transparent) top / 100%
+      11rem no-repeat,
+    linear-gradient(0deg, #05060a, rgba(5, 6, 10, 0.5) 55%, transparent) bottom / 100%
+      18rem no-repeat;
 }
-.hero-fibers {
-  animation: fiber-hue 18s ease-in-out infinite;
+
+
+
+/* GSAP: petunjuk kompositor hanya untuk elemen yang dianimasikan terus-menerus
+   (marquee, pointer-follow, tilt). Reveal sekali pakai sengaja tidak dimasukkan
+   supaya tidak membebani memori dengan will-change permanen. */
+.js-marquee,
+.js-hero-copy,
+.js-masalah-cursor,
+.js-tilt {
+  will-change: transform, opacity;
 }
 @media (prefers-reduced-motion: reduce) {
-  .hero-fibers {
-    animation: none;
+  .js-marquee,
+  .js-hero-copy,
+  .js-masalah-cursor,
+  .js-tilt {
+    will-change: auto;
   }
 }
 
@@ -762,6 +777,13 @@ details[open] > .js-faq-body {
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
   backdrop-filter: blur(var(--blur-md)) saturate(140%);
   -webkit-backdrop-filter: blur(var(--blur-md)) saturate(140%);
+  border: 1px solid var(--glass-border);
+}
+/* Tanpa backdrop-filter: nav fixed tidak perlu me-reblur konten yang bergerak
+   tiap frame saat scroll. */
+.g-flat {
+  position: relative;
+  background: linear-gradient(160deg, rgba(16, 18, 26, 0.88), rgba(8, 9, 14, 0.82));
   border: 1px solid var(--glass-border);
 }
 .g-dark {
