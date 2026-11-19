@@ -676,6 +676,29 @@ details[open] > .js-faq-body {
       13vh no-repeat;
 }
 
+/* Garis orbit bercahaya; glow statis (tak dianimasikan) → murah. */
+.orbit-guides {
+  filter: drop-shadow(0 0 3px rgba(167, 139, 250, 0.55));
+}
+
+/* Kepala comet bercahaya; ekor = titik kecil makin redup (lihat COMET). */
+.orbit-measure {
+  pointer-events: none;
+}
+.orbit-dot {
+  pointer-events: none;
+}
+.orbit-head {
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.95))
+    drop-shadow(0 0 14px rgba(139, 92, 246, 0.9));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbit-head {
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.7));
+  }
+}
+
 
 
 /* GSAP: petunjuk kompositor hanya untuk elemen yang dianimasikan terus-menerus
@@ -793,7 +816,9 @@ details[open] > .js-faq-body {
    tiap frame saat scroll. */
 .g-flat {
   position: relative;
-  background: linear-gradient(160deg, rgba(16, 18, 26, 0.88), rgba(8, 9, 14, 0.82));
+  background: linear-gradient(160deg, rgba(16, 18, 26, 0.5), rgba(8, 9, 14, 0.4));
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
   border: 1px solid var(--glass-border);
 }
 .g-dark {
@@ -890,6 +915,7 @@ details[open] > .js-faq-body {
 /* Perangkat lemah: kurangi biaya blur */
 @media (max-width: 640px) {
   .g-dark,
+  .g-flat,
   .g-frosted {
     backdrop-filter: blur(14px) saturate(120%);
     -webkit-backdrop-filter: blur(14px) saturate(120%);

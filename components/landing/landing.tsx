@@ -27,7 +27,8 @@ import ClickSpark from "@/components/ClickSpark";
 import StarBorder from "@/components/StarBorder";
 import CardNav from "@/components/CardNav";
 import BorderGlow from "@/components/BorderGlow";
-import MagicBento from "@/components/MagicBento";
+import IntegrationOrbit from "@/components/IntegrationOrbit";
+import Stars from "@/components/Stars";
 import GradientText from "@/components/GradientText";
 
 const CONTACT = "mailto:ayormahaki@gmail.com?subject=Discovery%20proyek%20AI";
@@ -50,9 +51,7 @@ const H2 =
 const BODY = "text-[15px] leading-[1.65] text-white/65 md:text-[16px]";
 const PILL =
   "inline-flex h-11 items-center rounded-full bg-[#fafafa] px-5 text-[14px] font-medium text-[#05060a] transition-transform hover:scale-[1.03]";
-const GHOST =
-  "g-crystal inline-flex h-11 items-center rounded-full px-5 text-[14px] font-medium text-white/90 transition-colors hover:bg-white/[0.1]";
-const NAVLINK = "text-[15px] text-white/80 transition-colors hover:text-white";
+const NAVLINK = "text-[15px] text-white/80 transition-[color,opacity] hover:text-white";
 
 const NAV = [
   { href: "#masalah", label: "Masalah" },
@@ -264,18 +263,21 @@ const PROJECTS = [
     tag: "Platform keuangan & analisis bisnis",
     body: "Pencatatan transaksi, utang-piutang, laporan dengan ekspor CSV/Excel/PDF, dan AI Finance Analyst yang menjelaskan kondisi bisnis dari angka aktual, bukan tebakan.",
     stack: "Next.js 15 · Drizzle · PostgreSQL · Auth.js · Cloudflare R2",
+    poster: "linear-gradient(135deg, #4c1d95 0%, #7c3aed 45%, #22d3ee 100%)",
   },
   {
     name: "ITZ AI Axtra",
     tag: "Ruang kerja AI personal",
     body: "Chat multi-mode dengan memori personal yang dicari secara semantik, multi-provider LLM, riset web, generated image, jurnal, jadwal, PWA + Telegram, dan beranda orchestrator.",
     stack: "Next.js · FastAPI · Supabase + pgvector",
+    poster: "linear-gradient(135deg, #1e1b4b 0%, #4338ca 48%, #d946ef 100%)",
   },
   {
     name: "Mesin RAG produksi",
     tag: "Asisten AI di atas data sendiri",
     body: "Chat streaming dengan panel admin penuh: pengetahuan per kategori, chunking, embedding asimetris, prompt anti-halusinasi, kuota, dan tagihan otomatis.",
     stack: "Next.js · FastAPI · SSE · PostgreSQL + pgvector",
+    poster: "linear-gradient(135deg, #064e3b 0%, #0d9488 45%, #8b5cf6 100%)",
   },
 ];
 
@@ -359,6 +361,26 @@ export default function Landing() {
   // Dimatikan saat hero tertutup tirai ATAU saat user sedang scroll:
 // GhostFibers berhenti merender frame GPU selama scroll (paling terasa jank).
   const [heroPaused, setHeroPaused] = useState(false);
+  // Section yang sedang aktif (untuk sorot link navbar).
+  const [active, setActive] = useState("");
+
+  useEffect(() => {
+    const sections = NAV.map((item) => document.getElementById(item.href.slice(1))).filter(
+      (node): node is HTMLElement => !!node,
+    );
+    if (!sections.length) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const top = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (top) setActive(`#${top.target.id}`);
+      },
+      { rootMargin: "-45% 0px -50% 0px" },
+    );
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const el = root.current;
@@ -537,6 +559,33 @@ export default function Landing() {
             },
           );
         }
+      }
+
+      // 2e · Project Launch: masuk ala "launch" — header naik, garis ignition
+      //      menyala, lalu kartu naik berurutan; list di-sweep lewat mask.
+      const karya = el.querySelector<HTMLElement>("#karya");
+      if (karya) {
+        const head = karya.querySelector<HTMLElement>(".js-launch-head");
+        const line = karya.querySelector<HTMLElement>(".js-launch-line");
+        const list = karya.querySelector<HTMLElement>(".js-launch-list");
+        const cards = list ? (Array.from(list.children) as HTMLElement[]) : [];
+        const launch = { trigger: karya, start: "top 92%", end: "top 52%", scrub: 0.6 };
+        const tl = gsap.timeline({ scrollTrigger: launch });
+        if (head) tl.fromTo(head, { opacity: 0, y: 48 }, { opacity: 1, y: 0, ease: "none" }, 0);
+        if (line) tl.fromTo(line, { scaleX: 0 }, { scaleX: 1, ease: "none" }, 0.18);
+        if (cards.length)
+          tl.fromTo(
+            cards,
+            { opacity: 0, yPercent: 14, scale: 0.96 },
+            { opacity: 1, yPercent: 0, scale: 1, ease: "none", stagger: 0.1 },
+            0.22,
+          );
+        if (list)
+          gsap.fromTo(
+            list,
+            { maskPosition: "0% 100%" },
+            { maskPosition: "0% 0%", ease: "none", scrollTrigger: launch },
+          );
       }
 
       // 3 · Reveal per kelompok — di-batch agar grup yang masuk bareng
@@ -813,13 +862,13 @@ export default function Landing() {
         );
       });
 
-      // 8c · Proyek: panel bergeser halus + garis atas digambar.
-      el.querySelectorAll<HTMLElement>(".js-project").forEach((card, i) => {
+      // 8c · Proyek: panel bergeser halus (grid catalog) + garis atas digambar.
+      el.querySelectorAll<HTMLElement>(".js-project").forEach((card) => {
         gsap.fromTo(
           card,
-          { y: 18 * (i % 2 === 0 ? 1 : -1) },
+          { y: 16 },
           {
-            y: -18 * (i % 2 === 0 ? 1 : -1),
+            y: -16,
             ease: "none",
             scrollTrigger: { trigger: card, start: "top bottom", end: "bottom top", scrub: true },
           },
@@ -927,20 +976,22 @@ export default function Landing() {
           </Link>
           <div className="ml-auto mr-16 flex items-center gap-8">
             {NAV.map((item) => (
-              <a key={item.href} href={item.href} className={`${NAVLINK} font-light`}>
+              <a
+                key={item.href}
+                href={item.href}
+                aria-current={active === item.href ? "true" : undefined}
+                className={`${NAVLINK} font-light ${active && active !== item.href ? "opacity-40" : ""}`}
+              >
                 {item.label}
               </a>
             ))}
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/chat" prefetch={false} className={`text-[14px] ${NAVLINK}`}>
-              Demo
-            </Link>
             <a
               href={CONTACT}
               className="inline-flex h-9 items-center rounded-full bg-[#fafafa] px-4 text-[13px] font-medium text-[#05060a] transition-transform hover:scale-[1.03]"
             >
-              Konsultasi
+              Mulai
             </a>
           </div>
         </nav>
@@ -964,7 +1015,7 @@ export default function Landing() {
                 ],
               },
             ]}
-            cta={{ label: "Konsultasi", href: CONTACT }}
+            cta={{ label: "Mulai", href: CONTACT }}
             theme="dark"
             surface="glass"
             maxWidth={1320}
@@ -1035,7 +1086,7 @@ export default function Landing() {
             <span className="js-magnet inline-flex">
               <StarBorder
                 as="a"
-                href={CONTACT}
+                href="/chat"
                 color="#ffffff"
                 trailColor="#ffffff"
                 backgroundColor="rgba(255,255,255,0.12)"
@@ -1358,86 +1409,101 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* 5b · Integrasi: heading terpusat + kaca kristal besar */}
-      <section className={`${SHELL} py-20 md:py-28`}>
-        <div className="mx-auto max-w-[720px] text-center">
-          <h2 className={H2}>
-            <Words text="Integrasikan AI" />{" "}
-            <Accent text="ke dalam Apps." />
-          </h2>
-          <p className="mx-auto mt-5 max-w-[62ch] text-center text-[18px] leading-[1.75] text-white/60 md:text-[19px]">
-            Dari chat, dokumen, hingga pembayaran, integrasikan AI ke seluruh alat kerja Anda.
-          </p>
+      {/* 5b · Integrasi: peta orbit — latar luar angkasa full-bleed */}
+      <section className="relative isolate overflow-hidden py-20 md:py-28">
+        {/* Bintang + gelap pekat, melebar sampai tepi kiri/kanan halaman. */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+          <Stars />
+          <div className="absolute inset-0 bg-[radial-gradient(58%_68%_at_50%_58%,rgba(76,29,149,0.22),transparent_72%)]" />
+          {/* Vignette hitam kiri/kanan menyatu dengan tepi; atas/bawah memudar. */}
+          <div className="absolute inset-y-0 left-0 w-1/5 bg-gradient-to-r from-[#05060a] to-transparent" />
+          <div className="absolute inset-y-0 right-0 w-1/5 bg-gradient-to-l from-[#05060a] to-transparent" />
+          <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#05060a] to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#05060a] to-transparent" />
         </div>
-        <MagicBento
-          items={INTEGRATIONS.map((item) => ({
-            id: item.name,
-            label: item.name,
-            visual: item.logo ? (
-              <span className="flex h-12 w-12 items-center justify-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={item.logo} alt="" className="h-12 w-12 object-contain" />
-              </span>
-            ) : (
-              <span
-                aria-hidden
-                className="flex size-12 items-center justify-center rounded-lg border border-white/20 text-[15px] text-white/60"
-              >
-                {item.name.charAt(0)}
-              </span>
-            ),
-          }))}
-          columns={5}
-          rowHeight={120}
-          gap={8}
-          radius={16}
-          theme="dark"
-          glowColor="#a78bfa"
-          enableBorderGlow
-          enableSpotlight
-          spotlightRadius={260}
-          enableStars={false}
-          enableTilt={false}
-          enableMagnetism={false}
-          clickEffect
-          intro={false}
-          className="mx-auto mt-12 max-w-[1000px]"
-        />
+
+        <div className={SHELL}>
+          <div className="mx-auto max-w-[720px] text-center">
+            <h2 className={H2}>
+              <Words text="Integrasikan AI" />{" "}
+              <Accent text="ke dalam Apps." />
+            </h2>
+            <p className="mx-auto mt-5 max-w-[62ch] text-center text-[18px] leading-[1.75] text-white/60 md:text-[19px]">
+              Dari chat, dokumen, hingga pembayaran, integrasikan AI ke seluruh alat kerja Anda.
+            </p>
+          </div>
+          <div className="mt-12 md:mt-16">
+            <IntegrationOrbit items={INTEGRATIONS} />
+          </div>
+        </div>
       </section>
 
       {/* 6 · Project Launch: proyek yang sudah jalan */}
-      <section id="karya" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
-        <div className="mx-auto max-w-[760px] text-center">
+      <section id="karya" className={`${SHELL} relative isolate scroll-mt-28 py-20 md:py-28`}>
+        <div className="js-launch-head mx-auto max-w-[760px] text-center">
           <p className={EYEBROW}>Project Launch</p>
           <h2 className={`${H2} mt-5`}>
             <Words text="Sistem yang sudah jalan," />{" "}
             <Accent text="lengkap dengan operasionalnya." />
           </h2>
+          <div className="js-launch-line spectral-line mx-auto mt-6 h-px w-full max-w-[360px] origin-left scale-x-0" />
         </div>
-        <div className="js-reveal mt-12 space-y-4">
+        <div
+          className="js-launch-list mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
+          style={{
+            maskImage: "linear-gradient(180deg, #000 60%, transparent 100%)",
+            maskSize: "100% 150%",
+            maskPosition: "0% 100%",
+            WebkitMaskImage: "linear-gradient(180deg, #000 60%, transparent 100%)",
+            WebkitMaskSize: "100% 150%",
+            WebkitMaskPosition: "0% 100%",
+          }}
+        >
           {PROJECTS.map((project) => (
             <article
               key={project.name}
-              className="js-project js-tilt g-frosted g-sheen g-float relative overflow-hidden rounded-[20px] p-6 md:p-8"
+              className="js-project js-tilt g-frosted g-sheen g-float group relative flex flex-col overflow-hidden rounded-[20px]"
             >
               <div
                 aria-hidden
-                className="js-glare pointer-events-none absolute inset-0 rounded-[20px] opacity-0 transition-opacity duration-300"
+                className="js-glare pointer-events-none absolute inset-0 z-20 opacity-0 transition-opacity duration-300"
                 style={{
                   background:
-                    "radial-gradient(460px circle at var(--gx,50%) var(--gy,50%),rgba(167,139,250,0.18),transparent 58%)",
+                    "radial-gradient(420px circle at var(--gx,50%) var(--gy,50%),rgba(255,255,255,0.16),transparent 60%)",
                 }}
               />
-              <p className={`${EYEBROW} relative`}>{project.tag}</p>
-              <h3 className="relative mt-3 text-[20px] font-medium tracking-[-0.01em]">
-                {project.name}
-              </h3>
-              <p className="relative mt-3 max-w-[72ch] text-[15px] leading-[1.65] text-white/60">
-                {project.body}
-              </p>
-              <p className="relative mt-5 border-t border-white/[0.07] pt-4 font-mono text-[12px] text-white/45">
-                {project.stack}
-              </p>
+              {/* Poster gradient (gambar menyusul) */}
+              <div className="relative aspect-[16/10] overflow-hidden" style={{ background: project.poster }}>
+                <div
+                  aria-hidden
+                  className="absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(255,255,255,0.6)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.6)_1px,transparent_1px)] [background-size:22px_22px]"
+                />
+                <div
+                  aria-hidden
+                  className="absolute inset-0 bg-[radial-gradient(130%_100%_at_82%_-10%,rgba(255,255,255,0.4),transparent_55%)]"
+                />
+                <div
+                  aria-hidden
+                  className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#0a0b12] to-transparent"
+                />
+                <span className="absolute bottom-3 left-4 font-heading text-[20px] font-medium uppercase tracking-[0.14em] text-white/95">
+                  {project.name}
+                </span>
+              </div>
+              <div className="relative z-10 flex flex-1 flex-col p-5 md:p-6">
+                <p className={EYEBROW}>{project.tag}</p>
+                <p className="mt-3 flex-1 text-[14px] leading-[1.6] text-white/60">{project.body}</p>
+                <ul className="mt-4 flex flex-wrap gap-1.5 border-t border-white/[0.07] pt-4">
+                  {project.stack.split(" · ").map((tech) => (
+                    <li
+                      key={tech}
+                      className="rounded-full border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-mono text-[10px] tracking-[0.04em] text-white/50"
+                    >
+                      {tech}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </article>
           ))}
         </div>
@@ -1496,14 +1562,11 @@ export default function Landing() {
             </p>
             <div className="relative mt-8 flex flex-wrap items-center justify-center gap-3">
               <span className="js-magnet inline-flex">
-                <a href={CONTACT} className={PILL}>
+                <a href="/chat" className={PILL}>
                   Mulai discovery
                   <ArrowRight className="ml-2 size-4" strokeWidth={1.7} />
                 </a>
               </span>
-              <Link href="/chat" prefetch={false} className={GHOST}>
-                Coba demo
-              </Link>
             </div>
             <p className="relative mt-5 font-mono text-[11px] uppercase tracking-[0.14em] text-white/40">
               Tanpa komitmen · balasan dalam 1×24 jam · bukan sales call
