@@ -1058,9 +1058,9 @@ const GhostFibers = ({
         state.roll += dt * s.speed * s.rollSpeed;
         state.flow += dt * s.flow * 12;
         state.intro += Math.min(elapsed, 1);
-      } else if (state.intro < INTRO_SECONDS) {
-        state.intro = INTRO_SECONDS;
       }
+      // Saat pause, state.intro TIDAK dilompatkan ke akhir: kalau resume,
+      // intro lanjut dari posisi terakhir, jadi tidak muncul "pop" penuh.
       state.pulse.age += dt;
       state.pulse.strength = Math.max(0, 1 - state.pulse.age / 1.8) ** 2;
 

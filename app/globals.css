@@ -666,6 +666,16 @@ details[open] > .js-faq-body {
       18rem no-repeat;
 }
 
+/* Vignette tepi layar untuk section setelah hero: framing sinematik tanpa
+   menutup konten. Statis → tidak ada kerja per frame. */
+.page-vignette {
+  background:
+    linear-gradient(180deg, rgba(5, 6, 10, 0.78), rgba(5, 6, 10, 0) 15vh) top / 100%
+      15vh no-repeat,
+    linear-gradient(0deg, rgba(5, 6, 10, 0.82), rgba(5, 6, 10, 0) 13vh) bottom / 100%
+      13vh no-repeat;
+}
+
 
 
 /* GSAP: petunjuk kompositor hanya untuk elemen yang dianimasikan terus-menerus

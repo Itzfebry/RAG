@@ -29,6 +29,8 @@
   "homepage": "https://github.com/Itzfebry/RAG#readme",
   "dependencies": {
     "@base-ui/react": "^1.8.0",
+    "@hugeicons/core-free-icons": "^4.4.0",
+    "@hugeicons/react": "^1.1.10",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
     "framer-motion": "^14.0.0",

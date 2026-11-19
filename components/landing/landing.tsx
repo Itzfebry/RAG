@@ -21,10 +21,14 @@ import {
   Wrench,
 } from "lucide-react";
 import ShinyText from "@/components/ShinyText";
-import StarBorder from "@/components/StarBorder";
 import GhostFibers from "@/components/GhostFibers";
 import AccordionGallery from "@/components/AccordionGallery";
 import ClickSpark from "@/components/ClickSpark";
+import StarBorder from "@/components/StarBorder";
+import CardNav from "@/components/CardNav";
+import BorderGlow from "@/components/BorderGlow";
+import MagicBento from "@/components/MagicBento";
+import GradientText from "@/components/GradientText";
 
 const CONTACT = "mailto:ayormahaki@gmail.com?subject=Discovery%20proyek%20AI";
 
@@ -205,21 +209,26 @@ const MAS_LOGO_BUBBLES = [
 ];
 
 const INTEGRATIONS = [
+  // Sosial media
+  { name: "Instagram", logo: "/logos/instagram.svg" },
+  { name: "TikTok", logo: "/logos/tiktok.svg" },
+  // Chat & kolaborasi
   { name: "WhatsApp", logo: "/logos/whatsapp.svg" },
   { name: "Telegram", logo: "/logos/telegram.svg" },
   { name: "Discord", logo: "/logos/discord.svg" },
   { name: "Microsoft Teams", logo: "/logos/microsoft-teams.svg" },
+  // Dokumen & penyimpanan
   { name: "Google Sheets", logo: "/logos/google-sheets.svg" },
   { name: "Excel", logo: "/logos/excel.svg" },
   { name: "Google Drive", logo: "/logos/google-drive.svg" },
-  { name: "Shopee", logo: "/logos/shopee.svg" },
-  { name: "GitHub", logo: "/logos/github.svg" },
-  { name: "Google Calendar", logo: "/logos/google-calendar.svg" },
   { name: "OneDrive", logo: "/logos/onedrive.svg" },
+  // Penjadwalan & pengembangan
+  { name: "Google Calendar", logo: "/logos/google-calendar.svg" },
+  { name: "GitHub", logo: "/logos/github.svg" },
+  // E-commerce & pembayaran
+  { name: "Shopee", logo: "/logos/shopee.svg" },
   { name: "Midtrans", logo: null },
   { name: "Xendit", logo: "/logos/xendit.svg" },
-  { name: "TikTok", logo: "/logos/tiktok.svg" },
-  { name: "Instagram", logo: "/logos/instagram.svg" },
 ];
 
 const SERVICES = [
@@ -329,6 +338,22 @@ function Words({ text }: { text: string }) {
   return <>{text}</>;
 }
 
+/** Aksen italic dengan gradient hidup. Di-ignore SplitText supaya tidak dipecah. */
+function Accent({ text }: { text: string }) {
+  return (
+    <GradientText
+      className={`${ACCENT} js-split-ignore`}
+      colors={["#c4b5fd", "#a78bfa", "#67e8f9"]}
+      variant="flow"
+      animationSpeed={9}
+      scale={2}
+      glow={0}
+    >
+      {text}
+    </GradientText>
+  );
+}
+
 export default function Landing() {
   const root = useRef<HTMLElement>(null);
   // Dimatikan saat hero tertutup tirai ATAU saat user sedang scroll:
@@ -349,7 +374,6 @@ export default function Landing() {
     let stopMarquee: (() => void) | undefined;
     let stopCursorGlow: (() => void) | undefined;
     let onHeroScroll: (() => void) | undefined;
-    let scrollIdleTimer: number | undefined;
 
     const ctx = gsap.context(() => {
       // 1 · Nav kaca saat digulir + garis kemajuan spektral.
@@ -486,6 +510,35 @@ export default function Landing() {
         };
       }
 
+      // 2d · Layanan: "pop" naik saat masuk dari Masalah. Scrub, transform +
+      //     opacity saja; header dan galeri naik berurutan.
+      const kenali = el.querySelector<HTMLElement>("#kenali");
+      if (kenali) {
+        const popTargets = [
+          kenali.firstElementChild as HTMLElement | null,
+          kenali.querySelector<HTMLElement>(".js-layanan-pop"),
+        ].filter((node): node is HTMLElement => !!node);
+        if (popTargets.length) {
+          gsap.fromTo(
+            popTargets,
+            { opacity: 0, y: 64, scale: 0.94 },
+            {
+              opacity: 1,
+              y: 0,
+              scale: 1,
+              ease: "none",
+              stagger: 0.08,
+              scrollTrigger: {
+                trigger: kenali,
+                start: "top 95%",
+                end: "top 48%",
+                scrub: 0.6,
+              },
+            },
+          );
+        }
+      }
+
       // 3 · Reveal per kelompok — di-batch agar grup yang masuk bareng
       //     mendapat satu stagger terkoordinasi (lebih sedikit ScrollTrigger).
       const revealGroups = gsap
@@ -605,20 +658,19 @@ export default function Landing() {
             else window.setTimeout(warm, 150);
           },
         });
-        // GhostFibers berhenti merender: (a) saat user scroll — jank paling
-        // terasa di sini, dan frame diam tak terlihat saat halaman bergerak;
-        // (b) setelah 45% hero lewat (tirai sudah setengah menutup).
+        // GhostFibers: berhenti merender saat hero tertutup tirai / saat scroll
+        // turun, TAPI hidup lagi lebih awal ketika user scroll naik dan hero
+        // masih di balik tirai hitam. Jadi saat hero terlihat, ribbon sudah
+        // berjalan — tidak terkesan "start ulang" setelah freeze.
         // Listener scroll langsung, bukan callback arah ScrollTrigger, supaya
         // lompatan scroll cepat dari Lenis tetap konsisten.
-        let scrollIdle = 0;
+        let prevY = window.scrollY;
         onHeroScroll = () => {
-          setHeroPaused(true);
-          window.clearTimeout(scrollIdle);
-          scrollIdle = window.setTimeout(() => {
-            const y = window.scrollY;
-            if (y <= hero.offsetHeight * 0.45) setHeroPaused(false);
-          }, 140);
-          scrollIdleTimer = scrollIdle;
+          const y = window.scrollY;
+          const goingUp = y < prevY - 1;
+          prevY = y;
+          const covered = y > hero.offsetHeight * 0.45;
+          setHeroPaused(goingUp && y < hero.offsetHeight ? false : covered);
         };
         window.addEventListener("scroll", onHeroScroll, { passive: true });
         setHeroPaused(window.scrollY > hero.offsetHeight * 0.45);
@@ -761,16 +813,6 @@ export default function Landing() {
         );
       });
 
-      // 8b · Integrasi: chip masuk memantul.
-      gsap.from(".js-chips > div > span", {
-        scale: 0.85,
-        opacity: 0,
-        duration: 0.45,
-        stagger: 0.04,
-        ease: "back.out(2)",
-        scrollTrigger: { trigger: ".js-chips", start: "top 88%" },
-      });
-
       // 8c · Proyek: panel bergeser halus + garis atas digambar.
       el.querySelectorAll<HTMLElement>(".js-project").forEach((card, i) => {
         gsap.fromTo(
@@ -839,7 +881,6 @@ export default function Landing() {
     return () => {
       window.removeEventListener("load", refresh);
       if (onHeroScroll) window.removeEventListener("scroll", onHeroScroll);
-      window.clearTimeout(scrollIdleTimer);
       stopMarquee?.();
       stopCursorGlow?.();
       ctx.revert();
@@ -862,8 +903,11 @@ export default function Landing() {
       </a>
 
       <div aria-hidden className="grain pointer-events-none fixed inset-0 z-[45]" />
-      {/* Tirai dip-to-black: meredupkan layar saat hero keluar, lalu terbuka
-          lagi ketika Masalah masuk. pointer-events-none, opacity saja. */}
+      {/* Vignette tepi atas/bawah untuk semua section setelah hero: statis,
+          tidak menutup konten, nol biaya per frame (beda dengan tirai). */}
+      <div aria-hidden className="page-vignette pointer-events-none fixed inset-0 z-[38]" />
+      {/* Tirai dip-to-black: hanya sekali, hero → Masalah (opening).
+          pointer-events-none, opacity saja. */}
       <div
         aria-hidden
         className="js-page-veil pointer-events-none fixed inset-0 z-[40] bg-[#05060a] opacity-0"
@@ -871,9 +915,9 @@ export default function Landing() {
       <ClickSpark />
       <div className="js-progress spectral-line fixed inset-x-0 top-0 z-[60] origin-left scale-x-0" />
 
-      {/* Nav kaca mengambang */}
+      {/* Nav kaca mengambang: link penuh di desktop, menu kartu di mobile */}
       <header className="fixed inset-x-0 top-3 z-50 px-4 md:top-4 md:px-8">
-        <nav className="js-nav g-flat g-float mx-auto flex h-[60px] w-full max-w-[1320px] items-center justify-between gap-6 rounded-full px-5 md:px-6">
+        <nav className="g-flat g-float mx-auto hidden h-[60px] w-full max-w-[1320px] items-center justify-between gap-6 rounded-full px-5 md:px-6 lg:flex">
           <span
             aria-hidden
             className="spectral-line pointer-events-none absolute inset-x-8 bottom-0 opacity-30"
@@ -881,7 +925,7 @@ export default function Landing() {
           <Link href="/" className="text-[15px] font-semibold">
             ITZ AI
           </Link>
-          <div className="hidden items-center gap-8 lg:ml-auto lg:mr-24 lg:flex">
+          <div className="ml-auto mr-16 flex items-center gap-8">
             {NAV.map((item) => (
               <a key={item.href} href={item.href} className={`${NAVLINK} font-light`}>
                 {item.label}
@@ -889,7 +933,7 @@ export default function Landing() {
             ))}
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/chat" prefetch={false} className={`hidden text-[14px] sm:block ${NAVLINK}`}>
+            <Link href="/chat" prefetch={false} className={`text-[14px] ${NAVLINK}`}>
               Demo
             </Link>
             <a
@@ -900,6 +944,36 @@ export default function Landing() {
             </a>
           </div>
         </nav>
+        <div className="lg:hidden">
+          <CardNav
+            logo={<span className="text-[15px] font-semibold">ITZ AI</span>}
+            logoHref="/"
+            linkComponent={Link}
+            items={[
+              {
+                label: "Jelajahi",
+                description: "Bagian utama landing page.",
+                links: NAV.map((item) => ({ label: item.label, href: item.href })),
+              },
+              {
+                label: "Coba langsung",
+                description: "Lihat ITZ AI bekerja.",
+                links: [
+                  { label: "Demo Chat", href: "/chat" },
+                  { label: "Dokumentasi", href: "/docs" },
+                ],
+              },
+            ]}
+            cta={{ label: "Konsultasi", href: CONTACT }}
+            theme="dark"
+            surface="glass"
+            maxWidth={1320}
+            accentColor="#fafafa"
+            menuLabel={false}
+            intro={false}
+            cardEffect="rise"
+          />
+        </div>
       </header>
 
       {/* 1 · Hero: gambar iridescent jadi latar, konten mengapung di atasnya */}
@@ -1034,7 +1108,7 @@ export default function Landing() {
       {/* 3 · Masalah: cinematic, storytelling */}
       <section
         id="masalah"
-        className="relative isolate scroll-mt-28 overflow-hidden border-b border-white/[0.06] bg-[#05060a] py-24 md:py-36"
+        className="relative isolate scroll-mt-28 overflow-hidden border-b border-white/[0.06] bg-[#05060a] pb-32 pt-24 md:pb-48 md:pt-36"
       >
         {/* Latar sinematik: foto section + spotlight violet + fade tepi */}
         <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
@@ -1086,9 +1160,7 @@ export default function Landing() {
             <p className={`${EYEBROW} js-masalah-eyebrow`}>Masalah</p>
             <h2 className={`${H2} mt-6`}>
               <Words text="Apakah Infrastruktur Bisnis Anda Siap Menghadapi" />{" "}
-              <span className={ACCENT}>
-                <Words text="Era AI?" />
-              </span>
+              <Accent text="Era AI?" />
               <AiSparkle className="ml-2 align-[-0.06em] text-[color:var(--spectral-violet)]" />
             </h2>
           </div>
@@ -1126,21 +1198,19 @@ export default function Landing() {
 
       {/* 5 · Apa yang bisa ITZ AI lakukan: 6 kapabilitas */}
       <section id="kenali" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
-        <div className="mx-auto max-w-[760px] text-center">
+        <div className="mx-auto max-w-[860px] text-center">
           <p className={EYEBROW}>Layanan</p>
           <h2 className={`${H2} mt-5`}>
             <Words text="Apa yang bisa ITZ AI" />{" "}
-            <span className={ACCENT}>
-              <Words text="lakukan." />
-            </span>
+            <Accent text="lakukan." />
           </h2>
-          <p className={`${BODY} mx-auto mt-5 max-w-[52ch]`}>
+          <p className="mx-auto mt-5 max-w-[62ch] text-center text-[18px] leading-[1.75] text-white/60 md:text-[19px]">
             Layanan kami mencakup perancangan hingga penerapan solusi AI, mulai dari chatbot dan
             basis pengetahuan, otomasi proses bisnis, integrasi API, serta sistem multi-agen. Setiap
             layanan disesuaikan dengan kebutuhan dan kematangan sistem yang Anda miliki.
           </p>
         </div>
-        <div className="mt-14">
+        <div className="js-layanan-pop mt-14">
           <AccordionGallery
             items={ACCORDION_ITEMS}
             defaultIndex={0}
@@ -1186,11 +1256,9 @@ export default function Landing() {
             <p className={EYEBROW}>Cara kerja</p>
             <h2 className={`${H2} mt-5`}>
               <Words text="Empat langkah," />{" "}
-              <span className={ACCENT}>
-                <Words text="satu alur." />
-              </span>
+              <Accent text="satu alur." />
             </h2>
-            <p className={`${BODY} mx-auto mt-5 max-w-[52ch]`}>
+            <p className="mx-auto mt-5 max-w-[62ch] text-center text-[18px] leading-[1.75] text-white/60 md:text-[19px]">
               Proses yang sama untuk setiap pekerjaan. Tidak ada lompatan dari ide ke produksi.
             </p>
           </div>
@@ -1295,37 +1363,46 @@ export default function Landing() {
         <div className="mx-auto max-w-[720px] text-center">
           <h2 className={H2}>
             <Words text="Integrasikan AI" />{" "}
-            <span className={ACCENT}>
-              <Words text="ke dalam Apps." />
-            </span>
+            <Accent text="ke dalam Apps." />
           </h2>
-          <p className={`${BODY} mx-auto mt-5 max-w-[52ch]`}>
+          <p className="mx-auto mt-5 max-w-[62ch] text-center text-[18px] leading-[1.75] text-white/60 md:text-[19px]">
             Dari chat, dokumen, hingga pembayaran, integrasikan AI ke seluruh alat kerja Anda.
           </p>
         </div>
-        <div className="js-reveal js-chips g-crystal g-sheen mx-auto mt-12 max-w-[1000px] rounded-[28px] p-8 md:p-10">
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            {INTEGRATIONS.map((item) => (
-              <span
-                key={item.name}
-                className="inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.04] px-4 py-2 text-[13px] text-white/70"
-              >
-                {item.logo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.logo} alt="" width={16} height={16} className="size-4 shrink-0" />
-                ) : (
-                  <span
-                    aria-hidden
-                    className="flex size-4 items-center justify-center rounded-[3px] border border-white/30 text-[9px] leading-none text-white/60"
-                  >
-                    {item.name.charAt(0)}
-                  </span>
-                )}
-                {item.name}
+        <MagicBento
+          items={INTEGRATIONS.map((item) => ({
+            id: item.name,
+            label: item.name,
+            visual: item.logo ? (
+              <span className="flex h-12 w-12 items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={item.logo} alt="" className="h-12 w-12 object-contain" />
               </span>
-            ))}
-          </div>
-        </div>
+            ) : (
+              <span
+                aria-hidden
+                className="flex size-12 items-center justify-center rounded-lg border border-white/20 text-[15px] text-white/60"
+              >
+                {item.name.charAt(0)}
+              </span>
+            ),
+          }))}
+          columns={5}
+          rowHeight={120}
+          gap={8}
+          radius={16}
+          theme="dark"
+          glowColor="#a78bfa"
+          enableBorderGlow
+          enableSpotlight
+          spotlightRadius={260}
+          enableStars={false}
+          enableTilt={false}
+          enableMagnetism={false}
+          clickEffect
+          intro={false}
+          className="mx-auto mt-12 max-w-[1000px]"
+        />
       </section>
 
       {/* 6 · Project Launch: proyek yang sudah jalan */}
@@ -1334,9 +1411,7 @@ export default function Landing() {
           <p className={EYEBROW}>Project Launch</p>
           <h2 className={`${H2} mt-5`}>
             <Words text="Sistem yang sudah jalan," />{" "}
-            <span className={ACCENT}>
-              <Words text="lengkap dengan operasionalnya." />
-            </span>
+            <Accent text="lengkap dengan operasionalnya." />
           </h2>
         </div>
         <div className="js-reveal mt-12 space-y-4">
@@ -1373,9 +1448,7 @@ export default function Landing() {
         <div className={NARROW}>
           <h2 className={`${H2} text-center`}>
             <Words text="Kami punya" />{" "}
-            <span className={ACCENT}>
-              <Words text="jawabannya." />
-            </span>
+            <Accent text="jawabannya." />
           </h2>
           <div className="js-reveal mt-10">
             {FAQ.map(({ q, a }) => (
@@ -1398,19 +1471,26 @@ export default function Landing() {
 
       {/* 8 · CTA penutup terpusat */}
       <section className={`${SHELL} py-20 md:py-28`}>
-        <div className="g-irid g-irid--live g-float rounded-[28px] p-px">
-          <div className="g-dark relative overflow-hidden rounded-[27px] px-6 py-16 text-center md:px-16 md:py-20">
+        <BorderGlow
+          backgroundColor="#0a0b12"
+          borderRadius={28}
+          glowColor="262 90 70"
+          colors={["#a78bfa", "#22d3ee", "#e879f9"]}
+          glowIntensity={0.9}
+          coneSpread={28}
+          edgeSensitivity={40}
+          className="overflow-hidden"
+        >
+          <div className="relative px-6 py-16 text-center md:px-16 md:py-20">
             <div
               aria-hidden
               className="pointer-events-none absolute inset-x-10 bottom-[-10rem] h-[20rem] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(139,92,246,0.32),rgba(34,211,238,0.14)_50%,transparent_72%)] blur-3xl"
             />
             <h2 className={`${H2} relative mx-auto max-w-[22ch]`}>
               <Words text="Siap mengotomasi yang" />{" "}
-              <span className={ACCENT}>
-                <Words text="berulang?" />
-              </span>
+              <Accent text="berulang?" />
             </h2>
-            <p className={`${BODY} relative mx-auto mt-5 max-w-[50ch]`}>
+            <p className="relative mx-auto mt-5 max-w-[62ch] text-center text-[18px] leading-[1.75] text-white/60 md:text-[19px]">
               Ceritakan alurnya. Saya bantu petakan mana yang bisa dibantu AI, mana yang lebih baik
               dibiarkan sederhana.
             </p>
@@ -1425,8 +1505,11 @@ export default function Landing() {
                 Coba demo
               </Link>
             </div>
+            <p className="relative mt-5 font-mono text-[11px] uppercase tracking-[0.14em] text-white/40">
+              Tanpa komitmen · balasan dalam 1×24 jam · bukan sales call
+            </p>
           </div>
-        </div>
+        </BorderGlow>
       </section>
 
       {/* 9 · Footer: 4 kolom + bilah legal (pola referensi) */}
