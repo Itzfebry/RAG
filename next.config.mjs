@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Next 16 wajib daftar allowlist quality. 90 dipakai gambar layanan
+  // (screenshot berteks) supaya re-encode tidak menghaluskan detail.
+  images: {
+    qualities: [75, 90],
+  },
   async rewrites() {
     if (process.env.VERCEL) {
       // Production on Vercel: ALL /api/* and /v1/* requests are routed at the

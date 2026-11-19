@@ -283,6 +283,7 @@ const AccordionGallery = ({
                   alt={item.alt || item.label || ''}
                   fill
                   sizes="(min-width: 1024px) 50vw, 100vw"
+                  quality={90}
                   draggable={false}
                   className="block select-none object-cover [-webkit-user-drag:none]"
                 />
