@@ -263,20 +263,23 @@ const PROJECTS = [
     tag: "Platform keuangan & analisis bisnis",
     body: "Pencatatan transaksi, utang-piutang, laporan dengan ekspor CSV/Excel/PDF, dan AI Finance Analyst yang menjelaskan kondisi bisnis dari angka aktual, bukan tebakan.",
     stack: "Next.js 15 · Drizzle · PostgreSQL · Auth.js · Cloudflare R2",
+    image: "/landing/project-umkmai.png",
     poster: "linear-gradient(135deg, #4c1d95 0%, #7c3aed 45%, #22d3ee 100%)",
   },
   {
-    name: "ITZ AI Axtra",
-    tag: "Ruang kerja AI personal",
+    name: "Axtra",
+    tag: "AI Agent & Orchestrator · Multi-model · Telegram",
     body: "Chat multi-mode dengan memori personal yang dicari secara semantik, multi-provider LLM, riset web, generated image, jurnal, jadwal, PWA + Telegram, dan beranda orchestrator.",
     stack: "Next.js · FastAPI · Supabase + pgvector",
+    image: "/landing/project-axtra.png",
     poster: "linear-gradient(135deg, #1e1b4b 0%, #4338ca 48%, #d946ef 100%)",
   },
   {
-    name: "Mesin RAG produksi",
-    tag: "Asisten AI di atas data sendiri",
+    name: "ITZ AI Chat",
+    tag: "Chatbot · RAG & Knowledge AI · Multi-model",
     body: "Chat streaming dengan panel admin penuh: pengetahuan per kategori, chunking, embedding asimetris, prompt anti-halusinasi, kuota, dan tagihan otomatis.",
     stack: "Next.js · FastAPI · SSE · PostgreSQL + pgvector",
+    image: "/landing/project-itzai.png",
     poster: "linear-gradient(135deg, #064e3b 0%, #0d9488 45%, #8b5cf6 100%)",
   },
 ];
@@ -1441,7 +1444,17 @@ export default function Landing() {
       {/* 6 · Project Launch: proyek yang sudah jalan */}
       <section id="karya" className={`${SHELL} relative isolate scroll-mt-28 py-20 md:py-28`}>
         <div className="js-launch-head mx-auto max-w-[760px] text-center">
-          <p className={EYEBROW}>Project Launch</p>
+          <p className={`${EYEBROW} inline-flex items-center gap-2.5`}>
+            <span className="relative flex size-1.5" aria-hidden>
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-300/60" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-emerald-300" />
+            </span>
+            Project Launch
+            <span className="text-white/25" aria-hidden>
+              /
+            </span>
+            <span className="text-white/45">03 Sistem · Live</span>
+          </p>
           <h2 className={`${H2} mt-5`}>
             <Words text="Sistem yang sudah jalan," />{" "}
             <Accent text="lengkap dengan operasionalnya." />
@@ -1459,7 +1472,7 @@ export default function Landing() {
             WebkitMaskPosition: "0% 100%",
           }}
         >
-          {PROJECTS.map((project) => (
+          {PROJECTS.map((project, i) => (
             <article
               key={project.name}
               className="js-project js-tilt g-frosted g-sheen g-float group relative flex flex-col overflow-hidden rounded-[20px]"
@@ -1472,21 +1485,24 @@ export default function Landing() {
                     "radial-gradient(420px circle at var(--gx,50%) var(--gy,50%),rgba(255,255,255,0.16),transparent 60%)",
                 }}
               />
-              {/* Poster gradient (gambar menyusul) */}
+              {/* Poster: gambar proyek (gradient sebagai latar cadangan) */}
               <div className="relative aspect-[16/10] overflow-hidden" style={{ background: project.poster }}>
-                <div
-                  aria-hidden
-                  className="absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(255,255,255,0.6)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.6)_1px,transparent_1px)] [background-size:22px_22px]"
+                <Image
+                  src={project.image}
+                  alt={project.name}
+                  fill
+                  sizes="(min-width:1024px) 33vw, (min-width:640px) 50vw, 100vw"
+                  quality={90}
+                  className="object-cover object-top transition-transform duration-500 group-hover:scale-[1.03]"
                 />
                 <div
                   aria-hidden
-                  className="absolute inset-0 bg-[radial-gradient(130%_100%_at_82%_-10%,rgba(255,255,255,0.4),transparent_55%)]"
+                  className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#0a0b12] to-transparent"
                 />
-                <div
-                  aria-hidden
-                  className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-[#0a0b12] to-transparent"
-                />
-                <span className="absolute bottom-3 left-4 font-heading text-[20px] font-medium uppercase tracking-[0.14em] text-white/95">
+                <span className="absolute right-3 top-3 z-10 rounded-full border border-white/15 bg-black/35 px-2 py-0.5 font-mono text-[10px] tracking-[0.16em] text-white/70 backdrop-blur-sm">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span className="absolute bottom-3 left-4 z-10 font-heading text-[20px] font-medium uppercase tracking-[0.14em] text-white/95 [text-shadow:0_2px_12px_rgba(0,0,0,0.6)]">
                   {project.name}
                 </span>
               </div>
@@ -1587,7 +1603,7 @@ export default function Landing() {
             </div>
             <p className="mt-4 max-w-[28ch] text-[13px] leading-[1.7] text-white/45">
               AI yang menempel ke sistem dan masalah nyata, bukan demo yang berhenti di presentasi.
-            </p>
+z            </p>
           </div>
           <div>
             <p className="text-[12px] text-white/40">Layanan</p>
