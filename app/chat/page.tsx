@@ -210,8 +210,10 @@ export default function ChatPage() {
       : quotaRem > 0
         ? { label: "Aktif", color: "text-emerald-400" }
         : { label: "Habis", color: "text-red-400" };
-  const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Auto-scroll hanya kalau user memang sedang di dasar. Sebelumnya setiap
+  // token memaksa snap ke bawah, jadi user tidak bisa membaca pesan lama.
+  const stickToBottomRef = useRef(true);
   const isEmpty = messages.length === 0;
   const startedAtRef = useRef<number>(0);
   // AbortController per runChat: di-abort saat buka chat baru / ganti chat /
@@ -329,6 +331,7 @@ export default function ChatPage() {
           attachments: m.documents?.length ? m.documents : undefined,
         })),
       );
+      stickToBottomRef.current = true;
       setActiveChatId(id);
       setDocAttachments(j.documents ?? []);
       setError(null);
@@ -349,6 +352,7 @@ export default function ChatPage() {
         setActiveChatId(null);
         setMessages([]);
         setDocAttachments([]);
+        stickToBottomRef.current = true;
       }
       await loadChatList();
     } catch {
@@ -364,6 +368,7 @@ export default function ChatPage() {
     setQuotaAlert(null);
     setHistoryOpen(false);
     setDocAttachments([]);
+    stickToBottomRef.current = true;
   };
 
   // Selesai/Lewati tour: tandai permanen agar tidak pernah tampil lagi.
@@ -471,11 +476,17 @@ export default function ChatPage() {
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
+    if (!el || !stickToBottomRef.current) return;
+    // scrollTop langsung: scrollIntoView ikut menggeser ancestor/window dan
+    // tidak selalu jalan di container fixed-height.
+    el.scrollTop = el.scrollHeight;
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 180;
-    if (!nearBottom && messages.length > 1) return;
-    endRef.current?.scrollIntoView({ behavior: "instant" });
-  }, [messages.length]);
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
@@ -591,6 +602,8 @@ export default function ChatPage() {
 
   const runChat = async (userMessage: string, base: Message[], docs: ExtractedDocument[] = []) => {
     setError(null);
+    // User mengirim pesan = ingin melihat jawaban; paksa kembali ke dasar.
+    stickToBottomRef.current = true;
     const next: Message[] = [
       ...base,
       { role: "user", content: userMessage, attachments: docs.length ? docs : undefined },
@@ -1469,7 +1482,7 @@ export default function ChatPage() {
         onClose={() => setQuotaOffer(null)}
       />
 
-      <main className="relative z-10 flex flex-1 flex-col overflow-hidden">
+      <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
         {isEmpty ? (
           <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-12 sm:py-20">
             <div className="flex w-full max-w-[720px] flex-col items-center">
@@ -1538,8 +1551,12 @@ export default function ChatPage() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <div ref={scrollRef} className="flex-1 overflow-y-auto">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div
+              ref={scrollRef}
+              onScroll={handleScroll}
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+            >
               <div className="mx-auto w-full max-w-[800px] px-4 py-8 sm:px-6 sm:py-10">
                 <div className="mx-auto flex max-w-[720px] flex-col gap-8">
                   {messages.map((m, i) => {
@@ -1584,7 +1601,6 @@ export default function ChatPage() {
                     onOpenOffer={() => setQuotaOffer(quotaOut ?? "quota")}
                     onDismiss={() => setQuotaNoticeHidden(true)}
                   />
-                  <div ref={endRef} className="h-1" />
                 </div>
               </div>
             </div>
