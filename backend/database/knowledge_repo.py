@@ -1,3 +1,4 @@
+import contextlib
 import uuid
 from datetime import datetime
 from typing import Any
@@ -106,17 +107,25 @@ class KnowledgeMixin:
 
     @staticmethod
     def delete_knowledge_entry(entry_id: str) -> bool:
-        from backend.database.db import _read_local_json, _write_local_json, logger, supabase_client
+        from backend.database.cache import rag_cache
+        from backend.database.db import DatabaseService, _read_local_json, _write_local_json, logger, supabase_client
 
+        ok = True
         if supabase_client:
             try:
                 supabase_client.table("knowledge_embeddings").delete().eq("entry_id", entry_id).execute()
                 supabase_client.table("knowledge_entries").delete().eq("id", entry_id).execute()
-                return True
             except Exception as e:
                 logger.warning(f"Error deleting knowledge_entry in Supabase: {e}")
+                ok = False
+        else:
+            entries = _read_local_json("knowledge_entries.json", [])
+            entries = [e for e in entries if e["id"] != entry_id]
+            _write_local_json("knowledge_entries.json", entries)
 
-        entries = _read_local_json("knowledge_entries.json", [])
-        entries = [e for e in entries if e["id"] != entry_id]
-        _write_local_json("knowledge_entries.json", entries)
-        return True
+        # Semua jalur (admin, rollback upload, tool) ikut invalidasi cache di
+        # sini - bukan hanya endpoint admin.
+        rag_cache.clear()
+        with contextlib.suppress(Exception):
+            DatabaseService.bump_knowledge_version()
+        return ok

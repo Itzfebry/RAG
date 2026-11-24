@@ -51,6 +51,12 @@ export function proxy(req: NextRequest) {
   if (req.headers.get("x-forwarded-proto") === "https" || req.nextUrl.protocol === "https:") {
     res.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }
+  if (pathname.startsWith("/api/")) {
+    res.headers.set(
+      "Content-Security-Policy",
+      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    );
+  }
 
   const adminToken = req.cookies.get("itz_admin_token")?.value;
 

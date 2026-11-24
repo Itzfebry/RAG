@@ -66,12 +66,6 @@ def _emit(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
 
-async def _emit_words(text: str) -> AsyncGenerator[str, None]:
-    """Stream teks kata-per-kata (dipakai mock & ultimate-fallback)."""
-    for chunk in text.split(" "):
-        yield _emit({"content": chunk + " "})
-
-
 async def _aiter_queue(iterable: Any) -> AsyncGenerator[Any, None]:
     """Relay iterable sinkron ke async tanpa memblok event loop.
 
@@ -183,9 +177,11 @@ def _build_openai_messages(
         if isinstance(content, list):
             content = " ".join([str(c.get("text", "")) if isinstance(c, dict) else str(c) for c in content])
 
-        # Map roles properly
-        if role in ["user", "assistant", "system"]:
-            messages.append({"role": role, "content": str(content)})
+        # Client hanya boleh mengirim user/assistant. Role system dari history
+        # = injeksi instruksi; perlakukan sebagai user (defense-in-depth - API
+        # sudah menolaknya di ChatMessage).
+        if role == "assistant":
+            messages.append({"role": "assistant", "content": str(content)})
         else:
             messages.append({"role": "user", "content": str(content)})
 
@@ -362,11 +358,13 @@ class AgentOrchestrator:
         # Check client availability based on provider
         if not self.client:
             if self.client_type == "langchain_nvidia" and not self.nvidia_api_key:
-                mock_text = f"Hello! I am ITZ AI. (Note: NVIDIA_API_KEY is not set).\n\nYou asked: '{query}'."
+                reason = "NVIDIA_API_KEY belum diisi"
             else:
-                mock_text = f"Hello! I am ITZ AI. (Note: OPENROUTER_API_KEY is not set).\n\nYou asked: '{query}'."
-            async for event in _emit_words(mock_text):
-                yield event
+                reason = "OPENROUTER_API_KEY belum diisi"
+            logger.warning(f"[agent] client tidak tersedia: {reason}")
+            # Jangan pura-pura menjawab: frontend merender event error sebagai
+            # pesan gagal, dan chat.py me-refund kuota karena tidak ada "answered".
+            yield _emit({"error": f"Layanan AI belum dikonfigurasi ({reason}). Hubungi admin."})
             yield "data: [DONE]\n\n"
             return
 
@@ -429,11 +427,8 @@ class AgentOrchestrator:
         if not success:
             error_str = last_error or "Unknown API error"
             logger.warning(f"All models failed. Last error: {error_str}")
-            total_ms = int((time.perf_counter() - start) * 1000)
-            fallback_response = f"Halo! Berdasarkan knowledge base ITZ AI dan riwayat percakapan Anda, saya memahami pertanyaan Anda mengenai '{query}'. (Catatan: Terjadi kendala saat memanggil model AI. Coba lagi beberapa saat.)"
-            async for event in _emit_words(fallback_response):
-                yield event
-            yield _emit({"timing": {"ttft_ms": total_ms, "total_ms": total_ms}})
+            # Bukan jawaban: kirim event error supaya UI jujur & kuota direfund.
+            yield _emit({"error": "Semua model AI gagal menjawab. Coba lagi beberapa saat."})
             yield "data: [DONE]\n\n"
             return
 

@@ -1038,6 +1038,26 @@ def admin_reindex_knowledge(request: Request, admin: str = Depends(get_current_a
     }
 
 
+def _embedding_model_counts() -> dict[str, Any] | None:
+    """Distribusi embedding_model - mendeteksi DB berisi campuran model."""
+    try:
+        from backend.database.db import supabase_client
+
+        if not supabase_client:
+            return None
+        rows = (
+            supabase_client.table("knowledge_embeddings").select("embedding_model").limit(10000).execute().data or []
+        )
+    except Exception:
+        return None
+    counts: dict[str, int] = {}
+    for r in rows:
+        key = str(r.get("embedding_model") or "unknown")
+        counts[key] = counts.get(key, 0) + 1
+    known = [k for k in counts if k != "unknown"]
+    return {"models": counts, "mixed": len(known) > 1}
+
+
 @router.get("/health")
 def admin_health(admin: str = Depends(get_current_admin)):
     """Ringkasan kesehatan untuk sidebar & dashboard admin."""
@@ -1062,6 +1082,7 @@ def admin_health(admin: str = Depends(get_current_admin)):
         "provider": {"name": EMBEDDING_PROVIDER, "embedding": EMBEDDING_PROVIDER, "model": _active_chat_provider()},
         "token_budget": token_budget,
         "last_login_failure": last_login_fail,
+        "embeddings": _embedding_model_counts(),
     }
 
 

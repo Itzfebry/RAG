@@ -212,7 +212,8 @@ def list_available_models(
 
 
 class ChatMessage(BaseModel):
-    role: str = Field(pattern=r"^(user|assistant|system)$")
+    # Hanya user/assistant: role "system" dari client = system-prompt injection.
+    role: str = Field(pattern=r"^(user|assistant)$")
     content: str = Field(min_length=1, max_length=8000)
 
     @field_validator("content")

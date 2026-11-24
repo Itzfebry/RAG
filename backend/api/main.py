@@ -50,6 +50,16 @@ app = FastAPI(
 # Initialize structured logging before any module logs anything.
 configure_logging()
 
+# Fail fast: provider embedding / dimensi harus cocok dengan kolom pgvector.
+# Tanpa ini, mismatch cuma jadi warning saat request dan search diam-diam
+# jatuh ke keyword fallback.
+try:
+    from backend.knowledge.knowledge_service import validate_embedding_config
+except ImportError:
+    from knowledge.knowledge_service import validate_embedding_config  # type: ignore
+
+validate_embedding_config()
+
 # Security headers + body limit (order: outermost first)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(BodySizeLimitMiddleware)

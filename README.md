@@ -72,9 +72,12 @@ LangChain's `RecursiveCharacterTextSplitter` at **500 characters with 50 charact
 character-by-character when paragraph separators run out, so a single 2,000-character blob never becomes an
 oversized chunk that blows the embedding budget.
 
-Chunking is deliberately idempotent: re-indexing deletes the entry's previous chunks and inserts the new set.
-**Embeddings are computed and validated for every chunk before the database is touched**; a failure mid-way
-leaves the previous index intact. Zero-vectors are never persisted.
+Chunking is deliberately idempotent: re-indexing inserts the new set first, then deletes the previous
+chunks **by the IDs read before the insert**, so a failed or interrupted write never leaves an entry with
+zero chunks (worst case: temporarily duplicated chunks, which the prompt builder de-duplicates).
+**Embeddings are computed and validated for every chunk before the database is touched**, under a
+45-second total budget (`EMBEDDING_BUDGET_SECONDS`) that keeps the work inside Vercel's 60-second limit;
+a failure mid-way leaves the previous index intact. Zero-vectors are never persisted.
 
 > The reindex tool reuses the same 500/50 splitter. Changing one without the other silently degrades retrieval.
 
@@ -110,11 +113,15 @@ create table knowledge_embeddings (
 create index knowledge_embeddings_vector_idx
   on knowledge_embeddings using hnsw (embedding vector_cosine_ops);
 
--- Indonesian full-text index (used by the hybrid-search variant)
+-- Indonesian full-text index (legacy; runtime tidak memakainya)
 alter table knowledge_embeddings
   add column fts tsvector generated always as (to_tsvector('indonesian', content_chunk)) stored;
 create index knowledge_embeddings_fts_idx on knowledge_embeddings using gin (fts);
 ```
+
+> `hybrid_search()` and the `fts` column are **not called by the backend**. Run
+> `migrations/supabase_migration_drop_legacy_fts.sql` if you want to reclaim the
+> storage and per-insert write cost.
 
 HNSW keeps retrieval sub-linear as the knowledge base grows. The schema also ships a `hybrid_search()`
 function that fuses semantic ranks with Indonesian FTS ranks using reciprocal-rank weighting. The runtime
@@ -162,7 +169,12 @@ giving more surface area for multi-part intent without inflating every prompt.
 Retrieval never hard-fails a conversation. The ladder:
 
 1. **Vector search**: the happy path.
-2. **Keyword fallback**: triggered when Supabase is unavailable, the embedding call fails, or nothing clears the threshold. Tokens under three characters and a bilingual stopword list (`yang`, `cara`, `how`, `what`, ...) are stripped, and matching uses `\b` word boundaries so `nama` cannot match inside `purnama`.
+2. **Keyword fallback**: triggered when Supabase is unavailable, the embedding call fails,
+   or nothing clears the threshold. Terms under three characters and a bilingual stopword list
+   (`yang`, `cara`, `how`, `what`, ...) are dropped; the query is tokenized with `\w+` first, so
+   `paket?` still matches `paket`. Matching uses `\b` word boundaries so `nama` cannot match inside
+   `purnama`, runs over 500-character chunks (never the whole entry), and is ranked by hit frequency
+   before the top `match_count` are injected.
 3. **Empty context, honestly labelled**: the prompt receives *"Tidak ada knowledge khusus yang relevan"* instead of the nearest irrelevant chunk. There is deliberately **no "first entry" fallback**: irrelevant context is worse than no context, because it teaches the model to answer confidently about the wrong thing.
 
 A miss is logged as **metadata only** (timestamp and query length, never query text) in `failed_rag_queries.log`,
@@ -177,7 +189,7 @@ Retrieved chunks are **deduplicated** before insertion, and two caches keep the 
 
 | Cache | TTL | Invalidated by |
 |---|---|---|
-| `rag_cache` (query → chunks) | 10 min | Any knowledge index write |
+| `rag_cache` (version + query → chunks) | 10 min | `knowledge_version` bump in `app_settings` on every index/delete (works across serverless instances) + local `clear()` |
 | `config_cache` (identity, personality, style) | 5 min | Admin config save |
 
 The prompt carries explicit grounding rules, and they are the last line of defence:

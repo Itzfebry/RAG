@@ -16,19 +16,18 @@ logger = get_logger(__name__)
 
 # ── Embedding configuration ───────────────────────────────────────────────
 # Provider switch:
-#   "hf"     (default) - HuggingFace Inference API, model runs server-side.
-#                        Works on Vercel/serverless (no local ML deps).
-#   "local"  (optional, dev-only) - sentence-transformers on CPU.
-#   "gemini" (optional) - Google Gemini embedContent REST. Free tier:
+#   "gemini" (default) - Google Gemini embedContent REST. Free tier:
 #                        input token gratis (rate-limited), tanpa model
 #                        lokal → cocok untuk Vercel. Butuh GEMINI_API_KEY.
 #                        Catatan free tier: data dipakai Google improve produk.
-# The default model is multilingual (50+ languages incl. Indonesian) and
-# outputs EMBEDDING_DIM vectors (default 768, skema Supabase vector(768)).
+#   "hf"     (optional) - HuggingFace Inference API, model runs server-side.
+#                        Model MiniLM di bawah = 384 dim, TIDAK cocok dengan
+#                        skema vector(768) tanpa migrasi kolom.
+#   "local"  (optional, dev-only) - sentence-transformers on CPU (384 dim).
 # Vektor dari model/dimensi BERBEDA tidak comparable: ganti provider/dimensi =
 # migrasi kolom pgvector (supabase_migration_768.sql) + reindex penuh
 # (python -m backend.tools.reindex_embeddings).
-EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "hf").strip().lower()
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "gemini").strip().lower()
 HF_EMBEDDING_MODEL = os.getenv(
     "HF_EMBEDDING_MODEL",
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
@@ -58,6 +57,37 @@ EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "768"))
 # Retrieval floor: chunks below this cosine similarity are dropped.
 # Default dikalibrasi per provider (gemini: 0.649-0.796 lolos, sampah 0.498-0.63).
 MATCH_THRESHOLD = float(os.getenv("MATCH_THRESHOLD", "0.64" if EMBEDDING_PROVIDER == "gemini" else "0.25"))
+
+# Chunking SATU tempat: index_entry + reindex_embeddings wajib pakai fungsi ini.
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 50
+# Naikkan bila parameter/mesin chunking berubah - tersimpan per baris embedding.
+CHUNKER_VERSION = "rcs-500-50"
+
+# Total budget embedding per entry. Harus di bawah vercel.json maxDuration (60s),
+# supaya request tidak dibunuh server tepat di tengah tulis DB.
+EMBEDDING_BUDGET_S = float(os.getenv("EMBEDDING_BUDGET_SECONDS", "45"))
+
+# Dimensi output model yang diketahui. Dipakai validasi startup: salah mismatch
+# = semua embedding disimpan ke kolom vector(N) yang beda → RPC gagal silent.
+_PROVIDER_DIMS = {"hf": 384, "local": 384}
+
+
+def validate_embedding_config() -> None:
+    """Hentikan startup bila provider/dimensi tidak kompatibel dengan skema.
+
+    HF MiniLM dan sentence-transformers lokal menghasilkan 384 dim, sedangkan
+    Supabase memakai vector(768). Tanpa validasi, `_hf_embed` melempar
+    ValueError tiap request, `get_embedding` menelannya, dan semua search
+    diam-diam jatuh ke keyword fallback.
+    """
+    expected = _PROVIDER_DIMS.get(EMBEDDING_PROVIDER)
+    if expected is not None and EMBEDDING_DIM != expected:
+        raise RuntimeError(
+            f"EMBEDDING_PROVIDER={EMBEDDING_PROVIDER} menghasilkan vektor {expected} dim, "
+            f"tapi EMBEDDING_DIM={EMBEDDING_DIM}. Set EMBEDDING_DIM={expected} + migrasi "
+            f"kolom vector({expected}) + reindex penuh, atau pakai EMBEDDING_PROVIDER=gemini."
+        )
 
 
 def _current_match_threshold() -> float:
@@ -96,7 +126,66 @@ def _get_embedding_model():
     return _embedding_model
 
 
-def _hf_embed(text: str) -> list[float]:
+def chunk_text(text: str) -> list[str]:
+    """Split konten jadi chunk (500/50) - dipakai indexing, reindex, keyword fallback.
+
+    RecursiveCharacterTextSplitter memotong per karakter saat separator habis,
+    jadi teks tanpa paragraf tidak jadi satu chunk raksasa di luar budget embed.
+    Import lazy: langchain_text_splitters menarik deps berat.
+    """
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+    if not (text or "").strip():
+        return []
+    return RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP).split_text(text)
+
+
+def embedding_metadata() -> dict[str, str]:
+    """Identitas model + versi chunker untuk baris knowledge_embeddings.
+
+    Tanpa ini, DB bisa berisi vektor dari dua model sekaligus (mis. reindex
+    parsial setelah ganti .env) tanpa cara mendeteksinya.
+    """
+    if EMBEDDING_PROVIDER == "gemini":
+        model = GEMINI_EMBEDDING_MODEL
+    elif EMBEDDING_PROVIDER == "hf":
+        model = HF_EMBEDDING_MODEL
+    else:
+        model = EMBEDDING_PROVIDER
+    return {"embedding_model": f"{EMBEDDING_PROVIDER}:{model}", "chunker_version": CHUNKER_VERSION}
+
+
+def _insert_embeddings(rows: list[dict]) -> None:
+    """Insert baris embedding; kalau kolom metadata belum ada, fallback tanpa itu."""
+    try:
+        supabase_client.table("knowledge_embeddings").insert(rows).execute()
+    except Exception as e:
+        stripped = [{k: v for k, v in r.items() if k not in ("embedding_model", "chunker_version")} for r in rows]
+        try:
+            supabase_client.table("knowledge_embeddings").insert(stripped).execute()
+            logger.warning(f"knowledge_embeddings belum punya kolom metadata (jalankan migrasi): {e}")
+        except Exception:
+            raise e from None
+
+
+def _sleep_until_retry(seconds: float, deadline: float | None) -> None:
+    """Sleep backoff, tapi jangan pernah melewati deadline request."""
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("Embedding deadline terlampaui - retry dibatalkan")
+        seconds = min(seconds, remaining)
+    time.sleep(seconds)
+
+
+def _request_timeout(deadline: float | None) -> float:
+    """Timeout HTTP per attempt, dipotong sisa budget request."""
+    if deadline is None:
+        return _HF_TIMEOUT_S
+    return max(1.0, min(_HF_TIMEOUT_S, deadline - time.monotonic()))
+
+
+def _hf_embed(text: str, deadline: float | None = None) -> list[float]:
     """Call HuggingFace Inference API. Raises on failure."""
     if not HF_TOKEN:
         raise RuntimeError(
@@ -107,11 +196,18 @@ def _hf_embed(text: str) -> list[float]:
     last_err = "unknown error"
     with httpx.Client(timeout=_HF_TIMEOUT_S) as client:
         for _attempt in range(_HF_MAX_RETRIES):
+            if deadline is not None and time.monotonic() >= deadline:
+                raise RuntimeError(f"HF embedding deadline terlampaui: {last_err}")
             try:
-                resp = client.post(HF_API_URL, headers=headers, json={"inputs": text})
+                resp = client.post(
+                    HF_API_URL,
+                    headers=headers,
+                    json={"inputs": text},
+                    timeout=_request_timeout(deadline),
+                )
             except httpx.HTTPError as e:
                 last_err = f"network error: {e}"
-                time.sleep(_HF_RETRY_WAIT_S)
+                _sleep_until_retry(_HF_RETRY_WAIT_S, deadline)
                 continue
 
             if resp.status_code == 200:
@@ -129,14 +225,14 @@ def _hf_embed(text: str) -> list[float]:
             # 503 + "loading" = cold start; 429 = rate limit. Both retryable.
             if resp.status_code in (429, 503):
                 last_err = f"HTTP {resp.status_code}: {body}"
-                time.sleep(_HF_RETRY_WAIT_S)
+                _sleep_until_retry(_HF_RETRY_WAIT_S, deadline)
                 continue
             raise RuntimeError(f"HF embedding failed: HTTP {resp.status_code}: {body}")
 
     raise RuntimeError(f"HF embedding unavailable after {_HF_MAX_RETRIES} tries: {last_err}")
 
 
-def _gemini_embed(text: str, as_query: bool = False) -> list[float]:
+def _gemini_embed(text: str, as_query: bool = False, deadline: float | None = None) -> list[float]:
     """Call Gemini embedContent REST. Raises on failure.
 
     Prefix task mengikuti dokumentasi resmi - DUA format berbeda:
@@ -174,11 +270,13 @@ def _gemini_embed(text: str, as_query: bool = False) -> list[float]:
     last_err = "unknown error"
     with httpx.Client(timeout=_HF_TIMEOUT_S) as client:
         for retry_num in range(_HF_MAX_RETRIES):
+            if deadline is not None and time.monotonic() >= deadline:
+                raise RuntimeError(f"Gemini embedding deadline terlampaui: {last_err}")
             try:
-                resp = client.post(url, headers=headers, json=body)
+                resp = client.post(url, headers=headers, json=body, timeout=_request_timeout(deadline))
             except httpx.HTTPError as e:
                 last_err = f"network error: {e}"
-                time.sleep(_HF_RETRY_WAIT_S)
+                _sleep_until_retry(_HF_RETRY_WAIT_S, deadline)
                 continue
 
             if resp.status_code == 200:
@@ -203,7 +301,7 @@ def _gemini_embed(text: str, as_query: bool = False) -> list[float]:
             # 429 = free-tier rate limit; 5xx = server Google. Retryable.
             if resp.status_code in (429, 500, 502, 503, 504):
                 last_err = f"HTTP {resp.status_code}: {body_txt}"
-                time.sleep(_HF_RETRY_WAIT_S * (retry_num + 1))
+                _sleep_until_retry(_HF_RETRY_WAIT_S * (retry_num + 1), deadline)
                 continue
             # 400/403 (key salah, model salah) → gagal cepat, jangan retry.
             raise RuntimeError(f"Gemini embedding failed: HTTP {resp.status_code}: {body_txt}")
@@ -280,37 +378,47 @@ _STOPWORDS = {
 
 
 def _keyword_search(query: str, match_count: int) -> list[str]:
-    """Keyword fallback - returns ONLY chunks that actually match the query.
+    """Keyword fallback - chunk yang benar-benar cocok, diurutkan skor.
 
     Sengaja TIDAK punya fallback "entry pertama": konten tidak relevan yang
     disuntik ke system prompt bikin LLM mengarang jawaban. Empty list lebih
     jujur - context_builder menangani empty dengan pesan "tidak ada knowledge
     relevan", dan Core Rules bilang fallback ke general knowledge.
 
-    Term match pakai word boundary (\b): substring mentah bikin "nama"
-    match di dalam "purnama" - konten nyasar ikut nyuntik konteks LLM.
+    - Tokenisasi regex \\w+ (bukan split) supaya "paket?" == "paket".
+    - Kembalikan chunk (bukan seluruh entry) agar budget prompt tetap utuh.
+    - Ranking: frekuensi kemunculan term (bukan urutan tabel); minimal 2 term
+      berbeda cocok, atau semua bila query hanya punya 1 term berarti.
+    - Word boundary + prefix: "nama" tidak match "purnama", tapi "paket"
+      match "paketnya".
     """
     import re as _re
 
-    terms = [w for w in query.lower().split() if len(w) >= 3 and w not in _STOPWORDS]
-    entries = DatabaseService.get_knowledge_entries()
-    chunks = []
-    for entry in entries:
+    terms = {w for w in _re.findall(r"\w+", query.lower()) if len(w) >= 3 and w not in _STOPWORDS}
+    if not terms:
+        return []
+    needed = min(2, len(terms))
+
+    scored: list[tuple[int, str]] = []
+    for entry in DatabaseService.get_knowledge_entries():
         if entry.get("is_active") is False:
             continue
-        text = entry.get("content", "")
-        tl = text.lower()
-        if query.lower() in tl or any(_re.search(r"\b" + _re.escape(w), tl) for w in terms):
-            chunks.append(text)
-    return chunks[:match_count]
+        for chunk in chunk_text(entry.get("content") or ""):
+            tl = chunk.lower()
+            hits = sum(len(_re.findall(r"\b" + _re.escape(t), tl)) for t in terms)
+            if hits >= needed:
+                scored.append((hits, chunk))
+
+    scored.sort(key=lambda x: -x[0])
+    return [chunk for _, chunk in scored[:match_count]]
 
 
 class KnowledgeService:
     @staticmethod
-    def get_embedding(text: str, as_query: bool = False) -> list[float]:
+    def get_embedding(text: str, as_query: bool = False, deadline: float | None = None) -> list[float]:
         """Generate embedding (cached).
 
-        Returns an EMBEDDING_DIM vector (default 384) representing semantic
+        Returns an EMBEDDING_DIM vector (default 768) representing semantic
         meaning of text. Provider via EMBEDDING_PROVIDER (.env):
         "hf" | "local" | "gemini" | "off".
         as_query=True hanya berpengaruh untuk provider gemini (prefix task
@@ -331,7 +439,7 @@ class KnowledgeService:
 
         try:
             if EMBEDDING_PROVIDER == "gemini":
-                result = _gemini_embed(text, as_query=as_query)
+                result = _gemini_embed(text, as_query=as_query, deadline=deadline)
             elif EMBEDDING_PROVIDER == "local":
                 model = _get_embedding_model()
                 if model is None:
@@ -340,7 +448,7 @@ class KnowledgeService:
                 embedding = model.encode(text, convert_to_tensor=False, show_progress_bar=False)
                 result = [float(x) for x in embedding.tolist()]
             else:
-                result = _hf_embed(text)
+                result = _hf_embed(text, deadline=deadline)
             # Cache dipagari agar tidak membengkak tanpa batas (teks unik =
             # entry baru tiap kali): hapus key tertua (insertion order) saat
             # melewati batas.
@@ -355,26 +463,28 @@ class KnowledgeService:
 
     @staticmethod
     def index_entry(entry_id: str, content: str) -> int:
-        """Re-index satu entry. Embedding dihitung dulu untuk SEMUA chunk; kalau
-        ada yang gagal, raise tanpa menyentuh index lama. Tidak pernah menyimpan
-        zero-vector. Return jumlah chunk yang tersimpan."""
+        """Re-index satu entry tanpa pernah meninggalkannya tanpa chunk.
+
+        Urutan: embed semua chunk (deadline EMBEDDING_BUDGET_S) -> insert baris
+        baru -> hapus HANYA baris lama yang id-nya sudah dibaca di awal. Kalau
+        insert gagal, index lama utuh; kalau delete gagal, yang tersisa hanya
+        duplikat (bukan entry kosong) dan context_builder membuang duplikatnya.
+        Zero-vector tidak pernah disimpan.
+        """
         if EMBEDDING_PROVIDER == "off" or not supabase_client:
             return 0
 
-        # Import lazy: langchain_text_splitters menarik sentence_transformers
-        # + torch (~40s import cost) walau hanya memakai splitter.
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-        # CharacterTextSplitter cuma split pada "\n\n" - teks tanpa paragraf
-        # (satu blok 2000+ char) tidak pernah dipotong dan bikin chunk besar
-        # di luar budget embedding. Recursive splitter memotong per karakter
-        # saat separator habis.
-        splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-        chunks = splitter.split_text(content)
+        deadline = time.monotonic() + EMBEDDING_BUDGET_S
+        chunks = chunk_text(content)
 
         rows = []
         for idx, chunk in enumerate(chunks):
-            embedding = KnowledgeService.get_embedding(chunk)
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"Embedding melebihi budget {EMBEDDING_BUDGET_S:.0f}s pada chunk {idx}/"
+                    f"{len(chunks)}; index entry tidak diubah"
+                )
+            embedding = KnowledgeService.get_embedding(chunk, deadline=deadline)
             if not _is_valid_vector(embedding):
                 raise RuntimeError(f"Embedding gagal pada chunk {idx}; index entry tidak diubah")
             rows.append(
@@ -383,13 +493,31 @@ class KnowledgeService:
                     "chunk_index": idx,
                     "content_chunk": chunk,
                     "embedding": embedding,
+                    **embedding_metadata(),
                 }
             )
 
-        supabase_client.table("knowledge_embeddings").delete().eq("entry_id", entry_id).execute()
+        # Snapshot id lama SEBELUM insert; tanpa ini delete setelah insert akan
+        # ikut menghapus chunk baru (filter hanya entry_id).
+        try:
+            old = supabase_client.table("knowledge_embeddings").select("id").eq("entry_id", entry_id).execute()
+        except Exception as e:
+            raise RuntimeError(f"Gagal membaca index lama entry {entry_id}; DB tidak diubah") from e
+        old_ids = [r["id"] for r in (getattr(old, "data", None) or [])]
+
         if rows:
-            supabase_client.table("knowledge_embeddings").insert(rows).execute()
+            _insert_embeddings(rows)
+        if old_ids:
+            try:
+                supabase_client.table("knowledge_embeddings").delete().in_("id", old_ids).execute()
+            except Exception as e:
+                # Chunk baru sudah aman; sisa chunk lama hanya duplikat.
+                logger.warning(f"Gagal menghapus chunk lama entry {entry_id} (duplikat tersisa): {e}")
         rag_cache.clear()
+        try:
+            DatabaseService.bump_knowledge_version()
+        except Exception as e:
+            logger.warning(f"Gagal menaikkan knowledge_version: {e}")
         return len(rows)
 
     @staticmethod

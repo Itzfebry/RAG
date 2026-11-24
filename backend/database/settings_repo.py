@@ -21,6 +21,9 @@ RAG_SETTING_DEFAULTS: dict[str, Any] = {
     "rag_match_count_short": 6,
     "rag_match_count_long": 8,
     "rag_match_threshold": None,
+    # Dinaikkan tiap kali index knowledge berubah. Dipakai sebagai bagian kunci
+    # rag_cache supaya instance serverless lain tidak menyajikan chunk basi.
+    "knowledge_version": 0,
 }
 
 
@@ -218,6 +221,7 @@ class ConfigMixin:
                         "user_token_expiry_hours": int(row.get("user_token_expiry_hours", 24)),
                         "trial_prompts": int(row.get("trial_prompts", 3)),
                         "admin_session_version": int(row.get("admin_session_version", 0) or 0),
+                        "knowledge_version": int(row.get("knowledge_version", 0) or 0),
                         **_rag_settings_from_row(row),
                     }
             except Exception:
@@ -258,7 +262,19 @@ class ConfigMixin:
         if supabase_client:
             try:
                 row = {"id": 1, **merged}
-                res = supabase_client.table("app_settings").upsert(row, on_conflict="id").execute()
+                try:
+                    res = supabase_client.table("app_settings").upsert(row, on_conflict="id").execute()
+                except Exception:
+                    # Deployment lama tanpa migrasi embedding_metadata: jangan
+                    # bikin SEMUA update settings gagal gara-gara satu kolom.
+                    if "knowledge_version" not in row:
+                        raise
+                    row.pop("knowledge_version")
+                    res = supabase_client.table("app_settings").upsert(row, on_conflict="id").execute()
+                    logger.warning(
+                        "app_settings.knowledge_version belum ada - jalankan "
+                        "migrations/supabase_migration_embedding_metadata.sql"
+                    )
                 if res.data:
                     return {
                         "user_token_expiry_hours": int(res.data[0].get("user_token_expiry_hours", 24)),
@@ -277,3 +293,20 @@ class ConfigMixin:
             **{k: merged[k] for k in RAG_SETTING_DEFAULTS},
             "updated_at": merged.get("updated_at"),
         }
+
+    @staticmethod
+    def bump_knowledge_version() -> int:
+        """Naikkan knowledge_version - panggil setiap index/delete knowledge.
+
+        Version ikut jadi bagian kunci rag_cache sehingga instance serverless
+        lain membuang hasil retrieval lama tanpa perlu menerima clear() lokal.
+        """
+        from backend.database.db import DatabaseService
+
+        cur = DatabaseService.get_app_settings()
+        try:
+            version = int(cur.get("knowledge_version", 0) or 0) + 1
+        except Exception:
+            version = 1
+        DatabaseService.update_app_settings({"knowledge_version": version})
+        return version

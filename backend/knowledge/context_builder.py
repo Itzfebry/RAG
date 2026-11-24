@@ -91,6 +91,28 @@ def _build_pricing_block() -> str:
     return "\n".join(lines) + "\n"
 
 
+def _retrieval_query(query: str, session_history: list[dict]) -> str:
+    """Query mandiri untuk embedding (temuan follow-up).
+
+    Pertanyaan lanjutan seperti "itu berlaku sampai kapan?" tidak punya makna
+    tanpa konteks. Untuk query pendek, gabungkan pesan user sebelumnya supaya
+    retrieval tidak kosong/salah. Query panjang dibiarkan apa adanya agar tidak
+    tercampur topik lama.
+    """
+    if len(query.split()) > 10:
+        return query
+    for msg in reversed(session_history or []):
+        if str(msg.get("role")) != "user":
+            continue
+        content = msg.get("content")
+        if isinstance(content, list):
+            content = " ".join(str(c.get("text", "")) if isinstance(c, dict) else str(c) for c in content)
+        prev = str(content or "").strip()
+        if prev:
+            return f"{prev[:300]}\n{query}"[:600]
+    return query
+
+
 def build_system_prompt(
     query: str,
     session_history: list[dict],
@@ -118,12 +140,15 @@ def build_system_prompt(
     if len(query.split()) > 15:
         match_count = int(rag_cfg.get("rag_match_count_long", 8))
 
-    # Check cache for this specific query's knowledge
-    cache_key = f"rag:{query.lower().strip()}"
+    # Kunci cache memuat knowledge_version: instance serverless lain yang tidak
+    # menerima clear() lokal tetap otomatis berhenti memakai retrieval lama.
+    knowledge_version = rag_cfg.get("knowledge_version", 0)
+    search_query = _retrieval_query(query, session_history)
+    cache_key = f"rag:v{knowledge_version}:{search_query.lower().strip()}"
     retrieved_chunks = rag_cache.get(cache_key)
 
     if retrieved_chunks is None:
-        retrieved_chunks = KnowledgeService.semantic_search(query, match_count=match_count)
+        retrieved_chunks = KnowledgeService.semantic_search(search_query, match_count=match_count)
         rag_cache.set(cache_key, retrieved_chunks)
 
     # Filter unique chunks to save tokens

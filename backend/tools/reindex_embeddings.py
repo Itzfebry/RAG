@@ -16,6 +16,8 @@ try:
         EMBEDDING_DIM,
         EMBEDDING_PROVIDER,
         KnowledgeService,
+        chunk_text,
+        embedding_metadata,
         supabase_client,
     )
 except ImportError:
@@ -24,10 +26,10 @@ except ImportError:
         EMBEDDING_DIM,
         EMBEDDING_PROVIDER,
         KnowledgeService,
+        chunk_text,
+        embedding_metadata,
         supabase_client,
     )
-
-from langchain_text_splitters import CharacterTextSplitter
 
 
 def _is_dummy(v) -> bool:
@@ -48,13 +50,11 @@ def main() -> int:
         print("Tidak ada entry.")
         return 0
 
-    # Splitter HARUS sama dengan KnowledgeService.index_entry (500/50).
-    splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-
+    # Splitter HARUS sama dengan KnowledgeService.index_entry - satu fungsi.
     # 1) Embed SEMUA dulu - validasi sebelum menyentuh database.
     plan = []
     for e in entries:
-        chunks = splitter.split_text(e.get("content", "") or "")
+        chunks = chunk_text(e.get("content", "") or "")
         vectors = []
         for i, c in enumerate(chunks):
             v = KnowledgeService.get_embedding(c, as_query=False)
@@ -65,6 +65,7 @@ def main() -> int:
         plan.append((e.get("id"), e.get("title", "?"), chunks, vectors))
 
     # 2) Tulis ulang per entry (delete lama → insert baru).
+    meta = embedding_metadata()
     for entry_id, title, chunks, vectors in plan:
         supabase_client.table("knowledge_embeddings").delete().eq("entry_id", entry_id).execute()
         for idx, (c, v) in enumerate(zip(chunks, vectors, strict=False)):
@@ -74,11 +75,16 @@ def main() -> int:
                     "chunk_index": idx,
                     "content_chunk": c,
                     "embedding": v,
+                    **meta,
                 }
             ).execute()
         print(f"  reindexed: {title} ({len(chunks)} chunks)")
 
     total = sum(len(v) for *_, v in plan)
+    try:
+        DatabaseService.bump_knowledge_version()
+    except Exception:
+        pass
     print(f"Selesai - {len(plan)} entry, {total} chunk, provider {EMBEDDING_PROVIDER}.")
     return 0
 

@@ -72,6 +72,23 @@ def test_upload_requires_admin():
     assert r.status_code == 401
 
 
+def test_security_headers_include_csp():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from backend.security.middleware import SecurityHeadersMiddleware
+
+    app = FastAPI()
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    @app.get("/x")
+    def x():
+        return {}
+
+    r = TestClient(app).get("/x")
+    assert "default-src 'none'" in r.headers.get("content-security-policy", "")
+
+
 def test_body_limit_blocks_chunked_oversize():
     from fastapi import FastAPI, Request
     from fastapi.testclient import TestClient

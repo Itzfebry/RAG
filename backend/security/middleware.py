@@ -25,12 +25,18 @@ SECURITY_HEADERS = {
     "X-XSS-Protection": "0",
 }
 
+# API hanya mengembalikan JSON/SSE: tidak butuh resource eksternal sama sekali.
+# /docs dan /redoc dikecualikan karena Swagger UI memuat script dari CDN.
+API_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response: Response = await call_next(request)
         for k, v in SECURITY_HEADERS.items():
             response.headers.setdefault(k, v)
+        if not request.url.path.startswith(("/docs", "/redoc", "/openapi.json")):
+            response.headers.setdefault("Content-Security-Policy", API_CSP)
         # HSTS only if https (prod behind proxy sends x-forwarded-proto)
         proto = request.headers.get("x-forwarded-proto", "")
         if proto == "https":
