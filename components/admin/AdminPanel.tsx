@@ -17,6 +17,7 @@ import {
   X,
   Coins,
   BarChart3,
+  Inbox,
   Brain,
   Fingerprint,
   Layers,
@@ -41,6 +42,7 @@ import { CommunicationTab } from "./tabs/CommunicationTab";
 import { InstructionsTab } from "./tabs/InstructionsTab";
 import { StylesTab } from "./tabs/StylesTab";
 import { PricingTab } from "./tabs/PricingTab";
+import { ProspectsTab } from "./tabs/ProspectsTab";
 import { SectionHeader } from "./SectionHeader";
 import { FieldInfo } from "./FieldInfo";
 import {
@@ -407,8 +409,12 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
                 group: "Pengguna",
                 items: [
                   { id: "users", label: "Users", icon: User },
-                  { id: "pricing", label: "Harga & Paket", icon: Coins },
+                  { id: "pricing", label: "Harga & Paket (arsip)", icon: Coins },
                 ],
+              },
+              {
+                group: "Akuisisi",
+                items: [{ id: "prospects", label: "Prospek", icon: Inbox }],
               },
               {
                 group: "AI & Respons",
@@ -604,7 +610,8 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
           {activeTab !== "models" &&
             activeTab !== "dashboard" &&
             activeTab !== "users" &&
-            activeTab !== "pricing" && (
+            activeTab !== "pricing" &&
+            activeTab !== "prospects" && (
               <Card className={cardBase}>
                 <CardContent className="flex flex-wrap items-center gap-2 p-5">
                   <span className="flex items-center gap-2 text-[14px] font-medium tracking-[0.06em] text-zinc-400 uppercase">
@@ -688,6 +695,9 @@ export default function AdminPanel({ initialTab = "dashboard" as TabType }) {
               pushToast={pushToast}
             />
           )}
+
+          {/* PROSPEK (lead dari halaman discovery) */}
+          {activeTab === "prospects" && <ProspectsTab pushToast={pushToast} />}
 
           {/* IDENTITY */}
           {activeTab === "identity" && (

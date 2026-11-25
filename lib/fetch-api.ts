@@ -70,7 +70,11 @@ export async function fetchApi<T = unknown>(
   const data: unknown = await res.json().catch(() => null);
 
   if (!res.ok) {
-    throw new ApiError(extractMessage(data, `Request gagal (${res.status})`), res.status, data);
+    const extracted = extractMessage(data, "");
+    const message =
+      extracted ||
+      (res.status >= 500 ? SERVER_UNAVAILABLE_MESSAGE : `Request gagal (${res.status})`);
+    throw new ApiError(message, res.status, data);
   }
   return (data ?? ({} as T)) as T;
 }
@@ -91,7 +95,14 @@ export async function tryFetch<T = unknown>(
 
 /** Pesan error manusiawi untuk ditampilkan di UI. */
 export function apiErrorMessage(e: unknown, fallback = "Terjadi kesalahan. Coba lagi."): string {
+  // Gangguan jaringan (backend mati, koneksi putus) tidak layak menampilkan
+  // "Failed to fetch" ke pengunjung.
+  if (e instanceof TypeError && /fetch|network/i.test(e.message)) return fallback;
   if (e instanceof ApiError) return e.message;
   if (e instanceof Error && e.message) return e.message;
   return fallback;
 }
+
+/** Pesan untuk respons 5xx tanpa body JSON yang berguna (mis. proxy gagal). */
+export const SERVER_UNAVAILABLE_MESSAGE =
+  "Layanan discovery sedang tidak tersedia. Coba lagi beberapa saat.";

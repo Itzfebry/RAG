@@ -67,6 +67,127 @@ export interface ExtractedDocument {
   created_at?: string;
 }
 
+/* ---- discovery publik (halaman /chat) ---- */
+
+/** Satu potongan knowledge yang dipakai menjawab, untuk panel trace RAG. */
+export interface RagTraceChunk {
+  title: string;
+  /** Cosine similarity (method "vector") atau jumlah kecocokan (method "keyword"). */
+  score: number | null;
+  method: string;
+  excerpt: string;
+}
+
+/** Metadata retrieval yang dikirim backend bersama jawaban discovery. */
+export interface RagTrace {
+  retrieval_query: string;
+  threshold: number | null;
+  match_count: number;
+  method: "vector" | "keyword" | "none" | string;
+  hit_count: number;
+  chunks: RagTraceChunk[];
+}
+
+/** `GET /api/discovery/config`. */
+export interface DiscoveryConfig {
+  max_turns: number;
+  /** True bila request datang dari sesi login yang valid (untuk gating unduh brief). */
+  authenticated: boolean;
+  remaining_turns: number | null;
+  threshold_low: number;
+  threshold_high: number;
+  compare_enabled: boolean;
+}
+
+/** Struktur brief proyek hasil discovery. */
+export interface DiscoveryBrief {
+  project_title: string;
+  problem: string;
+  goals: string[];
+  current_stack: string[];
+  data_available: string[];
+  recommended_solution: string;
+  integrations: { name: string; why: string }[];
+  suggested_scope: string[];
+  estimate: { range: string; timeline: string; note: string };
+  risks: string[];
+  next_steps: string[];
+}
+
+/** `POST /api/discovery/brief`. */
+export interface BriefResult {
+  id?: string | null;
+  brief: DiscoveryBrief;
+  markdown: string;
+  created_at?: string | null;
+}
+
+/* ---- discovery: state bisnis terstruktur (Business Intelligence Panel) ---- */
+
+export type DiscoveryStatus = "confirmed" | "inferred" | "unknown" | "needs_validation";
+
+export type DiscoveryStage =
+  | "not_started"
+  | "information_gathering"
+  | "business_understanding"
+  | "problem_identified"
+  | "solution_exploration"
+  | "assessment_ready";
+
+export interface DiscoveryField {
+  value: string;
+  status: DiscoveryStatus;
+  evidence?: string;
+}
+
+export interface DiscoveryListField {
+  value: string[];
+  status: DiscoveryStatus;
+  evidence?: string;
+}
+
+export interface DiscoveryItem {
+  value: string;
+  status: DiscoveryStatus;
+  evidence?: string;
+}
+
+export interface DiscoveryRecommendation {
+  name: string;
+  problem: string;
+  approach: string;
+  benefits: string;
+  technologies: string[];
+  complexity: string;
+  cost_category: string;
+  priority: string;
+}
+
+export interface DiscoveryState {
+  business_profile: {
+    business_name: DiscoveryField;
+    industry: DiscoveryField;
+    business_model: DiscoveryField;
+    products_services: DiscoveryListField;
+    target_customers: DiscoveryListField;
+    business_scale: DiscoveryField;
+  };
+  business_challenges: DiscoveryItem[];
+  business_objectives: DiscoveryItem[];
+  current_workflows: DiscoveryItem[];
+  existing_systems: DiscoveryItem[];
+  technology_opportunities: DiscoveryItem[];
+  recommendations: DiscoveryRecommendation[];
+  open_questions: string[];
+  discovery_stage: DiscoveryStage;
+}
+
+/** `POST /api/discovery/context`. */
+export interface DiscoveryContextResult {
+  state: DiscoveryState;
+  session_id?: string | null;
+}
+
 /* ---- users ---- */
 
 export interface AdminUserQuota {

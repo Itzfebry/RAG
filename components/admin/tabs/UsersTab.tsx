@@ -233,6 +233,88 @@ export function UsersTab({
               </Button>
             </div>
           </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <Label className={tLabelPlain}>Ambang RAG rendah (uji banding)</Label>
+              <FieldInfo text="Ambang similarity untuk sisi 'cakupan luas' pada uji banding halaman discovery. Harus lebih kecil dari ambang tinggi." />
+            </div>
+            <Input
+              type="number"
+              step={0.01}
+              min={0}
+              max={1}
+              value={appSettings.rag_threshold_low}
+              onChange={(e) =>
+                setAppSettings((p) => ({ ...p, rag_threshold_low: Number(e.target.value) }))
+              }
+              className={`${inputCls} w-32`}
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <Label className={tLabelPlain}>Ambang RAG tinggi (uji banding)</Label>
+              <FieldInfo text="Ambang similarity untuk sisi 'presisi tinggi' pada uji banding halaman discovery." />
+            </div>
+            <Input
+              type="number"
+              step={0.01}
+              min={0}
+              max={1}
+              value={appSettings.rag_threshold_high}
+              onChange={(e) =>
+                setAppSettings((p) => ({ ...p, rag_threshold_high: Number(e.target.value) }))
+              }
+              className={`${inputCls} w-32`}
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <Label className={tLabelPlain}>Discovery: pesan per sesi</Label>
+              <FieldInfo text="Jumlah maksimum pesan dalam satu sesi discovery publik. Setelah habis, pengunjung harus memulai sesi baru." />
+            </div>
+            <Input
+              type="number"
+              min={1}
+              max={100}
+              value={appSettings.discovery_max_turns}
+              onChange={(e) =>
+                setAppSettings((p) => ({ ...p, discovery_max_turns: Number(e.target.value) }))
+              }
+              className={`${inputCls} w-32`}
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <Label className={tLabelPlain}>Discovery: request/menit per IP</Label>
+              <FieldInfo text="Batas keras request per IP per menit di halaman discovery. Menahan burst dan penyalahgunaan biaya." />
+            </div>
+            <Input
+              type="number"
+              min={1}
+              max={120}
+              value={appSettings.discovery_ip_per_min}
+              onChange={(e) =>
+                setAppSettings((p) => ({ ...p, discovery_ip_per_min: Number(e.target.value) }))
+              }
+              className={`${inputCls} w-32`}
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <Label className={tLabelPlain}>Discovery: request/hari per IP</Label>
+              <FieldInfo text="Batas total request per IP per hari. Perlindungan biaya token harian untuk trafik publik." />
+            </div>
+            <Input
+              type="number"
+              min={1}
+              max={2000}
+              value={appSettings.discovery_ip_per_day}
+              onChange={(e) =>
+                setAppSettings((p) => ({ ...p, discovery_ip_per_day: Number(e.target.value) }))
+              }
+              className={`${inputCls} w-32`}
+            />
+          </div>
           <Button
             onClick={handleSaveSettings}
             disabled={savingSettings}
@@ -248,7 +330,8 @@ export function UsersTab({
           <p className="text-[13px] leading-relaxed text-zinc-500 w-full">
             Expiry berlaku untuk login baru. Trial per IP, hit ke-
             {appSettings.trial_prompts + 1} wajib login. Threshold kosong memakai env
-            MATCH_THRESHOLD. Perubahan chunk berlaku pada chat berikutnya.
+            MATCH_THRESHOLD. Parameter discovery mengatur halaman /chat (publik, tanpa login);
+            kolomnya dibuat oleh migrations/supabase_migration_discovery.sql.
           </p>
         </CardContent>
       </Card>

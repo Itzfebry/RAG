@@ -55,7 +55,8 @@ export type TabType =
   | "instructions"
   | "models"
   | "styles"
-  | "pricing";
+  | "pricing"
+  | "prospects";
 
 export type AdminBootstrapDeps = {
   authExpired: (status: number) => boolean;
@@ -861,6 +862,10 @@ export type AdminBootstrapApi = ReturnType<typeof useAdminBootstrap>;
  * memakainya via hook users, bentuknya diulang setempat tanpa mengubah logika. */
 function parseAppSettingsBoot(s: AppSettingsRaw) {
   const threshold = s.rag_match_threshold;
+  const num = (v: unknown, fallback: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) && v !== null && v !== undefined && v !== "" ? n : fallback;
+  };
   return {
     user_token_expiry_hours: Number(s.user_token_expiry_hours ?? 24),
     trial_prompts: Number(s.trial_prompts ?? 3),
@@ -868,5 +873,10 @@ function parseAppSettingsBoot(s: AppSettingsRaw) {
     rag_match_count_long: Number(s.rag_match_count_long ?? 8),
     rag_match_threshold:
       threshold === null || threshold === undefined || threshold === "" ? null : Number(threshold),
+    discovery_max_turns: num(s.discovery_max_turns, 10),
+    discovery_ip_per_min: num(s.discovery_ip_per_min, 12),
+    discovery_ip_per_day: num(s.discovery_ip_per_day, 60),
+    rag_threshold_low: num(s.rag_threshold_low, 0.55),
+    rag_threshold_high: num(s.rag_threshold_high, 0.67),
   };
 }

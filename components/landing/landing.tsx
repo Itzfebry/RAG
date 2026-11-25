@@ -3,20 +3,19 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { SparklesIcon, type SparklesIconHandle } from "lucide-animated";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SplitText } from "gsap/SplitText";
 import { CustomEase } from "gsap/CustomEase";
 import {
-  ArrowRight,
+  Bot,
   Boxes,
   Database,
   Gauge,
   MessagesSquare,
   Network,
   Plus,
-  Sparkles,
+  Search,
   Workflow,
   Wrench,
 } from "lucide-react";
@@ -26,10 +25,8 @@ import AccordionGallery from "@/components/AccordionGallery";
 import ClickSpark from "@/components/ClickSpark";
 import StarBorder from "@/components/StarBorder";
 import CardNav from "@/components/CardNav";
-import BorderGlow from "@/components/BorderGlow";
 import IntegrationOrbit from "@/components/IntegrationOrbit";
 import Stars from "@/components/Stars";
-import GradientText from "@/components/GradientText";
 
 const CONTACT = "mailto:ayormahaki@gmail.com?subject=Discovery%20proyek%20AI";
 
@@ -40,8 +37,6 @@ const CONTACT = "mailto:ayormahaki@gmail.com?subject=Discovery%20proyek%20AI";
 const SHELL = "mx-auto w-full max-w-[1424px] px-5 md:px-[52px]";
 const NARROW = "mx-auto w-full max-w-[804px] px-5 md:px-[52px]";
 const HEADLINE = "mx-auto w-full max-w-[904px] px-5 md:px-[52px]";
-const EYEBROW = "font-mono text-[11px] uppercase tracking-[0.14em] text-white/70";
-const ACCENT = "font-sans font-medium italic text-white";
 const H1 =
   "text-balance font-heading text-[clamp(1.5rem,2.6vw,2rem)] font-normal leading-[1.2] tracking-[-0.02em]";
 const BRANDLABEL =
@@ -56,8 +51,8 @@ const NAVLINK = "text-[15px] text-white/80 transition-[color,opacity] hover:text
 const NAV = [
   { href: "#masalah", label: "Masalah" },
   { href: "#kenali", label: "Layanan" },
-  { href: "#karya", label: "Project" },
   { href: "#cara-kerja", label: "Cara Kerja" },
+  { href: "#karya", label: "Project" },
   { href: "#faq", label: "FAQ" },
 ];
 
@@ -74,7 +69,7 @@ const STRIP = [
 
 const FLOW = [
   {
-    icon: Sparkles,
+    icon: Search,
     label: "Discovery",
     tag: "Brief",
     input: "Masalah",
@@ -130,11 +125,11 @@ const CAPABILITIES = [
     icon: Workflow,
     step: "03",
     title: "AI Automation",
-    body: "AI memanggil tool dan API nyata: mencatat transaksi, menyusun laporan, mengirim notifikasi ke sistem yang sudah jalan.",
+    body: "AI memanggil tool dan API yang benar-benar berjalan: mencatat transaksi, menyusun laporan, mengirim notifikasi ke sistem yang sudah jalan.",
     img: "/landing/layanan-automation.webp",
   },
   {
-    icon: Sparkles,
+    icon: Bot,
     step: "04",
     title: "AI Agent",
     body: "Satu agen yang tahu kapan harus bertanya, kapan memakai tool, dan kapan berhenti sebelum salah langkah.",
@@ -262,23 +257,23 @@ const PROJECTS = [
     name: "UMKM-AI",
     tag: "Platform keuangan & analisis bisnis",
     body: "Pencatatan transaksi, utang-piutang, laporan dengan ekspor CSV/Excel/PDF, dan AI Finance Analyst yang menjelaskan kondisi bisnis dari angka aktual, bukan tebakan.",
-    stack: "Next.js 15 · Drizzle · PostgreSQL · Auth.js · Cloudflare R2",
+    stack: "Next.js 15, Drizzle, PostgreSQL, Auth.js, Cloudflare R2",
     image: "/landing/project-umkmai.png",
     poster: "linear-gradient(135deg, #4c1d95 0%, #7c3aed 45%, #22d3ee 100%)",
   },
   {
     name: "Axtra",
-    tag: "AI Agent & Orchestrator · Multi-model · Telegram",
+    tag: "AI Agent & Orchestrator multi-model di Telegram",
     body: "Chat multi-mode dengan memori personal yang dicari secara semantik, multi-provider LLM, riset web, generated image, jurnal, jadwal, PWA + Telegram, dan beranda orchestrator.",
-    stack: "Next.js · FastAPI · Supabase + pgvector",
+    stack: "Next.js, FastAPI, Supabase + pgvector",
     image: "/landing/project-axtra.png",
     poster: "linear-gradient(135deg, #1e1b4b 0%, #4338ca 48%, #d946ef 100%)",
   },
   {
     name: "ITZ AI Chat",
-    tag: "Chatbot · RAG & Knowledge AI · Multi-model",
+    tag: "Chatbot dengan RAG & Knowledge AI multi-model",
     body: "Chat streaming dengan panel admin penuh: pengetahuan per kategori, chunking, embedding asimetris, prompt anti-halusinasi, kuota, dan tagihan otomatis.",
-    stack: "Next.js · FastAPI · SSE · PostgreSQL + pgvector",
+    stack: "Next.js, FastAPI, SSE, PostgreSQL + pgvector",
     image: "/landing/project-itzai.png",
     poster: "linear-gradient(135deg, #064e3b 0%, #0d9488 45%, #8b5cf6 100%)",
   },
@@ -311,58 +306,10 @@ const FAQ = [
   },
 ];
 
-function AiSparkle({ className }: { className?: string }) {
-  const wrap = useRef<HTMLSpanElement>(null);
-  const icon = useRef<SparklesIconHandle>(null);
-
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const el = wrap.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry.isIntersecting) return;
-        icon.current?.startAnimation();
-        io.disconnect();
-      },
-      { threshold: 0.6 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
-
-  return (
-    <span ref={wrap} aria-hidden className={`js-split-ignore inline-block ${className ?? ""}`}>
-      <SparklesIcon ref={icon} size={30} />
-    </span>
-  );
-}
-
-/** Teks polos — pemecahan kata dilakukan SplitText di efek GSAP (autoSplit + a11y). */
-function Words({ text }: { text: string }) {
-  return <>{text}</>;
-}
-
-/** Aksen italic dengan gradient hidup. Di-ignore SplitText supaya tidak dipecah. */
-function Accent({ text }: { text: string }) {
-  return (
-    <GradientText
-      className={`${ACCENT} js-split-ignore`}
-      colors={["#c4b5fd", "#a78bfa", "#67e8f9"]}
-      variant="flow"
-      animationSpeed={9}
-      scale={2}
-      glow={0}
-    >
-      {text}
-    </GradientText>
-  );
-}
-
 export default function Landing() {
   const root = useRef<HTMLElement>(null);
   // Dimatikan saat hero tertutup tirai ATAU saat user sedang scroll:
-// GhostFibers berhenti merender frame GPU selama scroll (paling terasa jank).
+  // GhostFibers berhenti merender frame GPU selama scroll (paling terasa jank).
   const [heroPaused, setHeroPaused] = useState(false);
   // Section yang sedang aktif (untuk sorot link navbar).
   const [active, setActive] = useState("");
@@ -474,7 +421,7 @@ export default function Landing() {
       }
       const masalahLines = el.querySelector<HTMLElement>(".js-masalah-lines");
       if (masalahLines) {
-        // Satu timeline scrub: eyebrow → paragraf → bubble, berurutan seperti film.
+        // Satu timeline scrub: paragraf → bubble, berurutan seperti film.
         // Dimulai tepat saat tirai mulai membuka (top 46%) dan selesai sebelum
         // tirai benar-benar hilang.
         const intro = gsap.timeline({
@@ -486,11 +433,6 @@ export default function Landing() {
           },
         });
         intro
-          .fromTo(
-            ".js-masalah-eyebrow",
-            { opacity: 0, y: 10 },
-            { opacity: 1, y: 0, ease: "none" },
-          )
           .fromTo(
             Array.from(masalahLines.children),
             { opacity: 0, y: 24 },
@@ -593,8 +535,8 @@ export default function Landing() {
 
       // 3 · Reveal per kelompok — di-batch agar grup yang masuk bareng
       //     mendapat satu stagger terkoordinasi (lebih sedikit ScrollTrigger).
-      const revealGroups = gsap
-        .utils.toArray<HTMLElement>(".js-reveal")
+      const revealGroups = gsap.utils
+        .toArray<HTMLElement>(".js-reveal")
         .filter((group) => group.children.length > 0);
       const revealTargets = revealGroups.flatMap((group) => Array.from(group.children));
       gsap.set(revealTargets, { y: 26, opacity: 0 });
@@ -693,7 +635,10 @@ export default function Landing() {
           once: true,
           onEnter: () => {
             const warm = () => {
-              if ((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData)
+              if (
+                (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
+                  ?.saveData
+              )
                 return;
               MAS_LOGO_BUBBLES.forEach(({ src }) => {
                 const probe = document.createElement("img");
@@ -954,9 +899,8 @@ export default function Landing() {
         Lompat ke konten
       </a>
 
-      <div aria-hidden className="grain pointer-events-none fixed inset-0 z-[45]" />
       {/* Vignette tepi atas/bawah untuk semua section setelah hero: statis,
-          tidak menutup konten, nol biaya per frame (beda dengan tirai). */}
+          tidak menutup konten, nol biaya per frame. */}
       <div aria-hidden className="page-vignette pointer-events-none fixed inset-0 z-[38]" />
       {/* Tirai dip-to-black: hanya sekali, hero → Masalah (opening).
           pointer-events-none, opacity saja. */}
@@ -1013,7 +957,7 @@ export default function Landing() {
                 label: "Coba langsung",
                 description: "Lihat ITZ AI bekerja.",
                 links: [
-                  { label: "Demo Chat", href: "/chat" },
+                  { label: "Discovery", href: "/chat" },
                   { label: "Dokumentasi", href: "/docs" },
                 ],
               },
@@ -1033,7 +977,6 @@ export default function Landing() {
       {/* 1 · Hero: gambar iridescent jadi latar, konten mengapung di atasnya */}
       <section className="js-hero relative flex min-h-[100svh] flex-col justify-center overflow-hidden pb-20 pt-[calc(env(safe-area-inset-top,0px)+8rem)] md:pb-28 md:pt-40">
         <div aria-hidden className="js-hero-bg pointer-events-none absolute inset-0 -z-10">
-          <div aria-hidden className="hero-aurora" />
           <div className="hero-fibers absolute inset-0">
             <GhostFibers
               glowColor="#8b5cf6"
@@ -1102,7 +1045,6 @@ export default function Landing() {
                 className="backdrop-blur-md transition-[transform,backdrop-filter] duration-300 hover:scale-[1.04] hover:backdrop-blur-xl"
               >
                 Mulai discovery
-                <ArrowRight className="ml-2 size-4" strokeWidth={1.7} />
               </StarBorder>
             </span>
           </div>
@@ -1211,12 +1153,7 @@ export default function Landing() {
 
         <div className={SHELL}>
           <div className="mx-auto max-w-[860px] text-center">
-            <p className={`${EYEBROW} js-masalah-eyebrow`}>Masalah</p>
-            <h2 className={`${H2} mt-6`}>
-              <Words text="Apakah Infrastruktur Bisnis Anda Siap Menghadapi" />{" "}
-              <Accent text="Era AI?" />
-              <AiSparkle className="ml-2 align-[-0.06em] text-[color:var(--spectral-violet)]" />
-            </h2>
+            <h2 className={`${H2}`}>Apakah infrastruktur bisnis Anda siap menghadapi era AI?</h2>
           </div>
 
           {/* Narasi */}
@@ -1253,11 +1190,7 @@ export default function Landing() {
       {/* 5 · Apa yang bisa ITZ AI lakukan: 6 kapabilitas */}
       <section id="kenali" className={`${SHELL} scroll-mt-28 py-20 md:py-28`}>
         <div className="mx-auto max-w-[860px] text-center">
-          <p className={EYEBROW}>Layanan</p>
-          <h2 className={`${H2} mt-5`}>
-            <Words text="Apa yang bisa ITZ AI" />{" "}
-            <Accent text="lakukan." />
-          </h2>
+          <h2 className={`${H2} mt-5`}>Apa yang bisa ITZ AI lakukan.</h2>
           <p className="mx-auto mt-5 max-w-[62ch] text-center text-[18px] leading-[1.75] text-white/60 md:text-[19px]">
             Layanan kami mencakup perancangan hingga penerapan solusi AI, mulai dari chatbot dan
             basis pengetahuan, otomasi proses bisnis, integrasi API, serta sistem multi-agen. Setiap
@@ -1307,11 +1240,7 @@ export default function Landing() {
 
         <div className={SHELL}>
           <div className="mx-auto max-w-[760px] text-center">
-            <p className={EYEBROW}>Cara kerja</p>
-            <h2 className={`${H2} mt-5`}>
-              <Words text="Empat langkah," />{" "}
-              <Accent text="satu alur." />
-            </h2>
+            <h2 className={`${H2}`}>Empat langkah, satu alur.</h2>
             <p className="mx-auto mt-5 max-w-[62ch] text-center text-[18px] leading-[1.75] text-white/60 md:text-[19px]">
               Proses yang sama untuk setiap pekerjaan. Tidak ada lompatan dari ide ke produksi.
             </p>
@@ -1320,11 +1249,7 @@ export default function Landing() {
           <div className="js-flow-panel g-dark g-sheen relative mt-12 overflow-hidden rounded-[26px] border-white/[0.12] p-3 md:p-5">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] px-2 pb-3">
               <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-white/45">
-                Flow mechanism
-              </span>
-              <span className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.18em] text-white/45">
-                <span className="size-1.5 rounded-full bg-emerald-300/80 shadow-[0_0_10px_rgba(110,231,183,0.8)]" />
-                04 stages · intake ke live
+                Mekanisme alur
               </span>
             </div>
 
@@ -1356,9 +1281,6 @@ export default function Landing() {
                         />
                         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,6,10,0.15),rgba(10,11,18,0.82)_72%,#0a0b12)]" />
                         <div className="absolute inset-x-3 top-3 flex items-center justify-between gap-3">
-                          <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-white/55">
-                            Stage {String(i + 1).padStart(2, "0")}
-                          </span>
                           <span className="rounded-full border border-white/[0.14] bg-black/35 px-2 py-0.5 font-mono text-[8px] uppercase tracking-[0.16em] text-white/55 backdrop-blur-sm">
                             {step.tag}
                           </span>
@@ -1376,10 +1298,7 @@ export default function Landing() {
                           {step.body}
                         </p>
                         <div className="mt-4 flex items-center justify-between gap-2 border-t border-white/[0.07] pt-3 font-mono text-[9px] uppercase tracking-[0.14em]">
-                          <span className="text-white/35">
-                            in · <span className="text-white/65">{step.input}</span>
-                          </span>
-                          <ArrowRight className="size-3 shrink-0 text-white/20" />
+                          <span className="text-white/55">{step.input}</span>
                           <span className="text-right text-violet-200/70">{step.output}</span>
                         </div>
                       </div>
@@ -1393,7 +1312,6 @@ export default function Landing() {
                         <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/[0.12]" />
                         <span className="js-flow-fill absolute inset-x-0 top-1/2 h-px origin-left -translate-y-1/2 scale-x-0 bg-gradient-to-r from-violet-300/90 via-fuchsia-200/80 to-cyan-200/90" />
                         <span className="js-flow-packet absolute left-0 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-cyan-200 opacity-0 shadow-[0_0_12px_3px_rgba(103,232,249,0.6)]" />
-                        <ArrowRight className="absolute right-0 top-1/2 size-3 -translate-y-1/2 text-white/25" />
                       </span>
                     ) : null}
                   </li>
@@ -1402,11 +1320,7 @@ export default function Landing() {
             </ol>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.07] px-2 pt-3 font-mono text-[9px] uppercase tracking-[0.16em] text-white/35">
-              <span>intake → discovery → architecture → development → deployment</span>
-              <span className="inline-flex items-center gap-1.5 text-white/45">
-                <span className="size-1.5 rounded-full bg-emerald-300/80" />
-                alur siap
-              </span>
+              <span>Intake, discovery, architecture, development, deployment</span>
             </div>
           </div>
         </div>
@@ -1427,10 +1341,7 @@ export default function Landing() {
 
         <div className={SHELL}>
           <div className="mx-auto max-w-[720px] text-center">
-            <h2 className={H2}>
-              <Words text="Integrasikan AI" />{" "}
-              <Accent text="ke dalam Apps." />
-            </h2>
+            <h2 className={H2}>Integrasikan AI ke dalam aplikasi Anda.</h2>
             <p className="mx-auto mt-5 max-w-[62ch] text-center text-[18px] leading-[1.75] text-white/60 md:text-[19px]">
               Dari chat, dokumen, hingga pembayaran, integrasikan AI ke seluruh alat kerja Anda.
             </p>
@@ -1444,21 +1355,7 @@ export default function Landing() {
       {/* 6 · Project Launch: proyek yang sudah jalan */}
       <section id="karya" className={`${SHELL} relative isolate scroll-mt-28 py-20 md:py-28`}>
         <div className="js-launch-head mx-auto max-w-[760px] text-center">
-          <p className={`${EYEBROW} inline-flex items-center gap-2.5`}>
-            <span className="relative flex size-1.5" aria-hidden>
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-300/60" />
-              <span className="relative inline-flex size-1.5 rounded-full bg-emerald-300" />
-            </span>
-            Project Launch
-            <span className="text-white/25" aria-hidden>
-              /
-            </span>
-            <span className="text-white/45">03 Sistem · Live</span>
-          </p>
-          <h2 className={`${H2} mt-5`}>
-            <Words text="Sistem yang sudah jalan," />{" "}
-            <Accent text="lengkap dengan operasionalnya." />
-          </h2>
+          <h2 className={`${H2}`}>Sistem yang sudah jalan, lengkap dengan operasionalnya.</h2>
           <div className="js-launch-line spectral-line mx-auto mt-6 h-px w-full max-w-[360px] origin-left scale-x-0" />
         </div>
         <div
@@ -1472,7 +1369,7 @@ export default function Landing() {
             WebkitMaskPosition: "0% 100%",
           }}
         >
-          {PROJECTS.map((project, i) => (
+          {PROJECTS.map((project) => (
             <article
               key={project.name}
               className="js-project js-tilt g-frosted g-sheen g-float group relative flex flex-col overflow-hidden rounded-[20px]"
@@ -1486,7 +1383,10 @@ export default function Landing() {
                 }}
               />
               {/* Poster: gambar proyek (gradient sebagai latar cadangan) */}
-              <div className="relative aspect-[16/10] overflow-hidden" style={{ background: project.poster }}>
+              <div
+                className="relative aspect-[16/10] overflow-hidden"
+                style={{ background: project.poster }}
+              >
                 <Image
                   src={project.image}
                   alt={project.name}
@@ -1499,18 +1399,17 @@ export default function Landing() {
                   aria-hidden
                   className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#0a0b12] to-transparent"
                 />
-                <span className="absolute right-3 top-3 z-10 rounded-full border border-white/15 bg-black/35 px-2 py-0.5 font-mono text-[10px] tracking-[0.16em] text-white/70 backdrop-blur-sm">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
                 <span className="absolute bottom-3 left-4 z-10 font-heading text-[20px] font-medium uppercase tracking-[0.14em] text-white/95 [text-shadow:0_2px_12px_rgba(0,0,0,0.6)]">
                   {project.name}
                 </span>
               </div>
               <div className="relative z-10 flex flex-1 flex-col p-5 md:p-6">
-                <p className={EYEBROW}>{project.tag}</p>
-                <p className="mt-3 flex-1 text-[14px] leading-[1.6] text-white/60">{project.body}</p>
+                <p className="text-[12.5px] text-white/55">{project.tag}</p>
+                <p className="mt-3 flex-1 text-[14px] leading-[1.6] text-white/60">
+                  {project.body}
+                </p>
                 <ul className="mt-4 flex flex-wrap gap-1.5 border-t border-white/[0.07] pt-4">
-                  {project.stack.split(" · ").map((tech) => (
+                  {project.stack.split(", ").map((tech) => (
                     <li
                       key={tech}
                       className="rounded-full border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-mono text-[10px] tracking-[0.04em] text-white/50"
@@ -1528,10 +1427,7 @@ export default function Landing() {
       {/* 7 · FAQ: kolom 700px terpusat */}
       <section id="faq" className="scroll-mt-28 border-y border-white/[0.08] py-20 md:py-28">
         <div className={NARROW}>
-          <h2 className={`${H2} text-center`}>
-            <Words text="Kami punya" />{" "}
-            <Accent text="jawabannya." />
-          </h2>
+          <h2 className={`${H2} text-center`}>Kami punya jawabannya.</h2>
           <div className="js-reveal mt-10">
             {FAQ.map(({ q, a }) => (
               <details key={q} className="group border-b border-white/[0.08]">
@@ -1553,42 +1449,25 @@ export default function Landing() {
 
       {/* 8 · CTA penutup terpusat */}
       <section className={`${SHELL} py-20 md:py-28`}>
-        <BorderGlow
-          backgroundColor="#0a0b12"
-          borderRadius={28}
-          glowColor="262 90 70"
-          colors={["#a78bfa", "#22d3ee", "#e879f9"]}
-          glowIntensity={0.9}
-          coneSpread={28}
-          edgeSensitivity={40}
-          className="overflow-hidden"
-        >
-          <div className="relative px-6 py-16 text-center md:px-16 md:py-20">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-x-10 bottom-[-10rem] h-[20rem] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(139,92,246,0.32),rgba(34,211,238,0.14)_50%,transparent_72%)] blur-3xl"
-            />
-            <h2 className={`${H2} relative mx-auto max-w-[22ch]`}>
-              <Words text="Siap mengotomasi yang" />{" "}
-              <Accent text="berulang?" />
-            </h2>
-            <p className="relative mx-auto mt-5 max-w-[62ch] text-center text-[18px] leading-[1.75] text-white/60 md:text-[19px]">
-              Ceritakan alurnya. Saya bantu petakan mana yang bisa dibantu AI, mana yang lebih baik
-              dibiarkan sederhana.
-            </p>
-            <div className="relative mt-8 flex flex-wrap items-center justify-center gap-3">
-              <span className="js-magnet inline-flex">
-                <a href="/chat" className={PILL}>
-                  Mulai discovery
-                  <ArrowRight className="ml-2 size-4" strokeWidth={1.7} />
-                </a>
-              </span>
-            </div>
-            <p className="relative mt-5 font-mono text-[11px] uppercase tracking-[0.14em] text-white/40">
-              Tanpa komitmen · balasan dalam 1×24 jam · bukan sales call
-            </p>
+        <div className="relative rounded-[28px] border border-white/[0.1] bg-[#0a0b12] px-6 py-16 text-center md:px-16 md:py-20">
+          <h2 className={`${H2} relative mx-auto max-w-[22ch]`}>
+            Siap mengotomasi pekerjaan yang berulang?
+          </h2>
+          <p className="relative mx-auto mt-5 max-w-[62ch] text-center text-[18px] leading-[1.75] text-white/60 md:text-[19px]">
+            Ceritakan alurnya. Saya bantu petakan mana yang bisa dibantu AI, mana yang lebih baik
+            dibiarkan sederhana.
+          </p>
+          <div className="relative mt-8 flex flex-wrap items-center justify-center gap-3">
+            <span className="js-magnet inline-flex">
+              <a href="/chat" className={PILL}>
+                Mulai discovery
+              </a>
+            </span>
           </div>
-        </BorderGlow>
+          <p className="relative mt-5 font-mono text-[11px] uppercase tracking-[0.14em] text-white/40">
+            Tanpa komitmen, bukan sales call
+          </p>
+        </div>
       </section>
 
       {/* 9 · Footer: 4 kolom + bilah legal (pola referensi) */}
@@ -1597,13 +1476,11 @@ export default function Landing() {
           className={`${SHELL} grid gap-10 py-14 text-[12px] md:grid-cols-[1.8fr_1fr_1fr_1fr] md:py-16`}
         >
           <div>
-            <div className="flex items-center gap-2 text-[15px] font-semibold">
-              <Sparkles className="size-4" strokeWidth={1.7} />
-              ITZ AI
-            </div>
+            <div className="text-[15px] font-semibold">ITZ AI</div>
             <p className="mt-4 max-w-[28ch] text-[13px] leading-[1.7] text-white/45">
-              AI yang menempel ke sistem dan masalah nyata, bukan demo yang berhenti di presentasi.
-z            </p>
+              AI yang menempel ke sistem dan cara kerja sehari-hari, bukan demo yang berhenti di
+              presentasi.
+            </p>
           </div>
           <div>
             <p className="text-[12px] text-white/40">Layanan</p>
@@ -1638,8 +1515,12 @@ z            </p>
                 </a>
               </li>
               <li>
-                <Link href="/chat" prefetch={false} className="text-white/65 transition-colors hover:text-white">
-                  Demo chat
+                <Link
+                  href="/chat"
+                  prefetch={false}
+                  className="text-white/65 transition-colors hover:text-white"
+                >
+                  Discovery
                 </Link>
               </li>
             </ul>

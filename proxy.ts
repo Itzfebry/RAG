@@ -79,8 +79,8 @@ export function proxy(req: NextRequest) {
     return res;
   }
 
-  // User wall: allow trial guests on /chat; gate only if trial exhausted
-  // Trial enforcement is backend-side per-IP; proxy stays permissive for guests
+  // Halaman discovery publik (/chat): tanpa login. Pembatas biaya ada di
+  // backend (per IP + per sesi, lihat backend/security/discovery_guard.py).
   return res;
 }
 

@@ -22,6 +22,11 @@ export type AppSettings = {
   rag_match_count_short: number;
   rag_match_count_long: number;
   rag_match_threshold: number | null;
+  discovery_max_turns: number;
+  discovery_ip_per_min: number;
+  discovery_ip_per_day: number;
+  rag_threshold_low: number;
+  rag_threshold_high: number;
 };
 
 export type AdminUsersDeps = {
@@ -31,6 +36,10 @@ export type AdminUsersDeps = {
 
 function parseAppSettings(s: AppSettingsRaw): AppSettings {
   const threshold = s.rag_match_threshold;
+  const num = (v: unknown, fallback: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) && v !== null && v !== undefined && v !== "" ? n : fallback;
+  };
   return {
     user_token_expiry_hours: Number(s.user_token_expiry_hours ?? 24),
     trial_prompts: Number(s.trial_prompts ?? 3),
@@ -38,6 +47,11 @@ function parseAppSettings(s: AppSettingsRaw): AppSettings {
     rag_match_count_long: Number(s.rag_match_count_long ?? 8),
     rag_match_threshold:
       threshold === null || threshold === undefined || threshold === "" ? null : Number(threshold),
+    discovery_max_turns: num(s.discovery_max_turns, 10),
+    discovery_ip_per_min: num(s.discovery_ip_per_min, 12),
+    discovery_ip_per_day: num(s.discovery_ip_per_day, 60),
+    rag_threshold_low: num(s.rag_threshold_low, 0.55),
+    rag_threshold_high: num(s.rag_threshold_high, 0.67),
   };
 }
 
@@ -51,6 +65,11 @@ export function useAdminUsers({ authExpired, pushToast }: AdminUsersDeps) {
     rag_match_count_short: 6,
     rag_match_count_long: 8,
     rag_match_threshold: null,
+    discovery_max_turns: 10,
+    discovery_ip_per_min: 12,
+    discovery_ip_per_day: 60,
+    rag_threshold_low: 0.55,
+    rag_threshold_high: 0.67,
   });
   const [userModalOpen, setUserModalOpen] = useState(false);
   // Double-submit guard: matikan tombol submit sampai request selesai.
@@ -250,6 +269,11 @@ export function useAdminUsers({ authExpired, pushToast }: AdminUsersDeps) {
       ...body,
       rag_match_threshold:
         appSettings.rag_match_threshold === null ? null : Number(appSettings.rag_match_threshold),
+      discovery_max_turns: Number(appSettings.discovery_max_turns),
+      discovery_ip_per_min: Number(appSettings.discovery_ip_per_min),
+      discovery_ip_per_day: Number(appSettings.discovery_ip_per_day),
+      rag_threshold_low: Number(appSettings.rag_threshold_low),
+      rag_threshold_high: Number(appSettings.rag_threshold_high),
     };
     try {
       const j = await fetchApi<{ settings?: AppSettingsRaw }>("/api/python/admin/settings", {

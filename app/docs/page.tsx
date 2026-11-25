@@ -39,6 +39,11 @@ export default function DocsPage() {
             Ketik command di awal pesan chat. Maksimal 2 command per pesan, contoh:{" "}
             <code className="font-mono">/explain REST API</code>
           </p>
+          <p className="mt-2 max-w-[62ch] text-[12.5px] leading-relaxed text-zinc-600">
+            Catatan: command adalah fitur mode lanjutan (API internal). Percakapan di halaman
+            discovery publik tidak menafsirkan garis miring — semua pesan diproses sebagai
+            pertanyaan biasa.
+          </p>
         </div>
         <Link
           href="/chat"

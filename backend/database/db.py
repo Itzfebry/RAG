@@ -20,6 +20,7 @@ try:
         logger,
         supabase_client,
     )
+    from backend.database.discovery_repo import DiscoveryMixin
     from backend.database.document_repo import DocumentMixin
     from backend.database.knowledge_repo import KnowledgeMixin
     from backend.database.quota_repo import QuotaMixin
@@ -46,6 +47,7 @@ except ImportError:
             logger,
             supabase_client,
         )
+        from database.discovery_repo import DiscoveryMixin  # type: ignore
         from database.document_repo import DocumentMixin  # type: ignore
         from database.knowledge_repo import KnowledgeMixin  # type: ignore
         from database.quota_repo import QuotaMixin  # type: ignore
@@ -76,6 +78,7 @@ except ImportError:
             logger,
             supabase_client,
         )
+        from database.discovery_repo import DiscoveryMixin  # type: ignore
         from database.document_repo import DocumentMixin  # type: ignore
         from database.knowledge_repo import KnowledgeMixin  # type: ignore
         from database.quota_repo import QuotaMixin  # type: ignore
@@ -98,6 +101,7 @@ class DatabaseService(
     UsersMixin,
     ChatMixin,
     DocumentMixin,
+    DiscoveryMixin,
     BillingMixin,
     QuotaMixin,
     UsageMixin,

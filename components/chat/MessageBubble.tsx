@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import { Check, Copy, FileText, RotateCw, Sparkles } from "lucide-react";
 import { TripleDotSpinner } from "@/components/ui/triple-dot-spinner";
+import { aiStatus } from "@/lib/ai-status";
 import { m } from "framer-motion";
 
 // LazyMotion renders `m` components; alias keeps all call sites unchanged.
@@ -43,6 +44,8 @@ interface Props {
   /** Saran pertanyaan lanjutan dari model. */
   suggestions?: string[];
   onSuggestionClick?: (text: string) => void;
+  /** Tahap pemrosesan dari backend (nama event internal, lihat lib/ai-status). */
+  statusKey?: string;
 }
 
 function fmtSec(ms: number) {
@@ -60,6 +63,7 @@ export const MessageBubble: React.FC<Props> = ({
   attachments,
   suggestions,
   onSuggestionClick,
+  statusKey,
 }) => {
   const [copied, setCopied] = useState(false);
   const [Markdown, setMarkdown] = useState<React.ComponentType<{ children: string }> | null>(null);
@@ -137,6 +141,8 @@ export const MessageBubble: React.FC<Props> = ({
     .replace(/\\<br\s*\/?>/gi, "<br>")
     .trim();
 
+  const statusText = aiStatus(statusKey);
+
   if (isStreaming && !cleaned) {
     return (
       <motion.div
@@ -154,11 +160,18 @@ export const MessageBubble: React.FC<Props> = ({
             className="h-full w-full object-cover"
           />
         </div>
-        <div className="flex items-center gap-2.5 pt-1.5">
-          <TripleDotSpinner size={20} />
-          <span className="text-[12.5px] tracking-wide text-zinc-500">Memproses…</span>
-          {typeof durationMs === "number" && durationMs > 0 && (
-            <span className="text-[11px] tracking-wide text-zinc-500">· {fmtSec(durationMs)}</span>
+        <div className="flex flex-col gap-0.5 pt-1.5">
+          <div className="flex items-center gap-2.5">
+            <TripleDotSpinner size={20} />
+            <span className="text-[12.5px] tracking-wide text-zinc-300">{statusText.label}</span>
+            {typeof durationMs === "number" && durationMs > 0 && (
+              <span className="text-[11px] tracking-wide text-zinc-500">· {fmtSec(durationMs)}</span>
+            )}
+          </div>
+          {statusText.description && (
+            <span className="pl-[30px] text-[11px] leading-[1.5] text-zinc-500">
+              {statusText.description}
+            </span>
           )}
         </div>
       </motion.div>

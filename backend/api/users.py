@@ -166,6 +166,12 @@ class AppSettingsUpdateRequest(BaseModel):
     rag_match_count_short: int | None = Field(default=None, ge=1, le=30)
     rag_match_count_long: int | None = Field(default=None, ge=1, le=30)
     rag_match_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    # Parameter alur discovery publik (halaman /chat).
+    discovery_max_turns: int | None = Field(default=None, ge=1, le=100)
+    discovery_ip_per_min: int | None = Field(default=None, ge=1, le=120)
+    discovery_ip_per_day: int | None = Field(default=None, ge=1, le=2000)
+    rag_threshold_low: float | None = Field(default=None, ge=0.0, le=1.0)
+    rag_threshold_high: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 # ── user auth dependency ──
@@ -1123,5 +1129,14 @@ def admin_update_settings(payload: AppSettingsUpdateRequest, request: Request, a
             patch[k] = getattr(payload, k)
     if "rag_match_threshold" in payload.model_fields_set:
         patch["rag_match_threshold"] = payload.rag_match_threshold
+    for k in (
+        "discovery_max_turns",
+        "discovery_ip_per_min",
+        "discovery_ip_per_day",
+        "rag_threshold_low",
+        "rag_threshold_high",
+    ):
+        if k in payload.model_fields_set and getattr(payload, k) is not None:
+            patch[k] = getattr(payload, k)
     updated = DatabaseService.update_app_settings(patch)
     return {"status": "success", "settings": updated}

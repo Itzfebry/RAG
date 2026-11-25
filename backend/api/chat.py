@@ -228,6 +228,21 @@ class ChatRequest(BaseModel):
     model: str | None = Field(default=None, max_length=256)
     # Dokumen tersimpan (server-side). Client tidak pernah mengirim isi teks.
     document_ids: list[str] | None = Field(default=None, max_length=10)
+    # "discovery" = tamu publik tanpa login/kuota: prompt konsultan agensi +
+    # trace RAG, dibatasi rate limit per IP dan per sesi. "default" = perilaku lama.
+    mode: str | None = Field(default="default", max_length=16)
+    session_id: str | None = Field(default=None, max_length=64)
+    # Ambang relevansi RAG untuk sesi discovery (0-1). None = pakai pengaturan
+    # aktif. Dipakai panel "Konfigurasi RAG" dan mode perbandingan.
+    threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @field_validator("mode")
+    @classmethod
+    def check_mode(cls, v):  # type: ignore
+        value = (v or "default").strip().lower()
+        if value not in ("default", "discovery"):
+            raise ValueError("Invalid mode")
+        return value
 
     @field_validator("document_ids")
     @classmethod
@@ -301,6 +316,11 @@ def _parse_sse_event(chunk: str) -> dict | None:
     return ev if isinstance(ev, dict) else None
 
 
+def _status_event(event: str) -> str:
+    """Frame status pemrosesan (nama event tetap Inggris; teks label ada di client)."""
+    return f"data: {json.dumps({'status': event})}\n\n"
+
+
 @router.get("/commands")
 def get_commands():
     return {"commands": list_command_details()}
@@ -309,21 +329,31 @@ def get_commands():
 @router.post("/chat")
 async def stream_chat(payload: ChatRequest, request: Request):
     ip = get_client_ip(request)
-    command_names, clean_message, unknown_command = parse_command(payload.message)
-    if unknown_command or (command_names and not clean_message):
-        return StreamingResponse(
-            _help_stream(_commands_help_text(unknown_command)),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-                "X-Command-Mode": "static",
-            },
-        )
-    if command_names:
-        payload.message = clean_message
-    user = get_current_chat_user_optional(request)
+    discovery_mode = (payload.mode or "default") == "discovery"
+    if discovery_mode:
+        # Command slash adalah fitur pemilik (bukan klien discovery): jangan
+        # ditafsirkan, kirim apa adanya ke model.
+        command_names: list[str] = []
+        clean_message = payload.message
+        unknown_command = None
+    else:
+        command_names, clean_message, unknown_command = parse_command(payload.message)
+        if unknown_command or (command_names and not clean_message):
+            return StreamingResponse(
+                _help_stream(_commands_help_text(unknown_command)),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                    "X-Command-Mode": "static",
+                },
+            )
+        if command_names:
+            payload.message = clean_message
+    if discovery_mode and payload.document_ids:
+        raise HTTPException(status_code=400, detail="Lampiran dokumen tidak tersedia di mode discovery")
+    user = None if discovery_mode else get_current_chat_user_optional(request)
     # Dokumen tersimpan: gate premium + verifikasi kepemilikan per dokumen.
     user_documents: list[dict] = []
     if payload.document_ids:
@@ -350,7 +380,19 @@ async def stream_chat(payload: ChatRequest, request: Request):
     # atomik, bukan setelah jawaban masuk — request paralel tidak bisa
     # melewati batas. Bila provider gagal/tidak menjawab, kuota di-refund.
     reservation: dict | None = None
-    if user is not None:
+    if discovery_mode:
+        # Tamu discovery: tanpa akun & tanpa kuota prompt, tapi dibatasi
+        # rate limit per IP (menit/hari) + batas turn per sesi.
+        try:
+            from backend.security.discovery_guard import enforce_discovery_limits, normalize_session_id
+        except ImportError:
+            from security.discovery_guard import enforce_discovery_limits, normalize_session_id  # type: ignore
+
+        discovery_session = normalize_session_id(payload.session_id)
+        if not discovery_session:
+            raise HTTPException(status_code=400, detail="session_id wajib dikirim di mode discovery")
+        enforce_discovery_limits(request, discovery_session)
+    elif user is not None:
         enforce_rate_limit(f"chat:{user.get('id')}:{ip}", 30, 60, durable=True)
         fresh = DatabaseService.get_user_by_id(str(user.get("id")))
         if fresh:
@@ -408,7 +450,7 @@ async def stream_chat(payload: ChatRequest, request: Request):
 
     t0 = _t.perf_counter()
 
-    usage_owner = str(user.get("id")) if user is not None else f"trial:{ip}"
+    usage_owner = str(user.get("id")) if user is not None else (f"discovery:{ip}" if discovery_mode else f"trial:{ip}")
 
     def _refund_reservation() -> None:
         """Kembalikan reservasi kuota (harian user / trial IP)."""
@@ -434,7 +476,11 @@ async def stream_chat(payload: ChatRequest, request: Request):
         streamed = False  # konten sudah sampai client? (untuk keputusan refund saat cancel)
         usage_recorded = False  # apakah event usage dari agent sudah dicatat?
         tokens_total = 0  # akumulasi token request ini (untuk rate tracker)
+        generation_announced = False  # status "menyiapkan respons" sudah dikirim?
         try:
+            # Status pertama yang jujur: konteks & riwayat sedang dibaca sebelum
+            # retrieval. Tahap lain hanya dikirim saat benar-benar terjadi.
+            yield _status_event("CONTEXT_ANALYSIS")
             async for chunk in agent_orchestrator.stream_chat_response(
                 payload.message,
                 history_dicts,
@@ -442,6 +488,9 @@ async def stream_chat(payload: ChatRequest, request: Request):
                 user_profile=user_profile,
                 command_names=command_names or None,
                 user_documents=user_documents or None,
+                prompt_mode="discovery" if discovery_mode else "default",
+                include_trace=discovery_mode,
+                threshold_override=payload.threshold if discovery_mode else None,
             ):
                 # dispatch berdasarkan top-level key event (bukan substring di
                 # dalam konten streaming - konten chat bisa mengandung "usage")
@@ -467,6 +516,10 @@ async def stream_chat(payload: ChatRequest, request: Request):
                     answered = True
                     continue
                 streamed = streamed or (ev is not None and "content" in ev)
+                # Retrieval selesai (trace sudah dikirim) -> model mulai menulis.
+                if not generation_announced and ev is not None and "content" in ev:
+                    generation_announced = True
+                    yield _status_event("RESPONSE_GENERATION")
                 yield chunk
         except asyncio.CancelledError:
             # Client membatalkan stream: kuota direservasi namun belum ada
@@ -536,24 +589,37 @@ _DEFAULT_SUGGESTIONS = [
 ]
 
 
+_DISCOVERY_SUGGESTIONS = [
+    "Saya punya toko online dan ingin balasan WhatsApp otomatis",
+    "Bisa buat chatbot dari dokumen SOP perusahaan?",
+    "Saya butuh aplikasi mobile untuk tim lapangan",
+    "Bagaimana AI bisa mengurangi kerja admin manual?",
+    "Saya ingin dashboard penjualan yang bisa ditanya",
+    "Integrasi AI ke sistem kasir yang sudah jalan",
+    "Otomasi rekap laporan mingguan dari spreadsheet",
+    "Rekomendasi solusi AI untuk bisnis jasa",
+]
+
+
 @router.get("/suggestions")
-def get_suggestions(limit: int = 3):
+def get_suggestions(limit: int = 3, mode: str = "default"):
     """Chat suggestion untuk empty state. Sumber prioritas:
     1. system_instructions.chat_suggestions - override manual admin
        (field teks, dipisah ";" atau baris baru - bisa diisi via panel admin)
     2. judul knowledge entries aktif - suggestion hidup mengikuti isi KB
-    3. pool default
+    3. pool default (mode discovery punya pool khusus agensi)
     """
     limit = max(1, min(6, limit))
-    # 1) admin override
+    # 1) admin override (tidak dipakai mode discovery: saran pemilik bisa tidak relevan)
     try:
-        cfg = DatabaseService.get_config_table("system_instructions") or {}
-        raw = str(cfg.get("chat_suggestions") or "").strip()
-        if raw:
-            items = [s.strip() for s in re.split(r"[;\n]", raw) if s.strip()]
-            if items:
-                random.shuffle(items)
-                return {"suggestions": items[:limit], "source": "admin"}
+        if mode != "discovery":
+            cfg = DatabaseService.get_config_table("system_instructions") or {}
+            raw = str(cfg.get("chat_suggestions") or "").strip()
+            if raw:
+                items = [s.strip() for s in re.split(r"[;\n]", raw) if s.strip()]
+                if items:
+                    random.shuffle(items)
+                    return {"suggestions": items[:limit], "source": "admin"}
     except Exception:
         pass
     # 2) knowledge entry titles
@@ -571,7 +637,7 @@ def get_suggestions(limit: int = 3):
     except Exception:
         pass
     # 3) fallback
-    items = list(_DEFAULT_SUGGESTIONS)
+    items = list(_DISCOVERY_SUGGESTIONS if mode == "discovery" else _DEFAULT_SUGGESTIONS)
     random.shuffle(items)
     return {"suggestions": items[:limit], "source": "default"}
 

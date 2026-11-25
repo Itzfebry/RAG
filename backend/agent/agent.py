@@ -327,6 +327,10 @@ class AgentOrchestrator:
         user_profile: dict[str, Any] | None = None,
         command_names: list[str] | None = None,
         user_documents: list[dict[str, Any]] | None = None,
+        *,
+        prompt_mode: str = "default",
+        include_trace: bool = False,
+        threshold_override: float | None = None,
     ) -> AsyncGenerator[str, None]:
         """Orkestrasi utama: bangun prompt, resolve runtime config, stream per model (fallback chain)."""
         start = time.perf_counter()
@@ -340,12 +344,16 @@ class AgentOrchestrator:
                 len(document_sources),
                 len(query or ""),
             )
+        trace: dict[str, Any] = {}
         system_prompt = build_system_prompt(
             query,
             session_history,
             user_profile=user_profile,
             command_names=command_names,
             user_documents=user_documents,
+            prompt_mode=prompt_mode,
+            threshold_override=threshold_override,
+            trace_out=trace if include_trace else None,
         )
         openai_messages = _build_openai_messages(
             query, session_history, system_prompt, document_context=document_context
@@ -354,6 +362,11 @@ class AgentOrchestrator:
         # Beri tahu client dokumen mana yang dipakai (untuk sitasi/indikator).
         if document_sources:
             yield _emit({"sources": document_sources})
+
+        # Trace retrieval dikirim SEBELUM jawaban supaya panel RAG bisa langsung
+        # menampilkan chunk, skor, dan ambang yang dipakai.
+        if include_trace:
+            yield _emit({"rag": trace})
 
         # Check client availability based on provider
         if not self.client:
@@ -438,6 +451,63 @@ class AgentOrchestrator:
             yield _emit({"suggestions": suggestions})
         if pending_done:
             yield pending_done
+
+    async def complete(
+        self,
+        messages: list[dict[str, str]],
+        model_override: str | None = None,
+        *,
+        temperature: float | None = None,
+        max_tokens: int = 1200,
+    ) -> str:
+        """Completion non-streaming (mode banding RAG & ringkasan brief).
+
+        Memakai fallback chain yang sama dengan streaming; return string kosong
+        bila semua model gagal (caller memutuskan fallback heuristiknya).
+        """
+        runtime = self._resolve_runtime_config(model_override)
+        if not self.client:
+            return ""
+        temp = runtime["temperature"] if temperature is None else temperature
+
+        for current_model in runtime["models_to_try"]:
+            # Model reasoning (gpt-oss dkk) membuang token untuk berpikir dulu;
+            # budget kecil bisa habis sebelum konten terisi. Ulangi sekali dengan
+            # budget lebih besar sebelum pindah ke model fallback.
+            budgets = [max_tokens] if max_tokens >= 2048 else [max_tokens, 2048]
+            for budget in budgets:
+                try:
+                    if self.client_type == "langchain_nvidia":
+                        lc_messages = [
+                            (
+                                {"role": "user", "content": f"[System]: {m['content']}"}
+                                if m.get("role") == "system"
+                                else {"role": m.get("role", "user"), "content": m.get("content", "")}
+                            )
+                            for m in messages
+                        ]
+                        resp = await asyncio.to_thread(self.client.invoke, lc_messages)
+                        text = getattr(resp, "content", None) or str(resp)
+                    else:
+
+                        def _call(model_id: str = current_model, budget: int = budget) -> Any:
+                            return self.client.chat.completions.create(
+                                model=model_id,
+                                messages=messages,
+                                temperature=temp,
+                                max_tokens=budget,
+                                stream=False,
+                            )
+
+                        resp = await asyncio.to_thread(_call)
+                        text = (resp.choices[0].message.content if resp.choices else "") or ""
+                    cleaned = _clean_chunk(str(text)).strip()
+                    if cleaned:
+                        return cleaned
+                except Exception as e:
+                    logger.warning(f"[complete] model '{current_model}' gagal: {e}. Mencoba fallback...")
+                    break
+        return ""
 
     async def _generate_suggestions(self, query: str, answer: str, runtime: dict[str, Any]) -> list[str]:
         """Buat 3 pertanyaan lanjutan dari model (non-streaming, best-effort)."""

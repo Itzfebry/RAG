@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Any
 
 import httpx
 
@@ -377,6 +378,33 @@ _STOPWORDS = {
 }
 
 
+def _keyword_search_scored(query: str, match_count: int) -> list[tuple[int, str, str]]:
+    """Varian `_keyword_search` yang mempertahankan skor + entry_id untuk trace.
+
+    Return list (hits, chunk, entry_id), sudah diurutkan menurun.
+    """
+    import re as _re
+
+    terms = {w for w in _re.findall(r"\w+", query.lower()) if len(w) >= 3 and w not in _STOPWORDS}
+    if not terms:
+        return []
+    needed = min(2, len(terms))
+
+    scored: list[tuple[int, str, str]] = []
+    for entry in DatabaseService.get_knowledge_entries():
+        if entry.get("is_active") is False:
+            continue
+        entry_id = str(entry.get("id") or "")
+        for chunk in chunk_text(entry.get("content") or ""):
+            tl = chunk.lower()
+            hits = sum(len(_re.findall(r"\b" + _re.escape(t), tl)) for t in terms)
+            if hits >= needed:
+                scored.append((hits, chunk, entry_id))
+
+    scored.sort(key=lambda x: -x[0])
+    return scored[:match_count]
+
+
 def _keyword_search(query: str, match_count: int) -> list[str]:
     """Keyword fallback - chunk yang benar-benar cocok, diurutkan skor.
 
@@ -392,25 +420,19 @@ def _keyword_search(query: str, match_count: int) -> list[str]:
     - Word boundary + prefix: "nama" tidak match "purnama", tapi "paket"
       match "paketnya".
     """
-    import re as _re
+    return [chunk for _, chunk, _ in _keyword_search_scored(query, match_count)]
 
-    terms = {w for w in _re.findall(r"\w+", query.lower()) if len(w) >= 3 and w not in _STOPWORDS}
-    if not terms:
-        return []
-    needed = min(2, len(terms))
 
-    scored: list[tuple[int, str]] = []
-    for entry in DatabaseService.get_knowledge_entries():
-        if entry.get("is_active") is False:
-            continue
-        for chunk in chunk_text(entry.get("content") or ""):
-            tl = chunk.lower()
-            hits = sum(len(_re.findall(r"\b" + _re.escape(t), tl)) for t in terms)
-            if hits >= needed:
-                scored.append((hits, chunk))
-
-    scored.sort(key=lambda x: -x[0])
-    return [chunk for _, chunk in scored[:match_count]]
+def _entry_title_map() -> dict[str, str]:
+    """entry_id -> judul entry, untuk label sumber di trace RAG client."""
+    try:
+        return {
+            str(e.get("id")): str(e.get("title") or "").strip()
+            for e in (DatabaseService.get_knowledge_entries() or [])
+            if e.get("id")
+        }
+    except Exception:
+        return {}
 
 
 class KnowledgeService:
@@ -521,30 +543,91 @@ class KnowledgeService:
         return len(rows)
 
     @staticmethod
+    def _vector_candidates(query: str, match_count: int, threshold: float | None) -> list[dict[str, Any]] | None:
+        """Baris hasil RPC match_knowledge_entries, atau None bila tidak tersedia."""
+        if not supabase_client:
+            return None
+        query_embedding = KnowledgeService.get_embedding(query, as_query=True)
+        if not _is_valid_vector(query_embedding):
+            return None
+        try:
+            res = supabase_client.rpc(
+                "match_knowledge_entries",
+                {
+                    "query_embedding": query_embedding,
+                    "match_threshold": threshold if threshold is not None else _current_match_threshold(),
+                    "match_count": match_count,
+                },
+            ).execute()
+            return list(res.data or [])
+        except Exception as e:
+            logger.warning(f"Search error: {e}")
+            return None
+
+    @staticmethod
+    def semantic_search_detailed(
+        query: str, match_count: int = 4, threshold: float | None = None
+    ) -> dict[str, Any]:
+        """Vector search + fallback, lengkap dengan metadata untuk ditampilkan ke klien.
+
+        Return:
+            {
+              "chunks": [{"content", "score", "entry_id", "title", "method"}],
+              "method": "vector" | "keyword" | "none",
+              "threshold": float,   # ambang efektif yang dipakai
+            }
+
+        `score` = cosine similarity saat method "vector"; saat "keyword" berisi
+        jumlah kecocokan term (bukan similarity). `threshold` eksplisit dipakai
+        oleh mode perbandingan RAG (ambang rendah vs tinggi).
+        """
+        effective = float(threshold) if threshold is not None else _current_match_threshold()
+        titles = _entry_title_map()
+
+        rows = KnowledgeService._vector_candidates(query, match_count, threshold)
+        if rows:
+            chunks = [
+                {
+                    "content": str(r.get("content_chunk") or ""),
+                    "score": round(float(r.get("similarity") or 0.0), 4),
+                    "entry_id": str(r.get("entry_id") or ""),
+                    "title": titles.get(str(r.get("entry_id") or ""), ""),
+                    "method": "vector",
+                }
+                for r in rows
+            ]
+            return {"chunks": chunks, "method": "vector", "threshold": round(effective, 4)}
+
+        # Ambang eksplisit (mode banding / pilihan pengguna) berarti uji presisi:
+        # jangan diam-diam jatuh ke pencarian kata kunci, karena hasilnya tidak
+        # lagi mencerminkan ambang yang dipilih. Tanpa ambang eksplisit, fallback
+        # kata kunci tetap dipakai supaya chat biasa tidak kehilangan konteks.
+        if threshold is not None:
+            return {"chunks": [], "method": "none", "threshold": round(effective, 4)}
+
+        kw = _keyword_search_scored(query, match_count)
+        chunks = [
+            {
+                "content": chunk,
+                "score": float(hits),
+                "entry_id": entry_id,
+                "title": titles.get(entry_id, ""),
+                "method": "keyword",
+            }
+            for hits, chunk, entry_id in kw
+        ]
+        return {
+            "chunks": chunks,
+            "method": "keyword" if chunks else "none",
+            "threshold": round(effective, 4),
+        }
+
+    @staticmethod
     def semantic_search(query: str, match_count: int = 4) -> list[str]:
         """Vector search dengan threshold (match_knowledge_entries), lalu keyword
         fallback. Hasil di bawah MATCH_THRESHOLD tidak dikirim ke LLM."""
-        if not supabase_client:
-            return _keyword_search(query, match_count)
-
-        query_embedding = KnowledgeService.get_embedding(query, as_query=True)
-        if _is_valid_vector(query_embedding):
-            try:
-                threshold = _current_match_threshold()
-                res = supabase_client.rpc(
-                    "match_knowledge_entries",
-                    {
-                        "query_embedding": query_embedding,
-                        "match_threshold": threshold,
-                        "match_count": match_count,
-                    },
-                ).execute()
-                if res.data:
-                    return [row["content_chunk"] for row in res.data]
-            except Exception as e:
-                logger.warning(f"Search error: {e}")
-
-        return _keyword_search(query, match_count)
+        result = KnowledgeService.semantic_search_detailed(query, match_count=match_count)
+        return [str(c.get("content") or "") for c in result["chunks"]]
 
 
 def _is_valid_vector(vec: list[float]) -> bool:

@@ -5,6 +5,14 @@ const nextConfig = {
   images: {
     qualities: [75, 90],
   },
+  async redirects() {
+    // Pivot ke agensi: paket langganan chat tidak lagi publik, jadi halaman
+    // harga & login diarahkan ke landing. Kode monetisasi tetap ada di backend
+    // (dipakai internal untuk proyek klien) - hanya akses publiknya ditutup.
+    return [
+      { source: "/pricing", destination: "/", permanent: false },
+    ];
+  },
   async rewrites() {
     if (process.env.VERCEL) {
       // Production on Vercel: ALL /api/* and /v1/* requests are routed at the

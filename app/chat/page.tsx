@@ -1,694 +1,295 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
-import Image from "next/image";
-import { MessageBubble } from "@/components/chat/MessageBubble";
-import { AIChatInput } from "@/components/ui/ai-chat-input";
-import QuotaOfferModal, { QuotaOfferVariant } from "@/components/chat/QuotaOfferModal";
-import QuotaNotice from "@/components/chat/QuotaNotice";
-import ChatHistoryPanel, { ChatSummary } from "@/components/chat/ChatHistoryPanel";
-import OnboardingTour, { TourStep } from "@/components/chat/OnboardingTour";
-import { AnimatePresence, m } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import {
+  ArrowUp,
+  Compass,
+  FileText,
+  Loader2,
+  LogIn,
+  MessageSquareQuote,
+  RotateCcw,
+  ShieldCheck,
+  X,
+} from "lucide-react";
+import StarBorder from "@/components/StarBorder";
+import Markdown from "@/components/chat/markdown";
+import BriefPanel from "@/components/discovery/BriefPanel";
+import BusinessIntelligencePanel from "@/components/discovery/BusinessIntelligencePanel";
+import { aiStatus } from "@/lib/ai-status";
+import { apiErrorMessage, SERVER_UNAVAILABLE_MESSAGE } from "@/lib/fetch-api";
+import type { DiscoveryConfig, DiscoveryContextResult, DiscoveryState } from "@/lib/api-types";
 
-// LazyMotion renders `m` components; alias keeps all call sites unchanged.
-const motion = m;
-import { AlertTriangle, Info, X } from "lucide-react";
-import { ApiError, fetchApi, tryFetch } from "@/lib/fetch-api";
-import type { Me, TrialInfo, ExtractedDocument } from "@/lib/api-types";
-
-export type { Me, TrialInfo };
-
-interface SourceRef {
-  id?: string;
-  title?: string;
-  page?: number | null;
-  excerpt?: string;
-  chunk_index?: number | null;
-}
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  durationMs?: number;
-  sources?: SourceRef[];
-  /** Lampiran dokumen yang menempel pada pesan user ini. */
-  attachments?: ExtractedDocument[];
-  /** Saran pertanyaan lanjutan dari model (pesan asisten). */
-  suggestions?: string[];
-}
-
-function docAttachmentMetaText(doc: ExtractedDocument): string {
-  return [
-    doc.char_count ? `${doc.char_count.toLocaleString("id-ID")} karakter` : null,
-    doc.page_count ? `${doc.page_count} halaman` : null,
-    doc.truncated ? "dipotong ke batas maksimum" : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
+/* ── Konstanta & util ─────────────────────────────────────────────────── */
 
 const MAX_HISTORY_MESSAGES = 20;
-const MAX_ATTACHMENTS = 5;
+const SESSION_KEY = "itz_discovery_session";
+const MESSAGES_KEY = "itz_discovery_messages";
+const STATE_KEY = "itz_discovery_state";
 
-const SUGGESTION_POOL = [
-  "Ringkas knowledge base saya",
-  "Buatkan outline artikel futuristik",
-  "Jelaskan RAG dengan contoh sederhana",
-  "Apa saja yang kamu tahu tentang saya?",
-  "Bantu saya brainstorm ide konten",
-  "Review arsitektur proyek saya",
-  "Buatkan prompt untuk use case saya",
-  "Ringkas poin penting minggu ini",
-  "Jelaskan konsep AI agent secara sederhana",
-  "Saran cara improve workflow kerja saya",
-];
-
-function pickSuggestions(): string[] {
-  const shuffled = [...SUGGESTION_POOL].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, 3);
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  suggestions?: string[];
+  /** Tahap pemrosesan dari backend (nama event internal, lihat lib/ai-status). */
+  statusKey?: string;
 }
 
-// Instruksi sekali-jalan untuk akun baru: menunjuk fitur utama satu per satu.
-// Flag "sudah pernah lihat" per akun disimpan di localStorage (Lewati = permanen).
-// Nomor urut ditampilkan kartu ("Langkah X dari Y") - judul tanpa angka.
-const TOUR_STEPS: TourStep[] = [
-  {
-    target: "itz-chat-input",
-    title: "Disini tempat untuk prompt",
-    desc: "Ketik pertanyaan atau perintah kamu di kolom ini, lalu tekan Enter untuk mengirim.",
-  },
-  {
-    target: "itz-chat-input",
-    title: "Mode command",
-    desc: "Ketik / untuk membuka daftar command: /analyze, /summarize, /code, /debug, /translate, dan lainnya (13 mode). Pilih dengan tombol panah lalu Tab atau Enter. Boleh kombinasi maksimal 2 command.",
-  },
-  {
-    target: "itz-logo",
-    title: "Riwayat chat",
-    desc: "Klik logo ITZ di kiri atas untuk membuka chat yang tersimpan.",
-  },
-  {
-    target: "btn-new-chat",
-    title: "Chat baru",
-    desc: "Mulai percakapan baru dari awal kapan saja.",
-  },
-  {
-    target: "btn-profile",
-    title: "Profil & pengaturan",
-    desc: "Atur nama tampilan, tujuan pakai AI, dan cek sisa prompt lewat ikon ini.",
-  },
+const STARTERS = [
+  "Saya punya tiga cabang laundry dan admin kewalahan menjawab pelanggan.",
+  "Toko online saya masih rekap pesanan manual di spreadsheet.",
+  "Saya ingin tahu bagian operasional mana yang paling layak diotomasi.",
+  "Butuh sistem untuk tim lapangan yang sering bekerja di luar kantor.",
 ];
 
-export default function ChatPage() {
+function newId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `m-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function readSessionId(): string {
+  try {
+    const existing = sessionStorage.getItem(SESSION_KEY);
+    // Backend mensyaratkan 8-64 karakter [A-Za-z0-9_-].
+    if (existing && /^[A-Za-z0-9_-]{8,64}$/.test(existing)) return existing;
+    const fresh =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    sessionStorage.setItem(SESSION_KEY, fresh);
+    return fresh;
+  } catch {
+    return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
+/* ── Halaman ──────────────────────────────────────────────────────────── */
+
+export default function DiscoveryPage() {
+  const [sessionId, setSessionId] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [userInfo, setUserInfo] = useState<{
-    username: string;
-    display_name?: string | null;
-    email?: string | null;
-    email_verified?: boolean;
-    max_prompts: number;
-    prompts_used: number;
-    remaining: number | null;
-    has_password?: boolean;
-    goal?: string;
-    style_id?: string;
-    gender?: string;
-    daily_quota?: Me["daily_quota"];
-  } | null>(null);
-  const [trialInfo, setTrialInfo] = useState<{
-    trial_prompts: number;
-    used: number;
-    remaining: number;
-    allowed: boolean;
-  } | null>(null);
-  const [quotaAlert, setQuotaAlert] = useState<string | null>(null);
-  const [quotaOffer, setQuotaOffer] = useState<QuotaOfferVariant | null>(null);
-  // Notice inline bergaya GPT: aktif saat kuota habis, sampai user tutup.
-  const [quotaOut, setQuotaOut] = useState<QuotaOfferVariant | null>(null);
-  const [quotaNoticeHidden, setQuotaNoticeHidden] = useState(false);
-  const [welcomeName, setWelcomeName] = useState<string | null>(null);
-  const [confirmLogout, setConfirmLogout] = useState(false);
-  // Modal profil user: ganti nama, tujuan pakai AI, pilih gaya respons (template admin)
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [profileName, setProfileName] = useState("");
-  const [profileGoal, setProfileGoal] = useState("");
-  const [profileStyle, setProfileStyle] = useState("");
-  const [profileGender, setProfileGender] = useState("");
-  const [styleOptions, setStyleOptions] = useState<
-    { id: string; name: string; description: string; prompt: string }[]
-  >([]);
-  const [profileSaving, setProfileSaving] = useState(false);
-  const [pwOld, setPwOld] = useState("");
-  const [pwNew, setPwNew] = useState("");
-  const [pwMsg, setPwMsg] = useState<string | null>(null);
-  const [pwSaving, setPwSaving] = useState(false);
-  const [profileMsg, setProfileMsg] = useState<string | null>(null);
-  // Riwayat chat tersimpan (hanya user login). Trial/tamu tetap state lokal.
-  const [historyOpen, setHistoryOpen] = useState(false);
-  // Lampiran file sekali-pakai untuk command /doc: teks diekstrak server lalu
-  // dikirim bersama pesan. Tidak disimpan permanen.
-  const [docAttachments, setDocAttachments] = useState<ExtractedDocument[]>([]);
-  const [docBusy, setDocBusy] = useState(false);
-  // Tour instruksi akun baru: tampil sekali per akun (flag localStorage per username).
-  const [tourOpen, setTourOpen] = useState(false);
-  const [tourSteps, setTourSteps] = useState<TourStep[]>([]);
-  const tourUserRef = useRef<string | null>(null);
-  const [chatList, setChatList] = useState<ChatSummary[]>([]);
-  const [chatLimit, setChatLimit] = useState(3);
-  const [chatRetention, setChatRetention] = useState(7);
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [config, setConfig] = useState<DiscoveryConfig | null>(null);
+  const [briefOpen, setBriefOpen] = useState(false);
+  const [discoveryState, setDiscoveryState] = useState<DiscoveryState | null>(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightOpen, setInsightOpen] = useState(false);
+
+  const abortRef = useRef<AbortController | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const messagesRef = useRef<Message[]>([]);
+  const stateRef = useRef<DiscoveryState | null>(null);
+  const turnCountRef = useRef(0);
+  const extractedTurnRef = useRef(-1);
+
+  /* Init: sesi + riwayat sesi browser. */
   useEffect(() => {
-    if (quotaOffer === "quota" || quotaOffer === "trial") {
-      setQuotaOut(quotaOffer);
-      setQuotaNoticeHidden(false);
-    }
-  }, [quotaOffer]);
-  // Modal penawaran kuota untuk pesan habis/trial/login; pesan lain tetap toast.
-  const openQuotaOffer = useCallback((msg: string) => {
-    if (msg.includes("Trial")) setQuotaOffer("trial");
-    else if (msg.includes("Batas prompt")) setQuotaOffer("quota");
-    else if (msg.includes("Login diperlukan")) setQuotaOffer("login");
-    else setQuotaAlert(msg);
-  }, []);
-  // Mulai kosong - diisi setelah mount saja. Math.random() di initializer
-  // bikin hydration mismatch (server & client dapat set berbeda).
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [infoOpen, setInfoOpen] = useState(false);
-  const infoRef = React.useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!infoOpen) return;
-    const onDocMouseDown = (e: MouseEvent) => {
-      if (!infoRef.current?.contains(e.target as Node)) setInfoOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setInfoOpen(false);
-    };
-    document.addEventListener("mousedown", onDocMouseDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDocMouseDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [infoOpen]);
-  const refreshSuggestions = useCallback(async () => {
+    const sid = readSessionId();
+    setSessionId(sid);
     try {
-      const j = await fetchApi<{ suggestions?: string[] }>("/api/python/suggestions?limit=3");
-      if (Array.isArray(j.suggestions) && j.suggestions.length) setSuggestions(j.suggestions);
-    } catch {}
-  }, []);
-  useEffect(() => {
-    setSuggestions(pickSuggestions());
-    refreshSuggestions();
-  }, [refreshSuggestions]);
-  const quotaRem = userInfo ? userInfo.remaining : trialInfo ? trialInfo.remaining : null;
-  const remStatus =
-    quotaRem === null
-      ? { label: "Tanpa batas", color: "text-emerald-400" }
-      : quotaRem > 0
-        ? { label: "Aktif", color: "text-emerald-400" }
-        : { label: "Habis", color: "text-red-400" };
-  const scrollRef = useRef<HTMLDivElement>(null);
-  // Auto-scroll hanya kalau user memang sedang di dasar. Sebelumnya setiap
-  // token memaksa snap ke bawah, jadi user tidak bisa membaca pesan lama.
-  const stickToBottomRef = useRef(true);
-  const isEmpty = messages.length === 0;
-  const startedAtRef = useRef<number>(0);
-  // AbortController per runChat: di-abort saat buka chat baru / ganti chat /
-  // unmount, supaya stream SSE tidak menyisakan update state setelah unmount.
-  const chatAbortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    return () => {
-      chatAbortRef.current?.abort();
-    };
-  }, []);
-  const [nowTick, setNowTick] = useState(0);
-
-  useEffect(() => {
-    fetchApi<Me>("/api/python/user/me")
-      .then((j) => {
-        // Gate verifikasi email: user login dengan email belum terverifikasi
-        // diarahkan ke layar verifikasi sebelum bisa chat.
-        if (j.email && j.email_verified === false) {
-          window.location.href = "/login?mode=verify";
-          return;
-        }
-        setUserInfo(j);
-        // Instruksi sekali per akun: tampil kalau akun ini belum pernah
-        // melihat tour (flag permanen di localStorage, termasuk saat klik Lewati).
-        try {
-          const TOUR_KEY = `itz_onboarding_done:${j.username}`;
-          if (!localStorage.getItem(TOUR_KEY)) {
-            tourUserRef.current = j.username;
-            window.setTimeout(() => {
-              const valid = TOUR_STEPS.filter((s) => document.getElementById(s.target));
-              if (valid.length) {
-                setTourSteps(valid);
-                setTourOpen(true);
-              }
-            }, 900);
-          }
-        } catch {}
-        // sapaan selamat datang setelah login (flag dari /login atau ?welcome=1 dari OAuth Google)
-        try {
-          const flagged = sessionStorage.getItem("itz_welcome") === "1";
-          const qp = new URLSearchParams(window.location.search).has("welcome");
-          if (flagged || qp) {
-            sessionStorage.removeItem("itz_welcome");
-            if (qp) window.history.replaceState({}, "", window.location.pathname);
-            if (j.display_name) setWelcomeName(j.display_name);
-          }
-        } catch {}
-      })
-      .catch(async () => {
-        // guest -> fetch trial info
-        try {
-          const t = await fetchApi<TrialInfo>("/api/python/trial");
-          setTrialInfo(t);
-        } catch {}
-      });
-  }, []);
-
-  useEffect(() => {
-    if (!welcomeName) return;
-    const id = window.setTimeout(() => setWelcomeName(null), 5000);
-    return () => window.clearTimeout(id);
-  }, [welcomeName]);
-
-  useEffect(() => {
-    if (!isLoading) return;
-    const id = window.setInterval(() => setNowTick(Date.now()), 120);
-    return () => window.clearInterval(id);
-  }, [isLoading]);
-  const elapsedMs = isLoading && startedAtRef.current ? nowTick - startedAtRef.current : 0;
-
-  const removeDocAttachment = (docId: string) =>
-    setDocAttachments((prev) => prev.filter((d) => d.id !== docId));
-
-  const doLogout = async () => {
-    setConfirmLogout(false);
-    setDocAttachments([]);
-    await fetchApi("/api/python/user/logout", { method: "POST" }).catch(() => {});
-    window.location.href = "/login";
-  };
-
-  const loadChatList = useCallback(async () => {
-    try {
-      const j = await fetchApi<{
-        items?: ChatSummary[];
-        limit?: number;
-        retention_days?: number;
-      }>("/api/python/user/chats");
-      setChatList(j.items || []);
-      if (typeof j.limit === "number") setChatLimit(j.limit);
-      if (typeof j.retention_days === "number") setChatRetention(j.retention_days);
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    if (userInfo) loadChatList();
-  }, [userInfo, loadChatList]);
-
-  const openChat = async (id: string) => {
-    chatAbortRef.current?.abort();
-    if (isLoading) return;
-    try {
-      const j = await fetchApi<{
-        messages?: {
-          role: "user" | "assistant";
-          content: string;
-          documents?: ExtractedDocument[];
-        }[];
-        documents?: ExtractedDocument[];
-      }>(`/api/python/user/chats/${id}`);
-      setMessages(
-        (j.messages || []).map((m) => ({
-          role: m.role,
-          content: m.content,
-          attachments: m.documents?.length ? m.documents : undefined,
-        })),
-      );
-      stickToBottomRef.current = true;
-      setActiveChatId(id);
-      setDocAttachments(j.documents ?? []);
-      setError(null);
-      setHistoryOpen(false);
-    } catch (e) {
-      // HTTP gagal -> chat tidak ditemukan; koneksi gagal -> pesan umum.
-      setError(
-        e instanceof ApiError && e.status > 0 ? "Chat tidak ditemukan" : "Gagal membuka chat",
-      );
-    }
-  };
-
-  const deleteChat = async (id: string) => {
-    // Konfirmasi hapus ditangani ChatHistoryPanel (dialog sendiri).
-    try {
-      await fetchApi(`/api/python/user/chats/${id}`, { method: "DELETE" });
-      if (activeChatId === id) {
-        setActiveChatId(null);
-        setMessages([]);
-        setDocAttachments([]);
-        stickToBottomRef.current = true;
+      const raw = sessionStorage.getItem(MESSAGES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) setMessages(parsed);
       }
-      await loadChatList();
     } catch {
-      setError("Gagal menghapus chat");
+      /* storage tidak wajib */
     }
-  };
-
-  const startNewChat = () => {
-    chatAbortRef.current?.abort();
-    setActiveChatId(null);
-    setMessages([]);
-    setError(null);
-    setQuotaAlert(null);
-    setHistoryOpen(false);
-    setDocAttachments([]);
-    stickToBottomRef.current = true;
-  };
-
-  // Selesai/Lewati tour: tandai permanen agar tidak pernah tampil lagi.
-  const endTour = useCallback(() => {
-    setTourOpen(false);
-    try {
-      if (tourUserRef.current)
-        localStorage.setItem(`itz_onboarding_done:${tourUserRef.current}`, "1");
-    } catch {}
   }, []);
 
-  const openProfile = useCallback(() => {
-    if (!userInfo) return;
-    setProfileName(userInfo.display_name || "");
-    setProfileGoal(userInfo.goal || "");
-    setProfileStyle(userInfo.style_id || "");
-    setProfileGender(userInfo.gender || "");
-    setProfileMsg(null);
-    setProfileOpen(true);
-    if (styleOptions.length === 0) {
-      fetchApi<{ styles?: typeof styleOptions }>("/api/python/user/styles")
-        .then((j) => setStyleOptions(j.styles || []))
-        .catch(() => {});
-    }
-  }, [userInfo, styleOptions.length]);
-
-  useEffect(() => {
-    if (userInfo && !userInfo.display_name) openProfile();
-  }, [userInfo, openProfile]);
-
-  const savePassword = async () => {
-    if (pwSaving) return;
-    setPwSaving(true);
-    setPwMsg(null);
+  const loadConfig = useCallback(async (sid: string) => {
+    if (!sid) return;
     try {
-      const r = await tryFetch<{ detail?: string }>(
-        "/api/python/user/password",
-        {
-          method: "PUT",
-          json: { current_password: pwOld || null, new_password: pwNew },
-        },
-        "Gagal mengubah sandi",
-      );
-      if (!r.ok) {
-        setPwMsg(r.error);
-        return;
-      }
-      setUserInfo((p) => (p ? { ...p, has_password: true } : p));
-      setPwOld("");
-      setPwNew("");
-      setPwMsg("Sandi diperbarui");
+      const res = await fetch(`/api/python/discovery/config?session_id=${encodeURIComponent(sid)}`);
+      if (!res.ok) return;
+      setConfig((await res.json()) as DiscoveryConfig);
     } catch {
-      setPwMsg("Gagal mengubah sandi");
-    } finally {
-      setPwSaving(false);
+      /* konfigurasi opsional: UI tetap jalan dengan nilai default */
     }
-  };
-
-  const saveProfile = async () => {
-    if (profileSaving) return;
-    setProfileSaving(true);
-    setProfileMsg(null);
-    try {
-      const r = await tryFetch<{
-        display_name?: string | null;
-        goal?: string;
-        style_id?: string;
-        gender?: string;
-      }>(
-        "/api/python/user/profile",
-        {
-          method: "PUT",
-          json: {
-            display_name: profileName,
-            goal: profileGoal,
-            style_id: profileStyle,
-            gender: profileGender,
-          },
-        },
-        "Gagal menyimpan profil",
-      );
-      if (!r.ok) {
-        setProfileMsg(r.error);
-        return;
-      }
-      setUserInfo((p) =>
-        p
-          ? {
-              ...p,
-              display_name: r.data.display_name,
-              goal: r.data.goal,
-              style_id: r.data.style_id,
-              gender: r.data.gender,
-            }
-          : p,
-      );
-      setProfileMsg("Tersimpan");
-      setTimeout(() => setProfileOpen(false), 700);
-    } catch {
-      setProfileMsg("Gagal menyimpan profil");
-    } finally {
-      setProfileSaving(false);
-    }
-  };
-
-  const scrollToBottom = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el || !stickToBottomRef.current) return;
-    // scrollTop langsung: scrollIntoView ikut menggeser ancestor/window dan
-    // tidak selalu jalan di container fixed-height.
-    el.scrollTop = el.scrollHeight;
-  }, []);
-
-  const handleScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isLoading, scrollToBottom]);
+    void loadConfig(sessionId);
+  }, [sessionId, loadConfig]);
 
-  const handleAttachFile = async (file: File) => {
-    setError(null);
-    const name = file.name.toLowerCase();
-    if (!/\.(pdf|txt|md)$/.test(name)) {
-      setError("Format tidak didukung. Gunakan PDF, TXT, atau MD.");
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      setError("File terlalu besar (maksimal 2 MB).");
-      return;
-    }
-    if (docAttachments.length >= MAX_ATTACHMENTS) {
-      setError(`Maksimal ${MAX_ATTACHMENTS} dokumen per percakapan.`);
-      return;
-    }
-    setDocBusy(true);
+  /* Persist ringan supaya refresh tidak menghapus percakapan. */
+  useEffect(() => {
+    if (messages.length === 0) return;
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/python/user/documents/extract", { method: "POST", body: fd });
-      if (!res.ok) {
-        let msg = `Gagal membaca file (${res.status})`;
-        try {
-          const j = await res.json();
-          msg = (j.detail || j.message || msg) as string;
-        } catch {}
-        if (res.status === 401) openQuotaOffer("Login diperlukan untuk memakai fitur dokumen");
-        else setError(msg);
-        return;
-      }
-      const j = (await res.json()) as { document?: ExtractedDocument };
-      const doc = j.document;
-      if (!doc?.id) {
-        setError("Tidak ada teks yang bisa dibaca dari file ini.");
-        return;
-      }
-      setDocAttachments((prev) =>
-        prev.some((d) => d.id === doc.id) || prev.length >= MAX_ATTACHMENTS ? prev : [...prev, doc],
-      );
+      sessionStorage.setItem(MESSAGES_KEY, JSON.stringify(messages.slice(-40)));
     } catch {
-      setError("Gagal mengunggah file. Coba lagi.");
-    } finally {
-      setDocBusy(false);
+      /* kuota storage penuh: abaikan */
     }
-  };
+  }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
-    const userMessage = input.trim();
-    setInput("");
-    // Lampiran tetap menempel sepanjang percakapan (bukan sekali pakai).
-    await runChat(userMessage, messages, docAttachments);
-  };
+  // Ref agar ekstraksi konteks membaca pesan terbaru tanpa dependency churn.
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
-  const handleRegenerate = async () => {
-    if (isLoading) return;
-    const idx = messages.map((m) => m.role).lastIndexOf("user");
-    if (idx < 0) return;
-    if (userInfo && activeChatId) {
-      await fetchApi(`/api/python/user/chats/${activeChatId}/truncate-last-turn`, {
+  useEffect(() => {
+    stateRef.current = discoveryState;
+  }, [discoveryState]);
+
+  /* State BI disimpan per sesi: pulih saat refresh, hapus saat sesi baru. */
+  useEffect(() => {
+    if (!sessionId) return;
+    try {
+      const raw = sessionStorage.getItem(`${STATE_KEY}:${sessionId}`);
+      setDiscoveryState(raw ? (JSON.parse(raw) as DiscoveryState) : null);
+    } catch {
+      setDiscoveryState(null);
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionId || !discoveryState) return;
+    try {
+      sessionStorage.setItem(`${STATE_KEY}:${sessionId}`, JSON.stringify(discoveryState));
+    } catch {
+      /* kuota storage penuh: abaikan */
+    }
+  }, [discoveryState, sessionId]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages]);
+
+  const remaining = config?.remaining_turns;
+  const maxTurns = config?.max_turns ?? 10;
+  const authed = config?.authenticated ?? false;
+  const usedTurns =
+    remaining === null || remaining === undefined ? null : Math.max(0, maxTurns - remaining);
+  const outOfTurns = remaining !== null && remaining !== undefined && remaining <= 0;
+
+  const history = useMemo(
+    () =>
+      messages.filter((m) => m.content.trim()).map((m) => ({ role: m.role, content: m.content })),
+    [messages],
+  );
+
+  /* Ekstraksi konteks bisnis: satu panggilan model, dipanggil berkala. */
+  const extractContext = useCallback(async () => {
+    if (!sessionId) return;
+    const hist = messagesRef.current
+      .filter((m) => m.content.trim())
+      .map((m) => ({ role: m.role, content: m.content }))
+      .slice(-20);
+    if (hist.length < 2) return;
+    setInsightLoading(true);
+    try {
+      const res = await fetch("/api/python/discovery/context", {
         method: "POST",
-      }).catch(() => {});
-    }
-    await runChat(String(messages[idx].content), messages.slice(0, idx), docAttachments);
-  };
-
-  const handleSuggestionClick = (text: string) => {
-    if (isLoading || !text.trim()) return;
-    void runChat(text.trim(), messages, docAttachments);
-  };
-
-  const saveTurn = async (userMessage: string, answer: string, docs: ExtractedDocument[] = []) => {
-    try {
-      let id = activeChatId;
-      if (!id) {
-        try {
-          const j = await fetchApi<{ id?: string | number }>("/api/python/user/chats", {
-            json: { title: userMessage.slice(0, 60) },
-          });
-          id = String(j.id);
-          setActiveChatId(id);
-        } catch (e) {
-          if (e instanceof ApiError && e.status === 409) {
-            // batas 3 chat tercapai: jawaban tetap tampil, tapi tidak disimpan
-            const d = (e.data ?? null) as { detail?: unknown } | null;
-            setQuotaAlert(
-              typeof d?.detail === "string"
-                ? d.detail
-                : "Memori Chat maksimal menyimpan 3 riwayat pesan. Chat ini tidak akan tersimpan — hapus salah satu chat dulu.",
-            );
-          }
-          return;
-        }
-      }
-      const docIds = docs.map((d) => d.id);
-      await fetchApi(`/api/python/user/chats/${id}/messages`, {
-        json: {
-          messages: [
-            { role: "user", content: userMessage, document_ids: docIds },
-            { role: "assistant", content: answer },
-          ],
-          ...(docIds.length ? { document_ids: docIds } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, history: hist, previous: stateRef.current }),
       });
-      await loadChatList();
-    } catch {}
-  };
+      if (!res.ok) return;
+      const data = (await res.json()) as DiscoveryContextResult;
+      if (data?.state) setDiscoveryState(data.state);
+    } catch {
+      /* insight best-effort: percakapan tetap jalan */
+    } finally {
+      setInsightLoading(false);
+    }
+  }, [sessionId]);
 
-  const runChat = async (userMessage: string, base: Message[], docs: ExtractedDocument[] = []) => {
+  // Turn pertama langsung, lalu tiap 2 turn. Hindari satu LLM call per pesan.
+  useEffect(() => {
+    if (loading || !sessionId) return;
+    const turn = turnCountRef.current;
+    if (turn === 0 || extractedTurnRef.current === turn) return;
+    if (!(turn === 1 || turn % 2 === 0)) return;
+    extractedTurnRef.current = turn;
+    void extractContext();
+  }, [loading, sessionId, extractContext]);
+
+  /* ── Kirim pesan (SSE) ─────────────────────────────────────────────── */
+
+  const send = async (raw?: string) => {
+    const text = (raw ?? input).trim();
+    if (!text || loading) return;
+    if (outOfTurns) {
+      setError("Sesi discovery ini sudah mencapai batas pesan. Mulai sesi baru untuk melanjutkan.");
+      return;
+    }
+
+    turnCountRef.current += 1;
     setError(null);
-    // User mengirim pesan = ingin melihat jawaban; paksa kembali ke dasar.
-    stickToBottomRef.current = true;
-    const next: Message[] = [
-      ...base,
-      { role: "user", content: userMessage, attachments: docs.length ? docs : undefined },
-    ];
-    setMessages(next);
-    const started = Date.now();
-    startedAtRef.current = started;
-    setNowTick(started);
-    setIsLoading(true);
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+    setInput("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+
+    const userMsg: Message = { id: newId(), role: "user", content: text };
+    const assistantMsg: Message = { id: newId(), role: "assistant", content: "" };
+    const base = [...messages, userMsg];
+    setMessages([...base, assistantMsg]);
+    setLoading(true);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const patchAssistant = (patch: Partial<Message>) =>
+      setMessages((prev) => prev.map((m) => (m.id === assistantMsg.id ? { ...m, ...patch } : m)));
 
     try {
-      // Streaming SSE: respons dibaca bertahap lewat body reader, karena itu
-      // endpoint ini tidak lewat fetchApi (yang mem-parse JSON sekaligus).
-      const controller = new AbortController();
-      chatAbortRef.current = controller;
       const res = await fetch("/api/python/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          message: userMessage,
-          history: next.slice(0, -1).slice(-MAX_HISTORY_MESSAGES),
-          document_ids: docs.length ? docs.map((d) => d.id) : undefined,
+          message: text,
+          history: [...messages]
+            .slice(-MAX_HISTORY_MESSAGES)
+            .map((m) => ({ role: m.role, content: m.content })),
+          mode: "discovery",
+          session_id: sessionId,
         }),
       });
+
       if (!res.ok) {
-        let msg = `Server ${res.status}`;
+        let detail = "";
         try {
           const j = await res.json();
-          msg = (j.detail || j.message || msg) as string;
-        } catch {}
-        if (msg.includes("Trial habis") || msg.includes("Trial")) {
-          openQuotaOffer(msg);
-          // refresh trial info
-          fetchApi<TrialInfo>("/api/python/trial")
-            .then(setTrialInfo)
-            .catch(() => {});
-          throw new Error(msg);
+          detail = (j.detail || j.message || "") as string;
+        } catch {
+          /* body bukan JSON (mis. proxy gagal): pakai pesan ramah */
         }
-        if (res.status === 403 && msg.includes("Batas prompt")) {
-          openQuotaOffer(msg);
-          throw new Error(msg);
-        }
-        if (res.status === 403 && msg.includes("Verifikasi email")) {
-          window.location.href = "/login?mode=verify";
-          throw new Error(msg);
-        }
-        if (res.status === 401 && msg.includes("Login diperlukan")) {
-          openQuotaOffer(msg);
-          throw new Error(msg);
-        }
-        if (res.status === 428) {
-          setProfileMsg(null);
-          openProfile();
-          throw new Error(msg);
-        }
-        if (res.status === 503) {
-          setQuotaAlert(msg);
-          throw new Error(msg);
-        }
-        throw new Error(msg);
+        throw new Error(
+          detail ||
+            (res.status >= 500 ? SERVER_UNAVAILABLE_MESSAGE : `Permintaan gagal (${res.status}).`),
+        );
       }
-      const isStatic = res.headers.get("X-Command-Mode") === "static";
+
       const reader = res.body?.getReader();
+      if (!reader) throw new Error("Koneksi streaming tidak tersedia.");
       const decoder = new TextDecoder();
-      if (!reader) throw new Error("No reader");
       let acc = "";
-      const applySources = (src: SourceRef[]) =>
-        setMessages((prev) => {
-          const u = [...prev];
-          const last = u[u.length - 1];
-          if (last?.role === "assistant") u[u.length - 1] = { ...last, sources: src };
-          return u;
-        });
-      const applySuggestions = (items: string[]) =>
-        setMessages((prev) => {
-          const u = [...prev];
-          const last = u[u.length - 1];
-          if (last?.role === "assistant") u[u.length - 1] = { ...last, suggestions: items };
-          return u;
-        });
-      // Line buffer: chunk TCP bisa memotong di tengah baris "data: ...",
-      // jadi simpan sisa baris di buf dan hanya proses baris utuh.
       let buf = "";
+
+      const handleFrame = (line: string) => {
+        if (!line.startsWith("data: ")) return false;
+        const s = line.slice(6).trim();
+        if (s === "[DONE]") return true;
+        try {
+          const p = JSON.parse(s);
+          if (typeof p.status === "string" && p.status) patchAssistant({ statusKey: p.status });
+          if (Array.isArray(p.suggestions) && p.suggestions.length)
+            patchAssistant({ suggestions: p.suggestions as string[] });
+          if (typeof p.content === "string" && p.content) {
+            acc += p.content;
+            patchAssistant({ content: acc });
+          }
+          if (p.error) setError(String(p.error));
+        } catch {
+          /* frame tidak lengkap: diabaikan, akan diulang di buffer berikut */
+        }
+        return false;
+      };
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -696,947 +297,378 @@ export default function ChatPage() {
         const lines = buf.split("\n");
         buf = lines.pop() ?? "";
         for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const s = line.replace("data: ", "").trim();
-          if (s === "[DONE]") break;
-          try {
-            const p = JSON.parse(s);
-            if (Array.isArray(p.sources) && p.sources.length) applySources(p.sources);
-            if (Array.isArray(p.suggestions) && p.suggestions.length)
-              applySuggestions(p.suggestions);
-            if (p.content) {
-              acc += p.content;
-              setMessages((prev) => {
-                const u = [...prev];
-                u[u.length - 1] = { role: "assistant", content: acc };
-                return u;
-              });
-            }
-            if (p.error) {
-              const em = String(p.error);
-              if (em.includes("Batas prompt") || em.includes("Trial")) openQuotaOffer(em);
-              else if (!em.includes("Login diperlukan")) setError(p.error);
-            }
-          } catch {}
+          if (handleFrame(line)) return;
         }
       }
-      // Sisa buffer terakhir (tanpa newline di ujung) masih bisa berisi frame.
-      if (buf.startsWith("data: ")) {
-        const s = buf.replace("data: ", "").trim();
-        if (s && s !== "[DONE]") {
-          try {
-            const p = JSON.parse(s);
-            if (Array.isArray(p.sources) && p.sources.length) applySources(p.sources);
-            if (Array.isArray(p.suggestions) && p.suggestions.length)
-              applySuggestions(p.suggestions);
-            if (p.content) {
-              acc += p.content;
-              setMessages((prev) => {
-                const u = [...prev];
-                u[u.length - 1] = { role: "assistant", content: acc };
-                return u;
-              });
-            }
-          } catch {}
-        }
-      }
-      if (userInfo)
-        fetchApi<Me>("/api/python/user/me")
-          .then((j) => {
-            setUserInfo(j);
-            if (j.remaining === 0) {
-              setQuotaOut("quota");
-              setQuotaNoticeHidden(false);
-            }
-          })
-          .catch(() => {});
-      else
-        fetchApi<TrialInfo>("/api/python/trial")
-          .then(setTrialInfo)
-          .catch(() => {});
-      if (userInfo && acc.trim() && !isStatic) {
-        void saveTurn(userMessage, acc, docs);
-      }
-      const dur = Date.now() - started;
-      setMessages((prev) => {
-        const u = [...prev];
-        const last = u[u.length - 1];
-        if (last?.role === "assistant") u[u.length - 1] = { ...last, durationMs: dur };
-        return u;
-      });
+      if (buf && handleFrame(buf)) return;
     } catch (e) {
-      // Abort (chat baru / buka chat lain / unmount): diamkan, buang placeholder.
-      if (e instanceof DOMException && e.name === "AbortError") {
-        setMessages((prev) => prev.slice(0, -1));
-        return;
+      if ((e as Error).name !== "AbortError") {
+        setError(apiErrorMessage(e, "Gagal mengirim pesan. Coba lagi."));
+        patchAssistant({ content: "" });
       }
-      const m = (e instanceof Error ? e.message : "") || "Gagal terhubung ke backend.";
-      const quotaMsg =
-        m.includes("Batas prompt") || m.includes("Trial habis") || m.includes("Login diperlukan");
-      if (quotaMsg) openQuotaOffer(m);
-      else setError(m);
-      // F17: placeholder terakhir jangan langsung dibuang kalau sudah berisi
-      // jawaban parsial - sisakan isinya dengan suffix error; kalau masih
-      // kosong, tampilkan pesan error italic sebagai penggantinya.
-      // Kasus kuota: tampilkan pesan kuota asli di chat (mis. "Trial habis ..."),
-      // bukan teks generik "Gagal terhubung ke backend."
-      const placeholder = quotaMsg ? m : "Gagal terhubung ke backend.";
-      setMessages((prev) => {
-        const u = [...prev];
-        const last = u[u.length - 1];
-        if (last?.role === "assistant") {
-          if (last.content) {
-            u[u.length - 1] = {
-              ...last,
-              content: `${last.content}\n\n_(terputus - gagal melanjutkan respons)_`,
-            };
-            return u;
-          }
-          u[u.length - 1] = { ...last, content: `_(${placeholder})_` };
-          return u;
-        }
-        return prev.slice(0, -1);
-      });
     } finally {
-      setIsLoading(false);
-      startedAtRef.current = 0;
+      abortRef.current = null;
+      setLoading(false);
+      // Buang balon asisten kosong bila gagal total.
+      setMessages((prev) =>
+        prev.filter((m) => !(m.id === assistantMsg.id && !m.content)),
+      );
+      void loadConfig(sessionId);
     }
   };
 
-  return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#101015] text-zinc-100 antialiased selection:bg-white/10">
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(900px_500px_at_50%_-10%,rgba(255,255,255,0.035),transparent_70%)]"
-      />
-      <div aria-hidden className="itz-particles z-[1]">
-        <span
-          className="itz-dot"
-          style={
-            {
-              left: "14%",
-              top: "10%",
-              width: 4,
-              height: 4,
-              color: "rgba(255,255,255,0.35)",
-              animationDelay: "0s",
-              "--dur": "5s",
-            } as React.CSSProperties
-          }
-        />
-        <span
-          className="itz-dot"
-          style={
-            {
-              left: "68%",
-              top: "12%",
-              width: 3,
-              height: 3,
-              color: "rgba(255,255,255,0.25)",
-              animationDelay: "1.1s",
-              "--dur": "5.5s",
-            } as React.CSSProperties
-          }
-        />
-        <span
-          className="itz-dot"
-          style={
-            {
-              left: "28%",
-              top: "26%",
-              width: 3,
-              height: 3,
-              color: "rgba(255,255,255,0.2)",
-              animationDelay: "1.6s",
-              "--dur": "4.8s",
-            } as React.CSSProperties
-          }
-        />
-        <span
-          className="itz-dot"
-          style={
-            {
-              left: "74%",
-              top: "38%",
-              width: 4,
-              height: 4,
-              color: "rgba(255,255,255,0.25)",
-              animationDelay: "1.3s",
-              "--dur": "5.2s",
-            } as React.CSSProperties
-          }
-        />
-      </div>
+  const reset = () => {
+    abortRef.current?.abort();
+    setMessages([]);
+    setError(null);
+    turnCountRef.current = 0;
+    extractedTurnRef.current = -1;
+    setDiscoveryState(null);
+    try {
+      sessionStorage.removeItem(MESSAGES_KEY);
+      if (sessionId) sessionStorage.removeItem(`${STATE_KEY}:${sessionId}`);
+      const fresh =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      sessionStorage.setItem(SESSION_KEY, fresh);
+      setSessionId(fresh);
+    } catch {
+      setSessionId(newId());
+    }
+  };
 
-      <header className="relative z-30 flex h-[56px] shrink-0 items-center justify-between border-b border-white/[0.08] bg-[rgba(14,14,19,0.13)] px-4 backdrop-blur-xl supports-[backdrop-filter]:bg-[rgba(14,14,19,0.13)] sm:px-6">
-        <div className="flex items-center gap-3">
-          <motion.button
-            type="button"
-            id="itz-logo"
-            whileHover={{ rotate: [0, -8, 8, 0], scale: 1.06 }}
-            transition={{ duration: 0.6, ease: "easeInOut" }}
-            onClick={() => {
-              if (!userInfo) return;
-              setHistoryOpen(true);
-              loadChatList();
-            }}
-            title={userInfo ? "Riwayat chat" : "ITZ AI"}
-            aria-label={userInfo ? "Riwayat chat" : "ITZ AI"}
-            className="itz-logo itz-logo-sheen relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-white/[0.12] bg-zinc-900 shadow-lg"
+  /* ── Render ────────────────────────────────────────────────────────── */
+
+  const canBrief = history.some((m) => m.role === "assistant" && m.content.trim().length > 0);
+
+  return (
+    <div className="obsidian-field min-h-full font-sans text-[#f7f8f8]">
+      {/* Header */}
+      <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-[#05060a]/85 backdrop-blur-md">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
+          <Link
+            href="/"
+            className="itz-shine bg-gradient-to-r from-white via-white/50 to-white bg-clip-text text-[15px] font-semibold tracking-tight text-transparent"
           >
-            <Image
-              src="/image/favicon.png"
-              alt="ITZ"
-              width={36}
-              height={36}
-              className="h-full w-full object-cover"
-              priority
-            />
-          </motion.button>
-          <span className="itz-brand text-[15.5px] font-semibold tracking-[0.14em]">ITZ AI</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {(() => {
-            const rem = userInfo ? userInfo.remaining : trialInfo ? trialInfo.remaining : null;
-            return (
-              <span
-                className="mr-2 hidden items-center gap-2 sm:flex"
-                title={rem === null ? "Kuota tanpa batas" : `Sisa ${rem} prompt`}
-              >
-                <span className="relative flex h-2 w-2" aria-hidden>
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40 bg-emerald-400" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-                </span>
-                <span className="font-mono text-[12.5px] tracking-tight text-zinc-200">
-                  {userInfo
-                    ? userInfo.display_name || userInfo.username
-                    : trialInfo
-                      ? "TRIAL"
-                      : "GUEST"}
-                  <span className="text-zinc-500"> · {rem === null ? "∞" : `${rem} sisa`}</span>
-                </span>
-              </span>
-            );
-          })()}
-          <div className="relative" ref={infoRef}>
-            <motion.button
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.92 }}
-              onClick={() => setInfoOpen((v) => !v)}
-              title="Informasi kuota"
-              aria-label="Informasi kuota"
-              aria-expanded={infoOpen}
-              className="flex items-center rounded-lg px-2 py-1.5 text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
+            ITZ AI
+          </Link>
+          <span className="rounded-full border border-white/12 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.16em] text-white/55">
+            Discovery
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="hidden font-mono text-[10px] uppercase tracking-[0.14em] text-white/35 sm:inline">
+              {usedTurns === null ? `${maxTurns} pesan / sesi` : `${usedTurns}/${maxTurns} pesan`}
+            </span>
+            <button
+              type="button"
+              onClick={reset}
+              title="Mulai sesi baru"
+              className="inline-flex size-8 items-center justify-center rounded-full text-white/45 transition-colors hover:bg-white/10 hover:text-white"
             >
-              <Info className="h-4 w-4" />
-            </motion.button>
-            {infoOpen && (
-              <div className="fixed inset-x-3 top-[64px] z-40 overflow-hidden rounded-xl border border-white/10 bg-[#16161c] shadow-[0_16px_48px_rgba(0,0,0,0.65)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-60">
-                <div className="flex items-center justify-between border-b border-white/[0.07] bg-white/[0.03] px-4 py-2.5">
-                  <span className="text-[10.5px] font-medium uppercase tracking-wider text-zinc-500">
-                    Info Kuota
-                  </span>
-                  <span className="relative flex h-1.5 w-1.5" aria-hidden>
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40 bg-emerald-400" />
-                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                  </span>
-                </div>
-                <div className="px-4 py-3.5">
-                  <p className="font-mono text-[14px] font-medium tracking-tight text-zinc-100">
-                    {userInfo
-                      ? userInfo.display_name || userInfo.username
-                      : trialInfo
-                        ? "Pengunjung Trial"
-                        : "Tamu"}
-                  </p>
-                  <p className="mt-1 text-[11.5px] text-zinc-400">
-                    Status prompt: <span className={remStatus.color}>{remStatus.label}</span>
-                  </p>
-                  {(() => {
-                    const dq = userInfo?.daily_quota;
-                    if (!dq || (dq.mode !== "daily" && dq.mode !== "total")) return null;
-                    const isTotal = dq.mode === "total";
-                    return (
-                      <div className="mt-3 space-y-1.5 border-t border-white/[0.07] pt-3 text-[11.5px] leading-5 text-zinc-400">
-                        <p className="text-[10.5px] font-medium uppercase tracking-wider text-zinc-500">
-                          {isTotal ? "Kuota gratis (total)" : "Kuota harian"}
-                        </p>
-                        {dq.plan_label && (
-                          <p>
-                            Paket aktif: <span className="text-zinc-200">{dq.plan_label}</span>
-                          </p>
-                        )}
-                        <p>
-                          {isTotal ? "Terpakai: " : "Dipakai hari ini: "}
-                          <span className="tabular-nums text-zinc-200">
-                            {dq.used_today ?? 0}
-                            {typeof dq.daily_limit === "number" ? ` / ${dq.daily_limit}` : ""}
-                          </span>
-                        </p>
-                        {dq.next_reset_wib && (
-                          <p className="text-zinc-500">Reset berikutnya: {dq.next_reset_wib}</p>
-                        )}
-                        {isTotal && (
-                          <p className="text-zinc-500">Kuota gratis tidak reset harian.</p>
-                        )}
-                      </div>
-                    );
-                  })()}
-                  <div className="mt-3.5 border-t border-white/[0.07] pt-3.5">
-                    <p className="text-[11.5px] leading-5 text-zinc-400">
-                      Sisa kuota anda sekarang
-                    </p>
-                    <p className="mt-1 font-mono text-[26px] font-semibold leading-none tracking-tight text-zinc-50">
-                      {quotaRem === null ? "∞" : quotaRem}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <RotateCcw className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setBriefOpen(true)}
+              disabled={!canBrief}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#fafafa] px-3.5 text-[12.5px] font-medium text-[#05060a] transition-transform hover:scale-[1.03] disabled:opacity-40"
+            >
+              <FileText className="size-3.5" />
+              Brief
+            </button>
+            {!authed && (
+              <StarBorder
+                as="a"
+                href="/login"
+                title="Login untuk mengunduh brief"
+                color="#ffffff"
+                trailColor="#ffffff"
+                backgroundColor="rgba(255,255,255,0.12)"
+                textColor="#ffffff"
+                borderColor="rgba(255,255,255,0.3)"
+                duration={6}
+                thickness={1}
+                radius={999}
+                glow={0.55}
+                className="h-9 gap-1.5! px-4! py-0! text-[12.5px] backdrop-blur-md transition-transform hover:scale-[1.04]"
+              >
+                <LogIn className="size-3.5" aria-hidden />
+                Login
+              </StarBorder>
             )}
           </div>
-          <a
-            href="/pricing"
-            title="Harga & paket"
-            aria-label="Harga dan paket"
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
-          >
-            <svg
-              className="h-4 w-4 shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="3" y="5" width="18" height="14" rx="2" />
-              <path d="M3 10h18" />
-              <path d="M7 15h4" />
-            </svg>
-            <span className="hidden sm:inline">Harga</span>
-          </a>
-          <button
-            type="button"
-            id="btn-new-chat"
-            onClick={() => {
-              startNewChat();
-              setSuggestions(pickSuggestions());
-              refreshSuggestions();
-            }}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-100"
-          >
-            <svg
-              className="h-4 w-4 shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-            </svg>
-            <span className="hidden sm:inline">New Chat</span>
-          </button>
-          {userInfo ? (
-            <>
-              <motion.button
-                whileHover={{ scale: 1.06 }}
-                whileTap={{ scale: 0.92 }}
-                onClick={openProfile}
-                id="btn-profile"
-                title="Pengaturan profil"
-                aria-label="Pengaturan profil"
-                className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
-              >
-                <motion.svg
-                  whileHover={{ rotate: 90 }}
-                  transition={{ type: "spring", stiffness: 260, damping: 16 }}
-                  className="h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                </motion.svg>
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.06 }}
-                whileTap={{ scale: 0.92 }}
-                onClick={() => setConfirmLogout(true)}
-                title="Keluar"
-                aria-label="Keluar"
-                className="flex items-center rounded-lg px-2.5 py-1.5 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
-              >
-                <motion.svg
-                  whileHover={{ x: 3 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 15 }}
-                  className="h-4 w-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
-                </motion.svg>
-              </motion.button>
-            </>
-          ) : (
-            <a
-              href="/login"
-              className="ml-1 rounded-lg bg-white px-3.5 py-1.5 text-[12.5px] font-semibold text-black transition-colors hover:bg-zinc-200"
-            >
-              Login
-            </a>
-          )}
         </div>
       </header>
 
-      {/* Selamat datang setelah login */}
-      <AnimatePresence>
-        {welcomeName && (
-          <motion.div
-            initial={{ opacity: 0, y: -16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ type: "spring", stiffness: 340, damping: 28 }}
-            className="fixed left-1/2 top-4 z-[90] w-[calc(100%-2rem)] max-w-[420px] -translate-x-1/2 rounded-2xl border border-white/[0.1] bg-[#16161c] px-5 py-3.5 shadow-[0_24px_60px_-16px_rgba(0,0,0,0.8)]"
-          >
-            <p className="text-[14.5px] font-semibold tracking-[-0.01em] text-white">
-              Selamat Datang, {welcomeName}
-            </p>
-            <p className="mt-0.5 text-[12.5px] text-zinc-500">
-              Senang bertemu lagi. Tanyakan apa saja.
-            </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <ChatHistoryPanel
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-        items={chatList}
-        activeId={activeChatId}
-        limit={chatLimit}
-        retentionDays={chatRetention}
-        onOpenChat={openChat}
-        onDeleteChat={deleteChat}
-        onNewChat={startNewChat}
-      />
-
-      {/* Instruksi fitur untuk akun baru - sekali seumur akun (Lewati = permanen) */}
-      {tourOpen && tourSteps.length > 0 && <OnboardingTour steps={tourSteps} onFinish={endTour} />}
-
-      {/* Konfirmasi keluar */}
-      <AnimatePresence>
-        {confirmLogout && (
-          <motion.div
-            className="fixed inset-0 z-[95] flex items-center justify-center p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            <div
-              className="absolute inset-0 bg-black/70 backdrop-blur-[5px]"
-              onClick={() => setConfirmLogout(false)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 14 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.97, y: 8 }}
-              transition={{ type: "spring", stiffness: 340, damping: 28 }}
-              role="dialog"
-              aria-modal="true"
-              className="relative w-full max-w-[360px] rounded-2xl border border-white/[0.1] bg-[#0c0c10] p-6 shadow-[0_32px_100px_-24px_rgba(0,0,0,0.85)]"
-            >
-              <h3 className="text-[17px] font-semibold tracking-[-0.01em] text-white">
-                Keluar dari akun?
-              </h3>
-              <p className="mt-1.5 text-[13.5px] leading-relaxed text-zinc-500">
-                Sesi kamu akan berakhir dan kamu kembali ke halaman login.
-              </p>
-              <div className="mt-5 flex gap-2.5">
-                <button
-                  onClick={() => setConfirmLogout(false)}
-                  className="h-10 flex-1 rounded-xl border border-white/[0.1] text-[14px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05] hover:text-white"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={doLogout}
-                  className="h-10 flex-1 rounded-xl bg-white text-[14px] font-semibold text-black transition-colors hover:bg-zinc-200"
-                >
-                  Ya, keluar
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-
-        {/* Modal profil: nama, tujuan, gaya respons */}
-        {profileOpen && userInfo && (
-          <motion.div
-            className="fixed inset-0 z-[95] flex items-center justify-center p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-          >
-            <div
-              className="absolute inset-0 bg-black/70 backdrop-blur-[5px]"
-              onClick={() => {
-                if (userInfo?.display_name) setProfileOpen(false);
-              }}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 14 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.97, y: 8 }}
-              transition={{ type: "spring", stiffness: 340, damping: 28 }}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Pengaturan profil"
-              className="relative flex max-h-[86vh] w-full max-w-[440px] flex-col overflow-hidden rounded-2xl border border-white/[0.1] bg-[#0c0c10] shadow-[0_32px_100px_-24px_rgba(0,0,0,0.85)]"
-            >
-              <div className="flex items-center justify-between border-b border-white/[0.07] px-6 py-4">
-                <h3 className="text-[16px] font-semibold tracking-[-0.01em] text-white">
-                  Pengaturan Profil
-                </h3>
-                <button
-                  onClick={() => {
-                    if (userInfo?.display_name) setProfileOpen(false);
-                  }}
-                  aria-label="Tutup"
-                  className="rounded-lg px-2 py-1 text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
-                >
-                  <svg
-                    className="h-4 w-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  >
-                    <path d="M18 6 6 18M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-                <div className="space-y-1.5">
-                  <label htmlFor="pf-name" className="text-[12.5px] font-medium text-zinc-400">
-                    Nama tampilan
-                  </label>
-                  <input
-                    id="pf-name"
-                    value={profileName}
-                    onChange={(e) => setProfileName(e.target.value)}
-                    maxLength={64}
-                    className="h-10 w-full rounded-xl border border-white/[0.1] bg-zinc-900/70 px-3.5 text-[14px] text-white placeholder:text-zinc-600 outline-none transition-colors focus:border-white/25"
-                    placeholder="Nama kamu"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label htmlFor="pf-goal" className="text-[12.5px] font-medium text-zinc-400">
-                    Tujuan kamu pakai ITZ AI
-                  </label>
-                  <textarea
-                    id="pf-goal"
-                    value={profileGoal}
-                    onChange={(e) => setProfileGoal(e.target.value)}
-                    maxLength={300}
-                    rows={3}
-                    className="w-full resize-none rounded-xl border border-white/[0.1] bg-zinc-900/70 px-3.5 py-2.5 text-[14px] leading-relaxed text-white placeholder:text-zinc-600 outline-none transition-colors focus:border-white/25"
-                    placeholder="Contoh: bantu riset kuliah, brainstorm konten, belajar coding"
-                  />
-                  <p className="text-[11.5px] text-zinc-600">
-                    AI memakai tujuan ini agar jawaban lebih relevan.
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[12.5px] font-medium text-zinc-400">Gender</label>
-                  <select
-                    value={profileGender}
-                    onChange={(e) => setProfileGender(e.target.value)}
-                    className="h-10 w-full rounded-xl border border-white/[0.1] bg-zinc-900/70 px-3.5 text-[14px] text-white outline-none transition-colors focus:border-white/25 [&>option]:bg-zinc-900"
-                  >
-                    <option value="">Tidak disetel</option>
-                    <option value="male">Laki-laki</option>
-                    <option value="female">Perempuan</option>
-                    <option value="other">Lainnya</option>
-                  </select>
-                </div>
-
-                <div className="space-y-2">
-                  <span className="text-[12.5px] font-medium text-zinc-400">Kata sandi</span>
-                  <p className="text-[11.5px] text-zinc-600">
-                    {userInfo?.has_password
-                      ? "Ubah sandi untuk login username + sandi."
-                      : "Akun ini belum punya sandi. Atur sandi agar bisa login dengan username."}
-                  </p>
-                  {userInfo?.has_password && (
-                    <input
-                      type="password"
-                      value={pwOld}
-                      onChange={(e) => setPwOld(e.target.value)}
-                      autoComplete="current-password"
-                      placeholder="Sandi lama"
-                      className="h-10 w-full rounded-xl border border-white/[0.1] bg-zinc-900/70 px-3.5 text-[14px] text-white placeholder:text-zinc-600 outline-none transition-colors focus:border-white/25"
-                    />
-                  )}
-                  <input
-                    type="password"
-                    value={pwNew}
-                    onChange={(e) => setPwNew(e.target.value)}
-                    autoComplete="new-password"
-                    placeholder="Sandi baru (min. 8 karakter)"
-                    className="h-10 w-full rounded-xl border border-white/[0.1] bg-zinc-900/70 px-3.5 text-[14px] text-white placeholder:text-zinc-600 outline-none transition-colors focus:border-white/25"
-                  />
-                  <div className="flex items-center gap-2.5">
-                    <button
-                      type="button"
-                      onClick={savePassword}
-                      disabled={
-                        pwSaving || pwNew.length < 8 || (!!userInfo?.has_password && !pwOld)
-                      }
-                      className="h-9 rounded-xl border border-white/[0.1] px-4 text-[13px] font-medium text-zinc-200 transition-colors hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {pwSaving ? "Menyimpan..." : "Simpan sandi"}
-                    </button>
-                    {pwMsg && (
-                      <span
-                        className={`text-[12px] ${pwMsg === "Sandi diperbarui" ? "text-emerald-400" : "text-rose-400"}`}
-                      >
-                        {pwMsg}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <span className="text-[12.5px] font-medium text-zinc-400">Gaya respons AI</span>
-                  <div className="space-y-2">
-                    {styleOptions.map((s) => {
-                      const active = profileStyle === s.id;
-                      return (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => setProfileStyle(active ? "" : s.id)}
-                          aria-pressed={active}
-                          className={`w-full rounded-xl border px-4 py-3 text-left transition-colors ${
-                            active
-                              ? "border-white/60 bg-white/[0.07]"
-                              : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20 hover:bg-white/[0.03]"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <span
-                              className={`text-[14px] font-semibold ${active ? "text-white" : "text-zinc-300"}`}
-                            >
-                              {s.name}
-                            </span>
-                            <span
-                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${active ? "border-white bg-white" : "border-zinc-600"}`}
-                            >
-                              {active && <span className="h-1.5 w-1.5 rounded-full bg-black" />}
-                            </span>
-                          </div>
-                          {s.description && (
-                            <p className="mt-0.5 text-[12.5px] leading-relaxed text-zinc-500">
-                              {s.description}
-                            </p>
-                          )}
-                        </button>
-                      );
-                    })}
-                    {styleOptions.length === 0 && (
-                      <p className="rounded-xl border border-white/[0.06] bg-zinc-900/30 px-4 py-3 text-[12.5px] text-zinc-600">
-                        Memuat pilihan gaya...
-                      </p>
-                    )}
-                  </div>
-                  {profileStyle && (
-                    <p className="text-[11.5px] text-zinc-600">
-                      Klik lagi untuk kembali ke gaya default.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2.5 border-t border-white/[0.07] px-6 py-4">
-                {profileMsg && (
-                  <span
-                    className={`text-[12.5px] ${profileMsg === "Tersimpan" ? "text-emerald-400" : "text-rose-400"}`}
-                  >
-                    {profileMsg}
-                  </span>
-                )}
-                <div className="ml-auto flex gap-2.5">
-                  <button
-                    onClick={() => {
-                      if (userInfo?.display_name) setProfileOpen(false);
-                    }}
-                    className="h-10 rounded-xl border border-white/[0.1] px-4 text-[14px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.05] hover:text-white"
-                  >
-                    Batal
-                  </button>
-                  <button
-                    onClick={saveProfile}
-                    disabled={profileSaving || !profileName.trim()}
-                    className="h-10 rounded-xl bg-white px-5 text-[14px] font-semibold text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {profileSaving ? "Menyimpan..." : "Simpan"}
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {quotaAlert && (
-          <motion.div
-            key="quota-alert"
-            initial={{ opacity: 0, y: -10, height: 0 }}
-            animate={{ opacity: 1, y: 0, height: "auto" }}
-            exit={{ opacity: 0, y: -8, height: 0 }}
-            transition={{ type: "spring", stiffness: 380, damping: 30 }}
-            className="relative z-20 mx-auto w-full max-w-[720px] overflow-hidden px-4 pt-3 sm:px-6"
-          >
-            <div
-              role="alert"
-              className="relative flex items-start gap-3.5 overflow-hidden rounded-xl border border-white/[0.07] bg-[#101014] px-4 py-3.5 shadow-[0_16px_40px_-20px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.04)]"
-            >
-              {/* hairline gradient senada identitas ITZ */}
-              <span
-                aria-hidden
-                className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-fuchsia-400/50 via-violet-400/40 to-sky-400/40"
-              />
-              <span
-                aria-hidden
-                className="absolute inset-0 -z-10 bg-[radial-gradient(320px_80px_at_10%_0%,rgba(124,92,255,0.08),transparent_70%)]"
-              />
-              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-white/[0.09] bg-gradient-to-b from-white/[0.07] to-white/[0.02] text-violet-300">
-                <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2.2} />
-              </span>
-              <span className="flex-1 text-[13px] leading-[1.55]">
-                {quotaAlert.includes("Budget token") ? (
-                  <>
-                    <span className="mb-0.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                      Batas harian
-                    </span>
-                    <span className="text-zinc-300">
-                      Batas harian ITZ AI sudah tercapai. Coba lagi besok atau hubungi admin.
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="mb-0.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
-                      Batas penyimpanan
-                    </span>
-                    <span className="text-zinc-300">
-                      {quotaAlert}{" "}
-                      <a
-                        href="/login"
-                        className="font-medium text-white underline decoration-white/30 underline-offset-2 transition-colors hover:decoration-white"
-                      >
-                        Login
-                      </a>{" "}
-                      atau hubungi admin.
-                    </span>
-                  </>
-                )}
-              </span>
-              <motion.button
-                type="button"
-                onClick={() => setQuotaAlert(null)}
-                whileHover={{ scale: 1.06 }}
-                whileTap={{ scale: 0.92 }}
-                aria-label="Tutup peringatan"
-                className="shrink-0 rounded-md p-1 text-zinc-600 transition-colors hover:bg-white/[0.06] hover:text-zinc-300"
-              >
-                <X className="h-3.5 w-3.5" />
-              </motion.button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <QuotaOfferModal
-        open={quotaOffer !== null}
-        variant={quotaOffer ?? "quota"}
-        username={userInfo?.username ?? null}
-        used={userInfo ? userInfo.prompts_used : null}
-        max={userInfo ? userInfo.max_prompts : null}
-        onClose={() => setQuotaOffer(null)}
-      />
-
-      <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
-        {isEmpty ? (
-          <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-12 sm:py-20">
-            <div className="flex w-full max-w-[720px] flex-col items-center">
-              <div className="itz-logo itz-logo-sheen mb-8 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border-2 border-white/[0.15] bg-zinc-900 shadow-[0_0_48px_rgba(56,189,248,0.2),0_0_96px_rgba(124,92,255,0.12)]">
-                <Image
-                  src="/image/favicon.png"
-                  alt="ITZ"
-                  width={64}
-                  height={64}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-
-              <h1 className="text-center text-[36px] font-bold leading-[1.08] tracking-[-0.048em] text-zinc-50 sm:text-[44px]">
-                Tanyakan apa saja.
+      <div className="mx-auto flex max-w-6xl gap-6 px-4 pb-10 pt-6 sm:px-6">
+        {/* Kolom percakapan */}
+        <main className="flex min-h-[calc(100dvh-7rem)] min-w-0 flex-1 flex-col">
+          {messages.length === 0 ? (
+            <section className="mx-auto max-w-[66ch] pt-6 sm:pt-12">
+              <h1 className="text-balance font-heading text-[clamp(1.6rem,4vw,2.5rem)] font-medium leading-[1.15] tracking-[-0.03em]">
+                Ceritakan bisnis Anda. Kami bantu petakan masalah dan menemukan solusi yang tepat.
               </h1>
-              <p className="mt-4 text-center text-[16.5px] font-[450] leading-[1.45] tracking-[-0.016em] text-zinc-400">
-                ITZ AI memahami konteksmu.
-              </p>
-              <p className="mt-2.5 text-center text-[13px] leading-5 tracking-wide text-zinc-600">
-                Private intelligence for your knowledge
+              <p className="mt-3 max-w-[58ch] text-[14.5px] leading-[1.7] text-white/55">
+                Kami akan terlebih dahulu memahami operasional, tantangan, dan target bisnis Anda.
+                Berdasarkan hasil analisis, kami akan merekomendasikan solusi yang paling relevan,
+                baik berupa perbaikan proses, pengembangan aplikasi, maupun penerapan AI.
               </p>
 
-              <div className="mt-12 w-full space-y-4">
-                <QuotaNotice
-                  visible={quotaOut !== null && !quotaNoticeHidden}
-                  onOpenOffer={() => setQuotaOffer(quotaOut ?? "quota")}
-                  onDismiss={() => setQuotaNoticeHidden(true)}
-                />
-                <div className="mb-5 flex flex-wrap justify-center gap-2.5">
-                  {suggestions.map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setInput(s)}
-                      className="rounded-xl border border-white/[0.09] bg-white/[0.05] px-4 py-2.5 text-[13px] font-medium leading-none tracking-wide text-zinc-400 shadow-sm transition-all duration-200 hover:border-white/[0.15] hover:bg-white/[0.09] hover:text-zinc-200 hover:scale-105 active:scale-95 focus-visible:outline-offset-0"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-                <AIChatInput
-                  value={input}
-                  onChange={setInput}
-                  onSubmit={handleSend}
-                  isLoading={isLoading}
-                  onAttachFile={userInfo?.daily_quota?.doc_access ? handleAttachFile : undefined}
-                  attachments={docAttachments.map((d) => ({
-                    id: d.id,
-                    label: d.title,
-                    meta: docAttachmentMetaText(d),
-                  }))}
-                  attachmentLabel={docBusy ? "Membaca file…" : null}
-                  attachmentMeta={docBusy ? "Mengekstrak teks..." : null}
-                  attachmentBusy={docBusy}
-                  onRemoveAttachment={removeDocAttachment}
-                  attachDisabled={isLoading}
-                />
-              </div>
-
-              <p
-                suppressHydrationWarning
-                className="mt-8 text-center text-[11px] tracking-[0.06em] text-zinc-600"
-              >
-                © {new Date().getFullYear()} Mochammad Ginata Febryansyah
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div
-              ref={scrollRef}
-              onScroll={handleScroll}
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
-            >
-              <div className="mx-auto w-full max-w-[800px] px-4 py-8 sm:px-6 sm:py-10">
-                <div className="mx-auto flex max-w-[720px] flex-col gap-8">
-                  {messages.map((m, i) => {
-                    const streaming =
-                      isLoading && i === messages.length - 1 && m.role === "assistant";
-                    return (
-                      <MessageBubble
-                        key={i}
-                        role={m.role}
-                        content={m.content}
-                        isStreaming={streaming}
-                        durationMs={streaming && !m.durationMs ? elapsedMs : m.durationMs}
-                        sources={m.sources}
-                        attachments={m.attachments}
-                        suggestions={
-                          i === messages.length - 1 &&
-                          m.role === "assistant" &&
-                          !isLoading &&
-                          !error
-                            ? m.suggestions
-                            : undefined
-                        }
-                        onSuggestionClick={handleSuggestionClick}
-                        onRegenerate={
-                          i === messages.length - 1 &&
-                          m.role === "assistant" &&
-                          !isLoading &&
-                          messages.length > 1
-                            ? handleRegenerate
-                            : undefined
-                        }
-                      />
-                    );
-                  })}
-                  {error && (
-                    <div className="rounded-xl border border-red-500/20 bg-red-500/[0.10] px-4 py-3.5 text-[13.5px] leading-6 text-red-200 shadow-lg">
-                      {error}
-                    </div>
-                  )}
-                  <QuotaNotice
-                    visible={quotaOut !== null && !quotaNoticeHidden}
-                    onOpenOffer={() => setQuotaOffer(quotaOut ?? "quota")}
-                    onDismiss={() => setQuotaNoticeHidden(true)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="shrink-0 border-t border-white/[0.08] bg-[rgba(5,3,10,0.85)] backdrop-blur-xl">
-              <div className="mx-auto w-full max-w-[800px] px-4 pb-5 pt-4 sm:px-6">
-                <div className="mx-auto max-w-[720px]">
-                  <AIChatInput
-                    value={input}
-                    onChange={setInput}
-                    onSubmit={handleSend}
-                    isLoading={isLoading}
-                    onAttachFile={userInfo?.daily_quota?.doc_access ? handleAttachFile : undefined}
-                    attachments={docAttachments.map((d) => ({
-                      id: d.id,
-                      label: d.title,
-                      meta: docAttachmentMetaText(d),
-                    }))}
-                    onRemoveAttachment={removeDocAttachment}
-                    attachmentLabel={docBusy ? "Membaca file..." : null}
-                    attachmentMeta={docBusy ? "Mengekstrak teks..." : null}
-                    attachmentBusy={docBusy}
-                    attachDisabled={isLoading}
-                  />
-                  <p
-                    suppressHydrationWarning
-                    className="mt-3 text-center text-[11px] tracking-[0.06em] text-zinc-600"
+              <div className="mt-6 grid gap-2 sm:grid-cols-2">
+                {STARTERS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => void send(s)}
+                    className="group flex items-start gap-2.5 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 text-left transition-colors hover:border-[color:var(--spectral-violet)]/40 hover:bg-white/[0.04]"
                   >
-                    © {new Date().getFullYear()} Mochammad Ginata Febryansyah
-                  </p>
-                </div>
+                    <MessageSquareQuote className="mt-0.5 size-3.5 shrink-0 text-[color:var(--spectral-violet)]/70" />
+                    <span className="text-[13px] leading-[1.55] text-white/70 group-hover:text-white/90">
+                      {s}
+                    </span>
+                  </button>
+                ))}
               </div>
+
+              <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white/30">
+                <span className="inline-flex items-center gap-1.5">
+                  <ShieldCheck className="size-3" /> tanpa akun
+                </span>
+                <span>{maxTurns} pesan per sesi</span>
+              </div>
+            </section>
+          ) : (
+            <div className="space-y-6">
+              {messages.map((m) =>
+                m.role === "user" ? (
+                  <div key={m.id} className="flex justify-end">
+                    <div className="max-w-[85%] rounded-2xl rounded-br-md border border-[color:var(--spectral-violet)]/25 bg-[color:var(--spectral-violet)]/10 px-4 py-2.5 text-[14px] leading-[1.6] text-white/90">
+                      {m.content}
+                    </div>
+                  </div>
+                ) : (
+                  <div key={m.id} className="max-w-[76ch]">
+                    <div className="mb-1.5 flex items-center gap-2">
+                      <span className="inline-flex size-5 items-center justify-center rounded-full bg-white/10 text-[10px] font-semibold">
+                        ITZ
+                      </span>
+                      <span className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-white/35">
+                        Konsultan
+                      </span>
+                    </div>
+                    {m.content ? (
+                      <div className="prose-itz text-[14px] leading-[1.75] text-white/80">
+                        <Markdown>{m.content}</Markdown>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-0.5 py-1">
+                        <div className="flex items-center gap-2 text-[13px] text-white/70">
+                          <Loader2 className="size-3.5 animate-spin text-white/40" />
+                          {aiStatus(m.statusKey).label}
+                        </div>
+                        {aiStatus(m.statusKey).description && (
+                          <span className="pl-[22px] text-[11.5px] leading-[1.5] text-white/35">
+                            {aiStatus(m.statusKey).description}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {m.suggestions && m.suggestions.length > 0 && !loading && (
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        {m.suggestions.slice(0, 3).map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => void send(s)}
+                            className="rounded-full border border-white/10 px-3 py-1.5 text-[12px] text-white/55 transition-colors hover:border-white/25 hover:text-white/85"
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ),
+              )}
+              <div ref={bottomRef} />
+            </div>
+          )}
+
+          {/* Composer: menempel di bawah kolom percakapan, tetap terlihat saat
+              riwayat panjang (sticky) maupun saat halaman masih kosong. */}
+          <div className="sticky bottom-0 z-20 mt-auto pt-4">
+            <div className="bg-[#05060a]/90 pb-1 backdrop-blur-md">
+              {/* Toolbar mobile: aksi yang tidak tersedia di sidebar kecil. */}
+              <div className="mb-2 flex gap-2 lg:hidden">
+                <button
+                  type="button"
+                  onClick={() => setInsightOpen(true)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[color:var(--spectral-violet)]/40 bg-[color:var(--spectral-violet)]/10 px-3 text-[12px] text-white/80"
+                >
+                  <Compass className="size-3.5" />
+                  Insight
+                </button>
+                {outOfTurns && (
+                  <button
+                    type="button"
+                    onClick={reset}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/10 px-3 text-[12px] text-white/70"
+                  >
+                    <RotateCcw className="size-3.5" />
+                    Sesi baru
+                  </button>
+                )}
+              </div>
+              {error && (
+                <p className="mb-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-[12.5px] text-red-200">
+                  {error}
+                </p>
+              )}
+              <div className="g-dark flex items-end gap-2 rounded-2xl p-2">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    const el = e.currentTarget;
+                    el.style.height = "auto";
+                    el.style.height = `${Math.min(160, el.scrollHeight)}px`;
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void send();
+                    }
+                  }}
+                  rows={1}
+                  placeholder={
+                    outOfTurns
+                      ? "Batas sesi tercapai. Mulai sesi baru atau buat brief."
+                      : "Ceritakan kebutuhan atau masalah bisnis Anda..."
+                  }
+                  disabled={outOfTurns}
+                  className="max-h-[160px] min-h-[40px] flex-1 resize-none bg-transparent px-2.5 py-2 text-[14px] leading-[1.55] text-white placeholder:text-white/30 focus:outline-none disabled:cursor-not-allowed"
+                />
+                <button
+                  type="button"
+                  onClick={() => void send()}
+                  disabled={loading || !input.trim() || outOfTurns}
+                  aria-label="Kirim"
+                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#fafafa] text-[#05060a] transition-transform hover:scale-[1.04] disabled:opacity-40"
+                >
+                  {loading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <ArrowUp className="size-4" />
+                  )}
+                </button>
+              </div>
+              <p className="mt-1.5 text-center text-[10.5px] text-white/25">
+                Jawaban bisa keliru. Estimasi bersifat kasar, bukan penawaran resmi.
+              </p>
             </div>
           </div>
-        )}
-      </main>
+        </main>
+
+        {/* Sidebar desktop */}
+        <aside className="sticky top-20 hidden max-h-[calc(100dvh-6rem)] w-[300px] shrink-0 self-start space-y-3 overflow-y-auto lg:block">
+          <BusinessIntelligencePanel
+            state={discoveryState}
+            loading={insightLoading}
+            onChange={setDiscoveryState}
+          />
+
+          <section className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">
+                Sisa sesi
+              </span>
+              <span className="font-mono text-[11px] text-white/70">
+                {remaining === null || remaining === undefined ? maxTurns : remaining}
+                <span className="text-white/30">/{maxTurns}</span>
+              </span>
+            </div>
+            <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-[linear-gradient(90deg,var(--spectral-cyan),var(--spectral-violet))] transition-[width]"
+                style={{
+                  width: `${usedTurns === null ? 0 : Math.min(100, (usedTurns / maxTurns) * 100)}%`,
+                }}
+              />
+            </div>
+            <p className="mt-2 text-[11.5px] leading-[1.55] text-white/35">
+              Cukup untuk memetakan kebutuhan. Brief bisa dibuat kapan saja.
+            </p>
+          </section>
+
+          <div className="flex items-stretch gap-2">
+            <button
+              type="button"
+              onClick={() => setBriefOpen(true)}
+              disabled={!canBrief}
+              className="flex flex-1 items-center gap-2.5 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5 text-left transition-colors hover:border-[color:var(--spectral-violet)]/35 hover:bg-white/[0.04] disabled:opacity-40"
+            >
+              <FileText className="size-4 shrink-0 text-[color:var(--spectral-violet)]" />
+              <span>
+                <span className="block text-[12.5px] text-white/80">Brief proyek</span>
+                <span className="block text-[11px] leading-[1.5] text-white/40">
+                  Rangkum percakapan jadi dokumen terstruktur.
+                </span>
+              </span>
+            </button>
+            {!authed && (
+              <Link
+                href="/login"
+                title="Login untuk mengunduh brief"
+                className="inline-flex size-8 items-center justify-center rounded-full text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <LogIn className="size-3.5" />
+              </Link>
+            )}
+          </div>
+        </aside>
+      </div>
+
+      {/* Drawer insight bisnis di layar kecil (sidebar desktop hidden). */}
+      {insightOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            aria-label="Tutup insight"
+            onClick={() => setInsightOpen(false)}
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+          />
+          <div className="absolute inset-y-0 right-0 flex w-[min(360px,90vw)] flex-col border-l border-white/10 bg-[#0a0b12]">
+            <div className="flex items-center justify-between border-b border-white/[0.08] px-4 py-3">
+              <span className="text-[13px] font-medium text-white/85">Insight bisnis</span>
+              <button
+                type="button"
+                onClick={() => setInsightOpen(false)}
+                aria-label="Tutup"
+                className="rounded-full p-1.5 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <BusinessIntelligencePanel
+                state={discoveryState}
+                loading={insightLoading}
+                onChange={setDiscoveryState}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <BriefPanel
+        open={briefOpen}
+        onClose={() => setBriefOpen(false)}
+        sessionId={sessionId}
+        history={history}
+        authenticated={authed}
+      />
     </div>
   );
 }

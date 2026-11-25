@@ -11,6 +11,8 @@ try:
     from backend.api.auth import router as auth_router
     from backend.api.chat import router as chat_router
     from backend.api.chat import v1_router
+    from backend.api.discovery import admin_router as admin_discovery_router
+    from backend.api.discovery import router as discovery_router
     from backend.api.documents import router as documents_router
     from backend.api.pricing import admin_router as admin_pricing_router
     from backend.api.pricing import payment_router
@@ -28,6 +30,8 @@ except ImportError:
     from api.auth import router as auth_router  # type: ignore
     from api.chat import router as chat_router
     from api.chat import v1_router
+    from api.discovery import admin_router as admin_discovery_router  # type: ignore
+    from api.discovery import router as discovery_router  # type: ignore
     from api.documents import router as documents_router
     from api.pricing import admin_router as admin_pricing_router
     from api.pricing import payment_router
@@ -127,6 +131,8 @@ app.add_middleware(
 
 app.include_router(chat_router)
 app.include_router(v1_router)
+app.include_router(discovery_router)
+app.include_router(admin_discovery_router)
 app.include_router(v1_router, prefix="/api")  # alias: /api/v1/* so the OpenAI-compatible
 # endpoint stays reachable on Vercel, where only /api/* routes hit the Python function
 app.include_router(user_router)
@@ -190,6 +196,9 @@ if __name__ == "__main__":
             host="0.0.0.0",
             port=settings.PORT,
             reload=True,
+            # Batasi watch ke backend/ saja. Tanpa ini statreload meng-rglob
+            # seluruh repo dan crash saat `next build` menghapus .next/.
+            reload_dirs=["backend"],
             reload_excludes=["data", "logs"],
         )
     else:
